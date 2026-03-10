@@ -187,7 +187,7 @@ float softShadow(float3 ro, float3 rd, float start_d, float end_d, float k) {
     for (int i = 0; i < MAX_STEPS_SHAD; i++) {
         float h = map(ro + rd * d);
         shade = min(shade, k * h / d);
-        d += min(h, d / 2.0);
+        d += min(h, d * 0.5);
         if (h < SURF_DIST || d > end_d) break;
     }
 
@@ -201,7 +201,7 @@ float3 lighting(float3 sp, float3 camPos, int reflectionPass, float _st, float _
 
     float3 lp = float3(_st * 50.0, _ct * 50.0, time * 10.0);
     float3 ld = lp - sp;
-    float3 lcolor = float3(_st2, _ct2, 1.0) / 3.0 + float3(1.0, 1.0, 1.0);
+    float3 lcolor = float3(_st2, _ct2, 1.0) * 0.333333 + float3(1.0, 1.0, 1.0);
 
     float len = length(ld);
     ld /= len;

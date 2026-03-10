@@ -171,7 +171,7 @@ float4 PSMain(PSInput input) : SV_Target {
     uv.y *= resolution.y / resolution.x;
     float3 dir = float3(uv * ZOOM, 1.0);
     float2 uPos = (fragCoord.xy / resolution.y);
-    uPos -= float2((resolution.x / resolution.y) / 2.0, 0.5);
+    uPos -= float2((resolution.x / resolution.y) * 0.5, 0.5);
 
     float multiplier = 0.0005;
     static const float step2 = 0.006;

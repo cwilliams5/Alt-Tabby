@@ -106,12 +106,12 @@ float2 clog(float2 z) {
 
 float smin(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
-    return min(a, b) - h * h * k * (1.0 / 4.0);
+    return min(a, b) - h * h * k * 0.25;
 }
 
 float smax(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0);
-    return max(a, b) + h * h * k * (1.0 / 4.0);
+    return max(a, b) + h * h * k * 0.25;
 }
 
 // ============= SDF Primitives =============
@@ -200,7 +200,7 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
 
     float kk = 1.0 / dot(b, b);
     float kx = kk * dot(a, b);
-    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) * 0.333333;
     float kz = kk * dot(d, a);
     float t = 0.0;
 
@@ -214,7 +214,7 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
 
     if (h >= 0.0) {
         h = sqrt(h);
-        float2 x = (float2(h, -h) - q) / 2.0;
+        float2 x = (float2(h, -h) - q) * 0.5;
         float2 uv_bz = sign(x) * pow(abs(x), (float2)(1.0 / 3.0));
         t = saturate(uv_bz.x + uv_bz.y - kx);
         float2 qq = d + (c + b * t) * t;
@@ -222,7 +222,7 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
         sgn = cross2(c + 2.0 * b * t, qq);
     } else {
         float z = sqrt(-p);
-        float v = acos(q / (p * z * 2.0)) / 3.0;
+        float v = acos(q / (p * z * 2.0)) * 0.333333;
         float m = cos(v);
         float n = sin(v) * 1.732050808;
         float2 tt = saturate(float2(m + m, -n - m) * z - kx);
@@ -369,7 +369,7 @@ float fbm(float2 st, float n) {
     for (float i = min(0.0, (float)frame); i < n; i++) {
         ret += noise(st) * s;
         st *= 2.5;
-        s /= 2.0;
+        s *= 0.5;
         st = mul(rot45_val, st);
         st.y += time * 0.05;
     }
@@ -377,7 +377,7 @@ float fbm(float2 st, float n) {
 }
 
 float3 background(float2 uv) {
-    uv = mul(rot(-PI / 2.0), uv);
+    uv = mul(rot(-PI * 0.5), uv);
     uv = clog(uv);
     uv.x -= time * 0.1;
     uv /= PI;
@@ -574,14 +574,14 @@ float make_body(inout float4 final_color, float2 uv, ShaderParams p) {
     base_d = sd_bezier_convex(uv, a, b, c);
     body = intersection_sd(body, base_d);
 
-    a = left_top; c = right_top; b = (a + c) / 2.0 - float2(0.0, 0.1);
+    a = left_top; c = right_top; b = (a + c) * 0.5 - float2(0.0, 0.1);
     base_d = sd_bezier_convex(uv, a, b, c);
     body = intersection_sd(body, base_d);
 
     float2 right_side = float2(-2.14, -1.71);
     float2 left_side = float2(2.07, -2.17);
 
-    a = right_side; c = left_side; b = (a + c) / 2.0 + float2(0.0, -0.1);
+    a = right_side; c = left_side; b = (a + c) * 0.5 + float2(0.0, -0.1);
     base_d = sd_bezier_convex(uv, a, b, c);
     body = intersection_sd(body, base_d);
 

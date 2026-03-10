@@ -154,7 +154,7 @@ float4 march(inout float3 p, float3 rd, float s, float mx) {
 }
 
 float3 scene(float3 rd) {
-    t = glsl_mod(time, 30.0);
+    t = fmod(time, 30.0);
     float3 c;
     float3 p = (float3)0;
     float4 col = march(p, rd, 180.0, 64.0);

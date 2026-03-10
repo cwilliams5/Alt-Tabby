@@ -48,7 +48,7 @@ bool pointsOnSameSideOfLine(float2 pointA, float2 pointB, float2 lineA, float2 l
 static float viewportMagnify = 1.0;
 
 float2 screenToViewport(float2 uv) {
-    return (uv - resolution.xy / 2.0) / min(resolution.x, resolution.y) * viewportMagnify;
+    return (uv - resolution.xy * 0.5) / min(resolution.x, resolution.y) * viewportMagnify;
 }
 
 float det22(float2 a, float2 b) {
@@ -99,10 +99,10 @@ float4 PSMain(PSInput input) : SV_Target {
     for (int i = 0; i < 5; i++) {
         PinwheelID *= 5;
         // EQUERRE_COMPUTE_DEFG
-        Tri.E = (Tri.A + Tri.B) / 2.0;
-        Tri.F = (3.0 * Tri.B + 2.0 * Tri.C) / 5.0;
-        Tri.G = (Tri.B + 4.0 * Tri.C) / 5.0;
-        Tri.D = (Tri.G + Tri.A) / 2.0;
+        Tri.E = (Tri.A + Tri.B) * 0.5;
+        Tri.F = (3.0 * Tri.B + 2.0 * Tri.C) * 0.2;
+        Tri.G = (Tri.B + 4.0 * Tri.C) * 0.2;
+        Tri.D = (Tri.G + Tri.A) * 0.5;
 
         if (pointsOnSameSideOfLine(uv, Tri.F, Tri.E, Tri.G)) {
             if (pointsOnSameSideOfLine(uv, Tri.B, Tri.E, Tri.F)) {
@@ -153,7 +153,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Time-based color shift (replaces iMouse.xy interaction)
     float3 s = float3(
-        sin(time / 3.0) * 0.5 + 0.5,
+        sin(time * 0.333333) * 0.5 + 0.5,
         sin(time * 0.071) * 0.5 + 0.5,
         cos(time * 0.113) * 0.5 + 0.5);
 

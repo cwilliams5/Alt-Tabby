@@ -1,11 +1,11 @@
 #define tau 6.28318530718
 
 float sin01(float x) {
-    return (sin(x * tau) + 1.0) / 2.0;
+    return (sin(x * tau) + 1.0) * 0.5;
 }
 
 float cos01(float x) {
-    return (cos(x * tau) + 1.0) / 2.0;
+    return (cos(x * tau) + 1.0) * 0.5;
 }
 
 float2 rand01(float2 p) {
@@ -74,9 +74,9 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Apply two layers of voronoi, one smaller
     float v = 0.0;
-    float sizeDistortion = abs(uv.x) / 3.0;
+    float sizeDistortion = abs(uv.x) * 0.333333;
     v += voronoi(uv, t * 2.0, 0.5, 2.5 - sizeDistortion);
-    v += voronoi(uv, t * 4.0, 0.0, 4.0 - sizeDistortion) / 2.0;
+    v += voronoi(uv, t * 4.0, 0.0, 4.0 - sizeDistortion) * 0.5;
 
     // Foreground color
     float3 col = v * float3(0.55, 0.75, 1.0);

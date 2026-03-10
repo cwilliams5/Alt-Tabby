@@ -88,6 +88,11 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
 
     float4 o = (float4)0;
 
+    // Loop-invariant rotation (time * _Speed is constant across all pixels and iterations)
+    float rot = fmod(time * _Speed, 8192.0);
+    float s_rot, c_rot;
+    sincos(rot, s_rot, c_rot);
+
     for (float i = 0.0; i < _Steps; i++)
     {
         position -= dist * ray;
@@ -101,10 +106,6 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
         distMult *= distMult;
 
         float u = lp + time * _Size * 0.3 + intensity * _Size * 0.2;
-
-        float rot = fmod(time * _Speed, 8192.0);
-        float s_rot, c_rot;
-        sincos(rot, s_rot, c_rot);
         float2 xy;
         xy.x = -position.z * s_rot + position.x * c_rot;
         xy.y = position.x * s_rot + position.z * c_rot;
