@@ -92,13 +92,13 @@ _BE_CreateGui() {
 
     ; Title tab
     tabs.UseTab("Title Patterns")
-    gBE_Gui.AddText("x20 y90 w550", "Title patterns - match window titles (e.g., '*Calculator*', 'Notepad'):")
+    gBE_Gui.AddText("x20 y90 w550", "Title patterns — match window titles (e.g., '*Calculator*', 'Notepad'):")
     gBE_TitleEdit := gBE_Gui.AddEdit("vTitleEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
     Theme_ApplyToControl(gBE_TitleEdit, "Edit", themeEntry)
 
     ; Class tab
     tabs.UseTab("Class Patterns")
-    gBE_Gui.AddText("x20 y90 w550", "Class patterns - match window class names (e.g., 'Notepad', 'Chrome_*'):")
+    gBE_Gui.AddText("x20 y90 w550", "Class patterns — match window class names (e.g., 'Notepad', 'Chrome_*'):")
     gBE_ClassEdit := gBE_Gui.AddEdit("vClassEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
     Theme_ApplyToControl(gBE_ClassEdit, "Edit", themeEntry)
 
