@@ -607,6 +607,7 @@ _CL_EnsureArraySections(path, changes) {
         FileMove(tempPath, path, true)
     } catch as e {
         try FileDelete(tempPath)
+        try LogAppend(LOG_PATH_STORE, "config merge write error: " e.Message " path=" path)
     }
 }
 
@@ -950,8 +951,9 @@ CL_DeleteSections(sectionNames) {
             FileDelete(tempPath)
         FileAppend(newContent, tempPath, "UTF-8")
         FileMove(tempPath, gConfigIniPath, true)
-    } catch {
+    } catch as e {
         try FileDelete(tempPath)
+        try LogAppend(LOG_PATH_STORE, "config cleanup write error: " e.Message)
     }
 }
 

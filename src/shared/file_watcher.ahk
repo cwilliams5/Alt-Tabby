@@ -19,6 +19,7 @@ FileWatch_Start(filePath, callback, debounceMs := 300) {
         w._dirWatcher := DirectoryWatcher(dirPath, _FileWatch_OnChange.Bind(w), 0x19)
     } catch as e {
         ; Parent directory doesn't exist or access denied — continue without watching
+        try LogAppend(IsSet(LOG_PATH_STORE) ? LOG_PATH_STORE : A_Temp "\tabby_store_error.log", "FileWatch_Start failed for " filePath ": " e.Message)
         return w
     }
     w.DefineProp("Stop", { call: _FileWatch_Stop })
