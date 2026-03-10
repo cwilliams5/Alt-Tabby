@@ -1213,12 +1213,22 @@ WL_PruneProcNameCache() {
     ; Snapshot keys to prevent iteration-during-modification
     pids := WS_SnapshotMapKeys(gWS_ProcNameCache)
 
-    ; RACE FIX: Wrap delete loop in Critical to prevent interleaving with
-    ; UpdateProcessName which inserts under Critical
+    ; Two-phase: check ProcessExist OUTSIDE Critical (cross-process query ~100-500us each),
+    ; then delete dead PIDs inside Critical (quick Map.Delete only)
+    deadPids := []
+    for _, pid in pids {
+        if (!ProcessExist(pid))
+            deadPids.Push(pid)
+    }
+
+    if (deadPids.Length = 0)
+        return 0
+
+    ; RACE FIX: Only hold Critical for the fast delete loop
     Critical "On"
     pruned := 0
-    for _, pid in pids {
-        if (!ProcessExist(pid)) {
+    for _, pid in deadPids {
+        if (gWS_ProcNameCache.Has(pid)) {
             gWS_ProcNameCache.Delete(pid)  ; lint-ignore: map-delete (pid from SnapshotMapKeys of same map)
             pruned++
         }

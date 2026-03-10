@@ -573,7 +573,7 @@ GUI_ClearHoverState() {
 }
 
 _GUI_HoverPollTick() {
-    global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_OverlayH
+    global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_OverlayH, gAnim_TimerRunning
 
     ; Stop polling if overlay not visible
     if (!gGUI_OverlayVisible) {
@@ -612,7 +612,9 @@ _GUI_HoverPollTick() {
         gGUI_HoverRow := 0
         gGUI_HoverBtn := ""
         Critical "Off"
-        GUI_Repaint()
+        ; Skip redundant repaint when frame loop is already running (next frame paints it)
+        if (!gAnim_TimerRunning)
+            GUI_Repaint()
     }
 }
 
@@ -653,13 +655,8 @@ _GUI_ScrollBy(step) {
         return
     }
 
-    visEff := vis
-    if (visEff > count) {
-        visEff := count
-    }
-    if (count <= visEff) {
+    if (count <= vis)
         return
-    }
 
     Critical "On"
     gGUI_ScrollTop := Win_Wrap0(gGUI_ScrollTop + step, count)

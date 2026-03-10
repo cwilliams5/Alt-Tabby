@@ -208,17 +208,32 @@ ProcPump_PruneFailedPidCache() {
     if (!IsObject(_PP_FailedPidCache) || _PP_FailedPidCache.Count = 0)
         return 0
 
+    ; Snapshot keys+ticks under Critical (prevents iteration-during-modification),
+    ; then check TTL+ProcessExist outside Critical (cross-process query ~100-500us each)
     Critical "On"
     now := A_TickCount
+    entries := []
+    for pid, tick in _PP_FailedPidCache
+        entries.Push({pid: pid, tick: tick})
+    Critical "Off"
+
     toDelete := []
-    for pid, tick in _PP_FailedPidCache {
+    for _, entry in entries {
         ; Only prune if TTL expired AND process no longer exists
         ; (if process restarted with same PID, we want to retry)
-        if ((now - tick) >= _PP_FailedPidCacheTTL && !ProcessExist(pid))
-            toDelete.Push(pid)
+        if ((now - entry.tick) >= _PP_FailedPidCacheTTL && !ProcessExist(entry.pid))
+            toDelete.Push(entry.pid)
     }
-    for _, pid in toDelete
-        _PP_FailedPidCache.Delete(pid)
+
+    if (toDelete.Length = 0)
+        return 0
+
+    ; Only hold Critical for the fast delete loop
+    Critical "On"
+    for _, pid in toDelete {
+        if (_PP_FailedPidCache.Has(pid))
+            _PP_FailedPidCache.Delete(pid)
+    }
     Critical "Off"
     return toDelete.Length
 }

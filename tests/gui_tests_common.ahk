@@ -81,6 +81,7 @@ global _gGUI_LastCosmeticRepaintTick := 0
 ; Animation globals (from gui_animation.ahk - not included in GUI test chain)
 global gAnim_OverlayOpacity := 1.0
 global gAnim_HidePending := false
+global gAnim_TimerRunning := false
 global gFX_AmbientTime := 0.0
 
 ; GPU effects globals (from gui_effects.ahk / gui_paint.ahk - not included in GUI test chain)
