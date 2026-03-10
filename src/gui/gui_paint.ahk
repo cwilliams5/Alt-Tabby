@@ -154,8 +154,10 @@ GUI_Repaint() {
     ; hides any overflow:
     ;   Shrink: SetWindowPos FIRST → HWND clips old content cleanly
     ;   Grow:   SetWindowPos LAST  → old HWND clips new content cleanly
+    ; DO NOT unify both directions to the same ordering.  Two separate
+    ; attempts to do so (#221) both caused visible BG image flash on grow.
     ; DComp SetClipRect + Commit + Present stay adjacent (no STA pump between
-    ; them) and always land on the same compositor frame.  (#177, #234)
+    ; them) and always land on the same compositor frame.  (#177, #234, #221)
     needsResize := (rowsChanged && gGUI_Revealed)
     isGrowing := (needsResize && rowsDesired > oldRows)
     if (needsResize) {
@@ -234,7 +236,6 @@ GUI_Repaint() {
                     D2D_SetClipRect(phW, phH)
                     D2D_Commit()
                 }
-
                 D2D_Present()
             } catch as e {
                 D2D_ReleaseBackBuffer()
@@ -256,10 +257,14 @@ GUI_Repaint() {
         }
     }
 
-    ; Grow: resize HWND AFTER present + commit.  During STA pump, new content
+    ; Grow: resize HWND AFTER Present + Commit.  During STA pump, new content
     ; is shown clipped by the old (smaller) HWND — clean transition.
-    if (isGrowing && phW > 0 && phH > 0)
+    ; DwmFlush ensures the compositor has processed the new frame before
+    ; SetWindowPos pumps STA, preventing stale-content flash.  (#234, #221)
+    if (isGrowing && phW > 0 && phH > 0) {
+        Win_DwmFlush()
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
+    }
 
     ; ===== TIMING: Reveal =====
     if (diagTiming)

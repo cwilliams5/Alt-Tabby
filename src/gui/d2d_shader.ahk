@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 ; D3D11 HLSL Shader Pipeline — runs converted Shadertoy shaders as backdrop effects.
-; Renders to a DXGI texture before D2D BeginDraw, then composited via DrawImage.
+; Renders to a DXGI texture, then composited via DrawImage through a shared DXGI surface
+; (zero-copy: D2D reads the texture directly on GPU, no CPU readback).
 ;
 ; Architecture:
 ;   Shader_Init()     — get immediate context, compile fullscreen VS, create cbuffer
@@ -368,7 +369,7 @@ Shader_Register(name, hlsl, meta := "") {
             return false
 
         gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            tex: 0, rtv: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
             gridW: 0, gridH: 0, effectiveParticles: 0, reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         ; Load iChannel textures (lazy — loaded here at register time for simplicity)
@@ -413,7 +414,7 @@ Shader_RegisterFromResource(name, resId, meta := "") {
             return false
 
         gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            tex: 0, rtv: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
             gridW: 0, gridH: 0, effectiveParticles: 0, reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
@@ -505,7 +506,7 @@ Shader_RegisterAlias(aliasName, srcName) {
 
     ; Share ps + cs + srvs + compute buffer, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
     alias := {ps: src.ps, cs: src.cs, csBuffer: src.csBuffer, csUAV: src.csUAV, csSRV: src.csSRV, csNumElements: src.csNumElements,
-        tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0,
+        tex: 0, rtv: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0,
         gridW: src.gridW, gridH: src.gridH, effectiveParticles: src.effectiveParticles,
         reactivity: src.reactivity, selGlow: src.selGlow, selIntensity: src.selIntensity}
     gShader_Registry[aliasName] := alias
@@ -954,16 +955,13 @@ _Shader_LoadOneTexture(fileName) {
 
 ; ========================= RENDER TARGET =========================
 
-; Release render target resources (tex, rtv, staging, bitmap) from a shader entry.
+; Release render target resources (tex, rtv, bitmap) from a shader entry.
 ; Keeps entry.ps and entry.srvs intact — only frees the per-resolution surfaces.
+; Release order: bitmap first (holds DXGI surface ref), then rtv, then tex.
 _Shader_ReleaseRT(entry) {
     if (entry.bitmap) {
         ComCall(2, entry.bitmap)  ; IUnknown::Release
         entry.bitmap := 0
-    }
-    if (entry.staging) {
-        ComCall(2, entry.staging)
-        entry.staging := 0
     }
     if (entry.rtv) {
         ComCall(2, entry.rtv)
@@ -978,8 +976,8 @@ _Shader_ReleaseRT(entry) {
 }
 
 ; Lazy-create or resize the render target texture for a shader entry.
-; Creates: D3D11 render target texture + RTV (for shader Draw), staging texture
-; (for GPU→CPU readback), and a D2D bitmap (on gD2D_RT's device, for DrawImage).
+; Creates: D3D11 render target texture + RTV (for shader Draw), and a D2D bitmap
+; backed by the texture's DXGI surface (zero-copy GPU sharing for DrawImage).
 _Shader_CreateRT(entry, w, h) {
     global gD2D_D3DDevice, gD2D_RT
 
@@ -1012,38 +1010,29 @@ _Shader_CreateRT(entry, w, h) {
         return false
     entry.rtv := pRTV
 
-    ; --- Staging texture (for GPU→CPU readback) ---
-    stagingDesc := Buffer(44, 0)
-    NumPut("uint", w, stagingDesc, 0)         ; Width
-    NumPut("uint", h, stagingDesc, 4)         ; Height
-    NumPut("uint", 1, stagingDesc, 8)         ; MipLevels
-    NumPut("uint", 1, stagingDesc, 12)        ; ArraySize
-    NumPut("uint", 87, stagingDesc, 16)       ; Format = DXGI_FORMAT_B8G8R8A8_UNORM
-    NumPut("uint", 1, stagingDesc, 20)        ; SampleDesc.Count
-    NumPut("uint", 0, stagingDesc, 24)        ; SampleDesc.Quality
-    NumPut("uint", 3, stagingDesc, 28)        ; Usage = D3D11_USAGE_STAGING
-    NumPut("uint", 0, stagingDesc, 32)        ; BindFlags = 0 (staging can't bind)
-    NumPut("uint", 0x20000, stagingDesc, 36)  ; CPUAccessFlags = D3D11_CPU_ACCESS_READ
-
-    pStaging := 0
-    hr := ComCall(5, gD2D_D3DDevice, "ptr", stagingDesc, "ptr", 0, "ptr*", &pStaging, "int")
-    if (hr < 0 || !pStaging)
+    ; --- D2D bitmap backed by DXGI surface (zero-copy GPU sharing) ---
+    ; QI the render target texture for IDXGISurface (MipLevels=1, ArraySize=1 → supported)
+    surfaceObj := ComObjQuery(pTex, IDXGISurface.IID)
+    if (!surfaceObj)
         return false
-    entry.staging := pStaging
+    pSurface := ComObjValue(surfaceObj)
 
-    ; --- D2D bitmap (on gD2D_RT's device — compatible for DrawImage) ---
-    ; ID2D1RenderTarget::CreateBitmap (vtable 4)
-    ; D2D1_SIZE_U passed by value as int64: width in low 32 bits, height in high 32
-    sizeVal := w | (h << 32)
-    ; D2D1_BITMAP_PROPERTIES (16 bytes): {format, alphaMode}, dpiX, dpiY
-    bmpProps := Buffer(16, 0)
-    NumPut("uint", 87, bmpProps, 0)       ; format = DXGI_FORMAT_B8G8R8A8_UNORM
-    NumPut("uint", 1, bmpProps, 4)        ; alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED
-    NumPut("float", 96.0, bmpProps, 8)    ; dpiX
-    NumPut("float", 96.0, bmpProps, 12)   ; dpiY
+    ; D2D1_BITMAP_PROPERTIES1 (32 bytes): pixelFormat(8), dpiX(4), dpiY(4), options(4), colorContext(ptr)
+    ; options = D2D1_BITMAP_OPTIONS_NONE (0) — read-only source for DrawImage
+    static sharedBP1 := 0
+    if (!sharedBP1) {
+        sharedBP1 := Buffer(32, 0)
+        NumPut("uint", 87, sharedBP1, 0)      ; format = DXGI_FORMAT_B8G8R8A8_UNORM
+        NumPut("uint", 1, sharedBP1, 4)       ; alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED
+        NumPut("float", 96.0, sharedBP1, 8)   ; dpiX
+        NumPut("float", 96.0, sharedBP1, 12)  ; dpiY
+        NumPut("uint", 0, sharedBP1, 16)      ; bitmapOptions = D2D1_BITMAP_OPTIONS_NONE
+    }
 
+    ; CreateBitmapFromDxgiSurface (ID2D1DeviceContext vtable 62)
+    ; D2D reads directly from the GPU texture — no staging, no CPU copy
     pBitmap := 0
-    hr := ComCall(4, gD2D_RT, "int64", sizeVal, "ptr", 0, "uint", 0, "ptr", bmpProps, "ptr*", &pBitmap, "int")
+    hr := ComCall(62, gD2D_RT, "ptr", pSurface, "ptr", sharedBP1, "ptr*", &pBitmap, "int")
     if (hr < 0 || !pBitmap)
         return false
     entry.bitmap := pBitmap
@@ -1258,24 +1247,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv, "int")
     }
 
-    ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
-    ; CopyResource (vtable 47): staging ← render texture
-    ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex, "int")
-
-    ; Map staging texture (vtable 14): D3D11_MAP_READ=1
-    static mapped2 := Buffer(16, 0)
-    hr := ComCall(14, ctx, "ptr", entry.staging, "uint", 0, "uint", 1, "uint", 0, "ptr", mapped2, "int")
-    if (hr < 0)
-        return false
-    pPixels := NumGet(mapped2, 0, "ptr")
-    rowPitch := NumGet(mapped2, A_PtrSize, "uint")
-
-    ; CopyFromMemory on D2D bitmap (ID2D1Bitmap vtable 10): dstRect, srcData, pitch
-    ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")
-
-    ; Unmap staging (vtable 15)
-    ComCall(15, ctx, "ptr", entry.staging, "uint", 0, "int")
-
+    ; D2D bitmap is backed by the render target's DXGI surface — no readback needed.
+    ; D2D DrawImage reads directly from GPU memory. Command serialization on the
+    ; shared immediate context guarantees the Draw() above completes before D2D reads.
+    ; NOTE: The old staging-texture path had Map() here, which was an accidental GPU
+    ; fence.  gui_paint.ahk's DwmFlush on grow resize compensates for its removal.
+    ; If a GPU stall is ever re-added here, the DwmFlush becomes redundant but harmless.
     return true
 }
 

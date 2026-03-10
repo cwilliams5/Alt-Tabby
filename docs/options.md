@@ -58,6 +58,7 @@ Internal timing parameters (usually no need to change)
 | `WSPollTimeoutMs` | int | `200` | `50` - `2000` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
 | `TabDecisionMs` | int | `24` | `15` - `100` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. |
 | `WorkspaceSwitchSettleMs` | int | `75` | `0` - `500` | Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems. |
+| `BackdropRefreshDelayMs` | int | `250` | `50` - `1000` | Delay (ms) before forcing DWM to re-sample the acrylic backdrop after a workspace switch. Komorebi cloaking is asynchronous — this delay lets the desktop settle before the refresh. Increase if the acrylic still shows stale content after switching workspaces. |
 
 ### Activation Retry
 
@@ -801,4 +802,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*352 total settings.*
+*353 total settings.*
