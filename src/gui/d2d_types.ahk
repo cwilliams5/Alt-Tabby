@@ -104,35 +104,6 @@ D2D_Matrix3x2_Identity() { ; lint-ignore: dead-function
     return buf
 }
 
-; ========================= DWM_THUMBNAIL_PROPERTIES (48 bytes) =========================
-; Used with DwmUpdateThumbnailProperties
-
-; Flag constants ; lint-ignore: dead-global (consumed by dwm_thumbnail.ahk in Phase 2)
-global DWM_TNP_RECTDESTINATION := 0x01
-global DWM_TNP_RECTSOURCE      := 0x02 ; lint-ignore: dead-global
-global DWM_TNP_OPACITY         := 0x04
-global DWM_TNP_VISIBLE         := 0x08
-global DWM_TNP_SOURCECLIENTAREAONLY := 0x10
-
-_DWM_ThumbnailProps(destL, destT, destR, destB, visible := true, opacity := 255, clientOnly := true) { ; lint-ignore: dead-function
-    global DWM_TNP_RECTDESTINATION, DWM_TNP_VISIBLE, DWM_TNP_OPACITY, DWM_TNP_SOURCECLIENTAREAONLY
-    ; Layout: { DWORD flags (4), RECT dest (16), RECT source (16),
-    ;           BYTE opacity (1+3 pad), BOOL visible (4), BOOL srcClientOnly (4) }
-    buf := Buffer(48, 0)
-    flags := DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY
-    NumPut("uint", flags, buf, 0)
-    ; rcDestination (RECT: left, top, right, bottom as int32)
-    NumPut("int", destL, "int", destT, "int", destR, "int", destB, buf, 4)
-    ; rcSource left at zero (use whole source)
-    ; opacity
-    NumPut("uchar", opacity, buf, 36)
-    ; fVisible
-    NumPut("int", visible ? 1 : 0, buf, 40)
-    ; fSourceClientAreaOnly
-    NumPut("int", clientOnly ? 1 : 0, buf, 44)
-    return buf
-}
-
 ; ========================= D2D1_ARC_SEGMENT (28 bytes) =========================
 ; Used with path geometry for per-corner rounded rects
 

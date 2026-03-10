@@ -29,10 +29,6 @@ global gDComp_Target := 0      ; IDCompositionTarget
 global gDComp_Visual := 0      ; IDCompositionVisual (content: swap chain)
 global gDComp_ClipVisual := 0  ; IDCompositionVisual (parent: clip rect)
 
-; Fixed-size swap chain dimensions (Phase 2: max monitor resolution)
-global gD2D_SwapChainMaxW := 0 ; Physical width of the oversized swap chain ; lint-ignore: dead-global
-global gD2D_SwapChainMaxH := 0 ; Physical height of the oversized swap chain ; lint-ignore: dead-global
-
 ; Waitable swap chain state (latency optimization — Present(0,0) pattern)
 global gD2D_SwapChain2 := 0     ; IDXGISwapChain2 (0 = fallback/non-waitable mode)
 global gD2D_WaitableHandle := 0  ; HANDLE from GetFrameLatencyWaitableObject
@@ -488,7 +484,6 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     global gD2D_SwapChain, gD2D_BackBuffer
     global gD2D_SwapChain2, gD2D_WaitableHandle
     global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
-    global gD2D_SwapChainMaxW, gD2D_SwapChainMaxH
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
     global DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_EFFECT_FLIP_DISCARD
     global DXGI_ALPHA_MODE_PREMULTIPLIED
@@ -514,8 +509,6 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     scW := 0
     scH := 0
     _D2D_GetMaxMonitorSize(&scW, &scH)
-    gD2D_SwapChainMaxW := scW
-    gD2D_SwapChainMaxH := scH
 
     ; Try waitable swap chain first (lower input-to-photon latency)
     waitableOk := false
@@ -651,7 +644,6 @@ D2D_HandleDeviceLoss() {
 D2D_ShutdownAll() {
     global gD2D_RT, gD2D_SwapChain, gD2D_BackBuffer
     global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
-    global gD2D_SwapChainMaxW, gD2D_SwapChainMaxH
     global gD2D_D2DDevice, gD2D_D3DDevice
     global gD2D_Factory, gDW_Factory
 
@@ -670,10 +662,6 @@ D2D_ShutdownAll() {
     gDComp_ClipVisual := 0
     gDComp_Target := 0
     gDComp_Device := 0
-
-    ; Clear swap chain max size tracking
-    gD2D_SwapChainMaxW := 0
-    gD2D_SwapChainMaxH := 0
 
     ; Release waitable state before swap chain
     _D2D_CleanupWaitableState()
