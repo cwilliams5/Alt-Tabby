@@ -1168,4 +1168,89 @@ RunUnitTests_CoreConfig() {
     _CL_InitializeDefaults()
     _CL_LoadAllSettings()
     _CL_ValidateSettings()
+
+    ; ============================================================
+    ; ConfigRegistry_SerializeToJSON Tests
+    ; ============================================================
+    ; Covers config → editor data pipeline.
+    ; ConfigRegistry_SerializeToJSON serializes gConfigRegistry to JSON
+    ; for consumption by the WebView2 config editor.
+    Log("`n--- ConfigRegistry_SerializeToJSON Tests ---")
+
+    ; Test 1: Returns valid JSON that can be parsed
+    Log("Testing ConfigRegistry_SerializeToJSON produces valid JSON...")
+    jsonStr := ConfigRegistry_SerializeToJSON()
+    serializeOk := true
+
+    if (!IsObject(jsonStr) && StrLen(jsonStr) = 0) {
+        Log("FAIL: SerializeToJSON returned empty string")
+        serializeOk := false
+    }
+
+    if (serializeOk) {
+        try {
+            parsed := JSON.Load(jsonStr)
+        } catch as e {
+            Log("FAIL: SerializeToJSON output is not valid JSON: " e.Message)
+            serializeOk := false
+        }
+    }
+
+    if (serializeOk) {
+        Log("PASS: ConfigRegistry_SerializeToJSON produces valid JSON")
+        TestPassed++
+    } else {
+        TestErrors++
+    }
+
+    ; Test 2: Parsed result is a non-empty array with expected fields
+    Log("Testing SerializeToJSON entries have required fields...")
+    fieldsOk := true
+    fieldErrors := []
+
+    if (!serializeOk) {
+        Log("SKIP: Cannot test fields (JSON parse failed)")
+    } else {
+        if (!IsObject(parsed) || parsed.Length = 0) {
+            fieldErrors.Push("Parsed result is empty or not an array")
+            fieldsOk := false
+        } else {
+            ; Check that entries have "k" field (config key — required for editor lookup)
+            missingK := 0
+            hasType := false
+            hasDefault := false
+            for _, entry in parsed {
+                if (entry is Map) {
+                    if (!entry.Has("k") && !entry.Has("type"))
+                        missingK++
+                    if (entry.Has("type"))
+                        hasType := true
+                    if (entry.Has("default"))
+                        hasDefault := true
+                }
+            }
+            if (missingK > 0) {
+                fieldErrors.Push(missingK " entries missing both 'k' and 'type' fields")
+                fieldsOk := false
+            }
+            if (!hasType) {
+                fieldErrors.Push("No entry has 'type' field (section headers)")
+                fieldsOk := false
+            }
+            if (!hasDefault) {
+                fieldErrors.Push("No entry has 'default' field")
+                fieldsOk := false
+            }
+        }
+
+        if (fieldsOk) {
+            Log("PASS: SerializeToJSON entries have required fields (k/type, default present)")
+            TestPassed++
+        } else {
+            Log("FAIL: SerializeToJSON field validation errors:")
+            for _, err in fieldErrors
+                Log("  - " err)
+            TestErrors++
+        }
+    }
 }

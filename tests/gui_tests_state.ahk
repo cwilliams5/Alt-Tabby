@@ -625,6 +625,38 @@ RunGUITests_State() {
     ; After ALT_DOWN, state is ALT_PENDING, so this TAB_STEP is a "first Tab" → sel=2
     GUI_AssertEq(gGUI_Sel, 2, "AltRepeat sel: TAB_STEP after alt repeat produces sel=2 (re-freeze)")
 
+    ; ============================================================
+    ; ForceCompleteHide AT FREEZE TESTS
+    ; Regression guard for e1454da bug 2: empty display list during
+    ; rapid Alt+Tab when a hide-fade from previous session is pending.
+    ; ============================================================
+
+    ; ----- Test: ForceCompleteHide called when gAnim_HidePending at FREEZE -----
+    GUI_Log("Test: ForceCompleteHide called when hide-fade pending at FREEZE")
+    ResetGUIState()
+    SetupTestItems(5)
+    global gAnim_HidePending, gMock_ForceCompleteHideCalled
+    gAnim_HidePending := true  ; Simulate fade from previous session still in flight
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)  ; FREEZE point
+
+    GUI_AssertTrue(gMock_ForceCompleteHideCalled > 0, "ForceCompleteHide: called when gAnim_HidePending was true at FREEZE")
+    GUI_AssertEq(gAnim_HidePending, false, "ForceCompleteHide: gAnim_HidePending cleared after call")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "ForceCompleteHide: display items populated (not wiped by pending hide)")
+
+    ; ----- Test: ForceCompleteHide NOT called when no pending hide -----
+    GUI_Log("Test: ForceCompleteHide not called when no hide-fade pending")
+    ResetGUIState()
+    SetupTestItems(5)
+    gAnim_HidePending := false  ; No pending hide
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    gMock_ForceCompleteHideCalled := 0  ; Reset after ALT_DOWN (which may also check)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)  ; FREEZE point
+
+    GUI_AssertEq(gMock_ForceCompleteHideCalled, 0, "ForceCompleteHide: NOT called when gAnim_HidePending was false")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI State Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)
