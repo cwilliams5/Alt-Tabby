@@ -252,7 +252,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Shallow copy — same item refs, independent array container
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
             GUI_CaptureOverlayMonitor()
-            gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
+            gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
 
             ; DEBUG: Log workspace data of display items
             if (diagLog) {
@@ -515,8 +515,8 @@ GUI_HandleWorkspaceSwitch() {
 ; Returns items unchanged when both filters are ALL (fast path, no allocation).
 ; When filtering is active, avoids the intermediate throwaway array that two
 ; sequential filter calls would create.
-GUI_FilterDisplayItems(items) {
-    Profiler.Enter("GUI_FilterDisplayItems") ; @profile
+_GUI_FilterDisplayItems(items) {
+    Profiler.Enter("_GUI_FilterDisplayItems") ; @profile
     global gGUI_WorkspaceMode, WS_MODE_ALL
     global gGUI_MonitorMode, MON_MODE_ALL, gGUI_OverlayMonitorHandle
 
@@ -544,7 +544,7 @@ GUI_FilterDisplayItems(items) {
 ; change is a context switch — the moved/focused window is what the user wants.
 GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
-    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
+    gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
     fgHwnd := DllCall("GetForegroundWindow", "Ptr")
@@ -569,7 +569,7 @@ GUI_ApplyWorkspaceFilter() {
     ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
     ; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
     Critical "On"
-    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
+    gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
     GUI_ClearHoverState()  ; Row indices are stale after refilter
     ; Let GUI_Repaint handle resize atomically — it paints at the new dimensions
@@ -586,7 +586,7 @@ GUI_ApplyMonitorFilter() {
     Profiler.Enter("GUI_ApplyMonitorFilter") ; @profile
     global gGUI_DisplayItems, gGUI_ToggleBase
     Critical "On"
-    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
+    gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
     GUI_ClearHoverState()  ; Row indices are stale after refilter
     ; Let GUI_Repaint handle resize atomically (same as ApplyWorkspaceFilter).

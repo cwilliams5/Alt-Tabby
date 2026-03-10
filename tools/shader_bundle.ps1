@@ -343,16 +343,16 @@ function Write-RegisterBody($sb, $shaders, $dxbcGlobals, $indent) {
     [void]$sb.AppendLine("${indent}}")
 }
 
-# Shader_RegisterAll() — background shaders only (backward compat)
-[void]$sb.AppendLine('Shader_RegisterAll() {')
+# _Shader_RegisterAll() — background shaders only (backward compat)
+[void]$sb.AppendLine('_Shader_RegisterAll() {')
 [void]$sb.AppendLine("    global $dxbcGlobals")
 [void]$sb.AppendLine('')
 Write-RegisterBody $sb $bgShaders $dxbcGlobals '    '
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllMouse()
-[void]$sb.AppendLine('Shader_RegisterAllMouse() {')
+# _Shader_RegisterAllMouse()
+[void]$sb.AppendLine('_Shader_RegisterAllMouse() {')
 [void]$sb.AppendLine("    global $dxbcGlobals")
 [void]$sb.AppendLine('')
 if ($mouseShaders.Count -gt 0) {
@@ -363,8 +363,8 @@ if ($mouseShaders.Count -gt 0) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllSelection()
-[void]$sb.AppendLine('Shader_RegisterAllSelection() {')
+# _Shader_RegisterAllSelection()
+[void]$sb.AppendLine('_Shader_RegisterAllSelection() {')
 [void]$sb.AppendLine("    global $dxbcGlobals")
 [void]$sb.AppendLine('')
 if ($selShaders.Count -gt 0) {
@@ -411,9 +411,9 @@ foreach ($shader in $allShaders) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllRemaining() — background shaders only (backward compat)
+# _Shader_RegisterAllRemaining() — background shaders only (backward compat)
 [void]$sb.AppendLine('; Register all background shaders that are not yet registered. Used for lazy-loading on first cycle.')
-[void]$sb.AppendLine('Shader_RegisterAllRemaining() {')
+[void]$sb.AppendLine('_Shader_RegisterAllRemaining() {')
 [void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
 [void]$sb.AppendLine('')
 [void]$sb.AppendLine('    if (A_IsCompiled) {')
@@ -436,9 +436,9 @@ foreach ($shader in $bgShaders) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllRemainingMouse()
+# _Shader_RegisterAllRemainingMouse()
 [void]$sb.AppendLine('; Register all mouse shaders that are not yet registered.')
-[void]$sb.AppendLine('Shader_RegisterAllRemainingMouse() {')
+[void]$sb.AppendLine('_Shader_RegisterAllRemainingMouse() {')
 [void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
 [void]$sb.AppendLine('')
 if ($mouseShaders.Count -gt 0) {
@@ -474,9 +474,9 @@ if ($mouseShaders.Count -gt 0) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllRemainingSelection()
+# _Shader_RegisterAllRemainingSelection()
 [void]$sb.AppendLine('; Register all selection shaders that are not yet registered.')
-[void]$sb.AppendLine('Shader_RegisterAllRemainingSelection() {')
+[void]$sb.AppendLine('_Shader_RegisterAllRemainingSelection() {')
 [void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
 [void]$sb.AppendLine('')
 if ($selShaders.Count -gt 0) {

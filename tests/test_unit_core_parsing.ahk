@@ -371,28 +371,28 @@ RunUnitTests_CoreParsing() {
     ; Test _KSafe_Focused with non-Map
     AssertEq(_KSafe_Focused(42), -1, "_KSafe_Focused non-Map")
 
-    ; Test KSafe_Str with valid key
+    ; Test _KSafe_Str with valid key
     testMap2 := Map("name", "TestWorkspace", "count", 5)
-    AssertEq(KSafe_Str(testMap2, "name"), "TestWorkspace", "KSafe_Str valid string")
+    AssertEq(_KSafe_Str(testMap2, "name"), "TestWorkspace", "_KSafe_Str valid string")
 
-    ; Test KSafe_Str with integer value (should convert to string)
-    result := KSafe_Str(testMap2, "count")
-    AssertEq(result, "5", "KSafe_Str integer->string conversion")
+    ; Test _KSafe_Str with integer value (should convert to string)
+    result := _KSafe_Str(testMap2, "count")
+    AssertEq(result, "5", "_KSafe_Str integer->string conversion")
 
-    ; Test KSafe_Str with missing key
-    AssertEq(KSafe_Str(testMap2, "missing"), "", "KSafe_Str missing key")
+    ; Test _KSafe_Str with missing key
+    AssertEq(_KSafe_Str(testMap2, "missing"), "", "_KSafe_Str missing key")
 
-    ; Test KSafe_Str with non-Map
-    AssertEq(KSafe_Str("string", "key"), "", "KSafe_Str non-Map")
+    ; Test _KSafe_Str with non-Map
+    AssertEq(_KSafe_Str("string", "key"), "", "_KSafe_Str non-Map")
 
-    ; Test KSafe_Int with valid key
-    AssertEq(KSafe_Int(testMap2, "count"), 5, "KSafe_Int valid integer")
+    ; Test _KSafe_Int with valid key
+    AssertEq(_KSafe_Int(testMap2, "count"), 5, "_KSafe_Int valid integer")
 
-    ; Test KSafe_Int with missing key
-    AssertEq(KSafe_Int(testMap2, "missing"), 0, "KSafe_Int missing key")
+    ; Test _KSafe_Int with missing key
+    AssertEq(_KSafe_Int(testMap2, "missing"), 0, "_KSafe_Int missing key")
 
-    ; Test KSafe_Int with non-Map
-    AssertEq(KSafe_Int(42, "key"), 0, "KSafe_Int non-Map")
+    ; Test _KSafe_Int with non-Map
+    AssertEq(_KSafe_Int(42, "key"), 0, "_KSafe_Int non-Map")
 
     ; ============================================================
     ; cJson Large-Input Correctness (Regression Guard)

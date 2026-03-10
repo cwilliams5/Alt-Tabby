@@ -5,7 +5,7 @@
 ;
 ; Architecture:
 ;   Shader_Init()     — get immediate context, compile fullscreen VS, create cbuffer
-;   Shader_Register() — compile HLSL pixel shader, store in registry (with metadata)
+;   _Shader_Register() — compile HLSL pixel shader, store in registry (with metadata)
 ;   Shader_PreRender()— lazy create/resize RT, bind pipeline, Draw(3,0)
 ;   Shader_GetBitmap()— return ID2D1Bitmap1 for D2D DrawImage
 ;   Shader_Cleanup()  — release all D3D11 resources
@@ -342,7 +342,7 @@ _Shader_CacheWrite(name, hash, bytecode) {
 ; Register a shader by name with HLSL pixel shader source and optional metadata.
 ; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
 ; Compiles the PS and stores in registry. Returns true on success.
-Shader_Register(name, hlsl, meta := "") {
+_Shader_Register(name, hlsl, meta := "") {
     global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
@@ -483,8 +483,8 @@ Shader_RegisterFromFile(name, hlslFile, meta := "") {
         if (sCommonHlsl != "")
             hlsl := sCommonHlsl "#line 1 `"" hlslFile "`"`n" hlsl
 
-        ; Delegate to existing Shader_Register which handles D3DCompile + cache
-        return Shader_Register(name, hlsl, meta)
+        ; Delegate to existing _Shader_Register which handles D3DCompile + cache
+        return _Shader_Register(name, hlsl, meta)
     } catch as e {
         if (cfg.DiagShaderLog)
             _Shader_Log("RegisterFromFile: " name " EXCEPTION: " e.Message)
@@ -555,7 +555,7 @@ _Shader_ComputeBufferLayout(computeMeta) {
 
 ; Register a compute+pixel shader pair. HLSL source must contain both CSMain and PSMain entry points.
 ; meta must include compute: {maxParticles: N, particleStride: N}
-Shader_RegisterCompute(name, hlsl, meta) {
+_Shader_RegisterCompute(name, hlsl, meta) {
     global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
@@ -727,7 +727,7 @@ Shader_RegisterComputeFromFile(name, hlslFile, meta) {
         if (sCommonHlsl != "")
             hlsl := sCommonHlsl "#line 1 `"" hlslFile "`"`n" hlsl
 
-        return Shader_RegisterCompute(name, hlsl, meta)
+        return _Shader_RegisterCompute(name, hlsl, meta)
     } catch as e {
         if (cfg.DiagShaderLog)
             _Shader_Log("RegisterComputeFromFile: " name " EXCEPTION: " e.Message)
@@ -1288,7 +1288,7 @@ Shader_GetBitmap(name) {
 
 ; Return the metadata for a registered shader, or 0 if not found.
 ; lint-ignore: dead-function
-Shader_GetMeta(name) {
+_Shader_GetMeta(name) {
     global gShader_Registry
     if (!gShader_Registry.Has(name))
         return 0

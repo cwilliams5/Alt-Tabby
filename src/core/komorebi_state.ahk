@@ -12,8 +12,8 @@
 ; Functions:
 ;   KSafe_Elements                 - Get ring elements safely
 ;   _KSafe_Focused                  - Get ring focused index safely
-;   KSafe_Str                      - Get string property safely
-;   KSafe_Int                      - Get int property safely
+;   _KSafe_Str                      - Get string property safely
+;   _KSafe_Int                      - Get int property safely
 ;   _KSub_GetMonitorsRing           - Get monitors ring object
 ;   KSub_GetMonitorsArray          - Get array of monitor objects
 ;   KSub_GetFocusedMonitorIndex    - Get focused monitor index
@@ -45,7 +45,7 @@ _KSafe_Focused(ring) {
 }
 
 ; Get string property safely (returns "" on failure)
-KSafe_Str(obj, key) {
+_KSafe_Str(obj, key) {
     if (obj is Map && obj.Has(key)) {
         val := obj[key]
         if (val is String)
@@ -56,7 +56,7 @@ KSafe_Str(obj, key) {
 }
 
 ; Get int property safely (returns 0 on failure)
-KSafe_Int(obj, key) {
+_KSafe_Int(obj, key) {
     if (obj is Map && obj.Has(key)) {
         val := obj[key]
         if (val is Integer)
@@ -114,7 +114,7 @@ KSub_GetWorkspaceNameByIndex(monObj, wsIdx) {
     if (wsIdx < 0 || wsIdx >= wsArr.Length)
         return ""
     wsObj := wsArr[wsIdx + 1]  ; AHK 1-based
-    return KSafe_Str(wsObj, "name")
+    return _KSafe_Str(wsObj, "name")
 }
 
 ; ========================= HWND LOOKUP =========================
@@ -127,7 +127,7 @@ KSub_FindWorkspaceByHwnd(stateObj, hwnd) {
     for _, monObj in monitorsArr {
         wsArr := KSub_GetWorkspacesArray(monObj)
         for _, wsObj in wsArr {
-            wsName := KSafe_Str(wsObj, "name")
+            wsName := _KSafe_Str(wsObj, "name")
             if (wsName = "")
                 continue
             ; Scan all containers -> windows for this hwnd
@@ -205,10 +205,10 @@ _KSub_GetFocusedHwndFromWsObj(wsObj) {
                 winArr := KSafe_Elements(windowsRing)
                 focusedWinIdx := _KSafe_Focused(windowsRing)
                 if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
-                    return KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
+                    return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
             }
             if (contObj is Map && contObj.Has("window"))
-                return KSafe_Int(contObj["window"], "hwnd")
+                return _KSafe_Int(contObj["window"], "hwnd")
         }
     }
 
@@ -220,10 +220,10 @@ _KSub_GetFocusedHwndFromWsObj(wsObj) {
                 winArr := KSafe_Elements(windowsRing)
                 focusedWinIdx := _KSafe_Focused(windowsRing)
                 if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
-                    return KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
+                    return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
             }
             if (mono.Has("window"))
-                return KSafe_Int(mono["window"], "hwnd")
+                return _KSafe_Int(mono["window"], "hwnd")
         }
     }
     return 0
@@ -238,7 +238,7 @@ KSub_CacheFocusedHwnds(stateObj, cache, monitorsArr := 0) {
     for _, monObj in monitorsArr {
         wsArr := KSub_GetWorkspacesArray(monObj)
         for _, wsObj in wsArr {
-            wsN := KSafe_Str(wsObj, "name")
+            wsN := _KSafe_Str(wsObj, "name")
             if (wsN = "")
                 continue
             fh := _KSub_GetFocusedHwndFromWsObj(wsObj)

@@ -224,7 +224,7 @@ RunLiveTests_Core() {
                 monitorsArr := KSub_GetMonitorsArray(stateObj)
                 for _, monObj in monitorsArr {
                     for _, wsObj in KSub_GetWorkspacesArray(monObj) {
-                        wsName := KSafe_Str(wsObj, "name")
+                        wsName := _KSafe_Str(wsObj, "name")
                         if (wsName != "")
                             wsCount++
                         ; Count hwnds in containers
@@ -237,7 +237,7 @@ RunLiveTests_Core() {
                                         if (win is Map && win.Has("hwnd")) {
                                             hwndCount++
                                             if (!firstHwnd)
-                                                firstHwnd := KSafe_Int(win, "hwnd")
+                                                firstHwnd := _KSafe_Int(win, "hwnd")
                                         }
                                     }
                                 }

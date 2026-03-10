@@ -173,7 +173,7 @@ D2D_FillEllipse(x, y, w, h, brush) {
 }
 
 ; Draw ellipse stroke. D2D ellipse uses center point + radii (not bounding box).
-D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function (general D2D utility)
+_D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function (general D2D utility)
     global gD2D_RT
     if (!gD2D_RT)
         return
@@ -184,7 +184,7 @@ D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead
 }
 
 ; Fill rectangle.
-D2D_FillRect(x, y, w, h, brush) { ; lint-ignore: dead-function
+_D2D_FillRect(x, y, w, h, brush) { ; lint-ignore: dead-function
     global gD2D_RT
     if (!gD2D_RT)
         return
@@ -195,7 +195,7 @@ D2D_FillRect(x, y, w, h, brush) { ; lint-ignore: dead-function
 }
 
 ; Stroke a rectangle outline.
-D2D_StrokeRect(x, y, w, h, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function
+_D2D_StrokeRect(x, y, w, h, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function
     global gD2D_RT
     if (w <= 0 || h <= 0 || !gD2D_RT)
         return
