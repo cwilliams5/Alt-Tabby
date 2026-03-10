@@ -91,7 +91,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float c1 = sin(caustUV.x * 5.0 + sin(caustUV.y * 3.0 + time * 0.5));
     float c2 = sin(caustUV.y * 4.0 + cos(caustUV.x * 2.5 + time * 0.3));
     float caustic = (c1 * c2 * 0.5 + 0.5);
-    caustic = pow(caustic, 2.0) * 0.15 * light;
+    caustic = caustic * caustic * 0.15 * light;
 
     // Chromatic fringe at penumbra edge
     float fringeR = smoothstep(noisyRadius * 1.08, noisyRadius * 0.2, ellipseDist);

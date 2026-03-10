@@ -32,11 +32,11 @@ float rand(float2 co) {
 
 float4 getTriangleCoords(float2 uv) {
     uv.y /= triangleScale;
-    uv.x -= uv.y / 2.0;
+    uv.x -= uv.y * 0.5;
     float2 center = floor(uv);
     float2 local = frac(uv);
 
-    center.x += center.y / 2.0;
+    center.x += center.y * 0.5;
     center.y *= triangleScale;
 
     if (local.x + local.y > 1.0) {
@@ -240,7 +240,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2x2 rot = float2x2(cs, sn, -sn, cs);
     uv = mul(uv, rot);
 
-    for (float i = 0.0; i < 1.0; i += 1.0 / 4.0) {
+    for (float i = 0.0; i < 1.0; i += 0.25) {
         float z = frac(i + t);
         float sz = lerp(10.0, 0.5, z);
         float fade = S(0.0, 0.5, z) * S(1.0, 0.8, z);

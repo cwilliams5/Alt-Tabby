@@ -94,7 +94,7 @@ float warp(float2 p) {
 
 float height(float2 p) {
     float a = 0.005*time;
-    p += 5.0*float2(cos(a), sin(sqrt(0.5)*a));
+    p += 5.0*float2(cos(a), sin(0.707106781*a));
     p *= 2.0;
     p += 13.0;
     float h = warp(p);

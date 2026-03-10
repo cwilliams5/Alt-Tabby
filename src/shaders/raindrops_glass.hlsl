@@ -188,7 +188,7 @@ float3 StaticRaindrops(float2 UV, float Time, float UVScale) {
 
     float Theta = 3.141592653 - acos(dot(normalize(Direction), float2(0.0, 1.0)));
     Theta = Theta * RandVal.z;
-    float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 / 2.0 - 1.6));
+    float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 * 0.5 - 1.6));
     float YDistance = length(float2(0.0, TempUV.y) - float2(0.0, RandomPoint.y));
 
     float NewDistance = MapToRange(0.0, DistanceMaxRange * DistanceScale, Distance);
@@ -259,7 +259,7 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
 
     float Theta = 3.141592653 - acos(dot(normalize(Direction), float2(0.0, 1.0)));
     Theta = Theta * RandVec3.z;
-    float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 / 2.0 - 1.6));
+    float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 * 0.5 - 1.6));
     float Scale = 1.65 * (0.2 + DistanceScale * 1.0) * DistanceMaxRange * lerp(1.0, 0.25, RandVec3.x * 1.0);
     float2 TempXY = float2(XY.x * 1.0, XY.y) * 4.0;
     float RandomScale = ProportionalMapToRange(0.85, 1.35, RandVec3.z);

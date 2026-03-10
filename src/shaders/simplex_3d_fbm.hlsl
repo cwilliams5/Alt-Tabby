@@ -1,4 +1,4 @@
-#define t (time / 2.0)
+#define t (time * 0.5)
 
 float noise3D(float3 p)
 {

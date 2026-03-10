@@ -2,37 +2,10 @@
 // Author: Shane - License: CC BY-NC-SA 3.0
 // Raymarched blobby field with fake glass refraction and glow
 
-Texture2D iChannel0 : register(t0);
-SamplerState samp0 : register(s0);
-Texture2D iChannel1 : register(t1);
-SamplerState samp1 : register(s1);
-
 #define FAR 50.
 
 // GLSL mod: x - y * floor(x/y) (differs from HLSL fmod for negatives)
-float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 float4 glsl_mod4(float4 x, float y) { return x - y * floor(x / y); }
-
-// Tri-planar blending for iChannel0
-// Based on GPU Gems 3 - Ryan Geiss
-float3 tpl0(in float3 p, in float3 n) {
-    n = max(abs(n) - .2, 0.001);
-    n /= dot(n, (float3)1);
-    float3 tx = iChannel0.Sample(samp0, p.zy).xyz;
-    float3 ty = iChannel0.Sample(samp0, p.xz).xyz;
-    float3 tz = iChannel0.Sample(samp0, p.xy).xyz;
-    return (tx*tx*n.x + ty*ty*n.y + tz*tz*n.z);
-}
-
-// Tri-planar blending for iChannel1
-float3 tpl1(in float3 p, in float3 n) {
-    n = max(abs(n) - .2, 0.001);
-    n /= dot(n, (float3)1);
-    float3 tx = iChannel1.Sample(samp1, p.zy).xyz;
-    float3 ty = iChannel1.Sample(samp1, p.xz).xyz;
-    float3 tz = iChannel1.Sample(samp1, p.xy).xyz;
-    return (tx*tx*n.x + ty*ty*n.y + tz*tz*n.z);
-}
 
 // Camera path
 float3 camPath(float t) {
@@ -102,22 +75,6 @@ float sha(in float3 ro, in float3 rd, in float start, in float end, in float k) 
     return min(max(shade, 0.) + .4, 1.);
 }
 
-// Texture bump mapping using iChannel0 tri-planar
-float3 db0(in float3 p, in float3 n, float bf) {
-    const float2 e = float2(.001, 0);
-
-    float3 m0 = tpl0(p - e.xyy, n);
-    float3 m1 = tpl0(p - e.yxy, n);
-    float3 m2 = tpl0(p - e.yyx, n);
-
-    float3 lum = float3(.299, .587, .114);
-    float3 g = float3(dot(m0, lum), dot(m1, lum), dot(m2, lum));
-    g = (g - dot(tpl0(p, n), lum)) / e.x;
-    g -= n*dot(n, g);
-
-    return normalize(n + g*bf);
-}
-
 // 3D value noise (IQ)
 float n3D(float3 p) {
     const float3 s = float3(7, 157, 113);
@@ -128,12 +85,6 @@ float n3D(float3 p) {
              frac(sin(glsl_mod4(h + s.x, 6.231589))*43758.5453), p.x);
     h.xy = lerp(h.xz, h.yw, p.y);
     return lerp(h.x, h.y, p.z);
-}
-
-// Environment mapping via iChannel1 tri-planar
-float3 envMap(float3 rd, float3 n) {
-    float3 col = tpl1(rd*4., n);
-    return smoothstep(0., 1., col);
 }
 
 float4 PSMain(PSInput input) : SV_Target {
@@ -166,12 +117,6 @@ float4 PSMain(PSInput input) : SV_Target {
     if (t < FAR) {
         float3 p = o + r*t;
         float3 n = nr(p);
-        float3 svn = n;
-
-        // Texture bump
-        float sz = 1./3.;
-        n = db0(p*sz, n, .1/(1. + t*.25/FAR));
-
         l -= p;
         float d = max(length(l), 0.001);
         l /= d;
@@ -192,15 +137,6 @@ float4 PSMain(PSInput input) : SV_Target {
         float _fr2 = fr*fr; float _fr4 = _fr2*_fr2;
         col = tx*(di*.1 + ao*.25) + float3(.5, .7, 1)*sp*2. + float3(1, .7, .4)*(_fr4*_fr4)*.25;
 
-        // Fake reflection and refraction
-        float3 halfN = svn*.5 + n*.5;
-        float3 refl = envMap(normalize(reflect(r, halfN)), halfN);
-        float3 refr = envMap(normalize(refract(r, halfN, 1./1.35)), halfN);
-
-        float3 refCol = lerp(refr, refl, fr*_fr4);
-
-        col += refCol*((di*di*.25 + .75) + ao*.25)*1.5;
-
         // Hue variation for depth
         col = lerp(col.xzy, col, di*.85 + .15);
 
@@ -210,7 +146,7 @@ float4 PSMain(PSInput input) : SV_Target {
         col += col*gc*12.;
 
         // Purple electric charge
-        float hi = abs(glsl_mod(t/1. + time/3., 8.) - 8./2.)*2.;
+        float hi = abs(fmod(t + time * 0.333333, 8.) - 4.) * 2.;
         float3 cCol = float3(.01, .05, 1)*col*1./(.001 + hi*hi*.2);
         col += lerp(cCol.yxz, cCol, n3D(p*3.));
 

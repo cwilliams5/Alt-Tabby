@@ -25,11 +25,11 @@ float4 Density(float3 pos)
     pos /= 30.0;
     float2 s = (float2)0;
     s += Noise(pos.xyz);
-    s += Noise(pos.zxy * 2.0) / 2.0;
-    s += Noise(pos.yzx * 4.0) / 4.0;
-    s += Noise(pos.xzy * 8.0) / 8.0;
+    s += Noise(pos.zxy * 2.0) * 0.5;
+    s += Noise(pos.yzx * 4.0) * 0.25;
+    s += Noise(pos.xzy * 8.0) * 0.125;
 
-    s /= 2.0 - 1.0 / 8.0;
+    s /= 2.0 - 0.125;
 
     float sy2 = s.y*s.y; float sy4 = sy2*sy2;
     s.y = s.y*sy4;
@@ -60,7 +60,7 @@ float4 PSMain(PSInput input) : SV_Target
 
     float d = 0.5;
     float3 pa = Path(T + d), pb = Path(T - d);
-    float3 sky = (pa + pb) / 2.0 - pos;
+    float3 sky = (pa + pb) * 0.5 - pos;
 
     // alternate between looking forward and looking toward centre of nebula
     float3 forward = normalize(lerp(normalize(pa - pb), normalize((float3)0 - pos), smoothstep(-0.2, 0.2, sin(T * 0.2))));

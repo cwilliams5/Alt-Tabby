@@ -40,11 +40,11 @@ float pattern(float2 uv, float t, inout float2 q, inout float2 r) {
     q = float2(fbm1(uv * 0.1 + float2(0.0, 0.0)),
                fbm1(uv + float2(5.2, 1.3)));
 
-    r = float2(fbm1(uv * 0.1 + 4.0 * q + float2(1.7 - t / 2.0, 9.2)),
-               fbm1(uv + 4.0 * q + float2(8.3 - t / 2.0, 2.8)));
+    r = float2(fbm1(uv * 0.1 + 4.0 * q + float2(1.7 - t * 0.5, 9.2)),
+               fbm1(uv + 4.0 * q + float2(8.3 - t * 0.5, 2.8)));
 
-    float2 s = float2(fbm1(uv + 5.0 * r + float2(21.7 - t / 2.0, 90.2)),
-                      fbm1(uv * 0.05 + 5.0 * r + float2(80.3 - t / 2.0, 20.8))) * 0.25;
+    float2 s = float2(fbm1(uv + 5.0 * r + float2(21.7 - t * 0.5, 90.2)),
+                      fbm1(uv * 0.05 + 5.0 * r + float2(80.3 - t * 0.5, 20.8))) * 0.25;
 
     return fbm1(uv * 0.05 + 4.0 * s);
 }
@@ -61,7 +61,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     uv = mul(rot, uv);
     uv *= 0.9 * sin(t) + 3.0;
-    uv.x -= t / 5.0;
+    uv.x -= t * 0.2;
 
     float2 q = (float2)0.0;
     float2 r = (float2)0.0;

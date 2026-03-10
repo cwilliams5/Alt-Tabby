@@ -99,7 +99,7 @@ float caustic(float2 uv, int octaves, float st)
         val = cloud(float3(uv.xy, time), octaves);
         uv -= val.xy * st;
     }
-    return exp(cloud(float3(uv.xy, time), octaves).w * caustic_roughness - caustic_roughness / 2.0);
+    return exp(cloud(float3(uv.xy, time), octaves).w * caustic_roughness - caustic_roughness * 0.5);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

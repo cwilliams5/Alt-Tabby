@@ -160,7 +160,7 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
 
             float chars_count = cell_hash.w * (STRIP_CHARS_MAX - STRIP_CHARS_MIN) + STRIP_CHARS_MIN;
             float target_length = chars_count * STRIP_CHAR_HEIGHT;
-            float target_rad = STRIP_CHAR_WIDTH / 2.0;
+            float target_rad = STRIP_CHAR_WIDTH * 0.5;
             float target_z = ((float)zcell * ZCELL_SIZE + z_shift) + cell_hash.z * (ZCELL_SIZE - target_length);
             float2 target = float2(cell) * XYCELL_SIZE + target_rad + cell_hash.xy * (XYCELL_SIZE - target_rad * 2.0);
 
@@ -169,7 +169,7 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
             if (tmin >= t2s && tmin <= t2) {
                 float u = s.x * rd2.y - s.y * rd2.x;
                 if (abs(u) < target_rad) {
-                    u = (u / target_rad + 1.0) / 2.0;
+                    u = (u / target_rad + 1.0) * 0.5;
                     float z = ro3.z + rd3.z * tmin / t3_to_t2;
                     float v = (z - target_z) / target_length;
                     if (v >= 0.0 && v < 1.0) {
@@ -180,8 +180,8 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
                             float time_factor = floor(c == 0.0 ? t_time * 5.0 :
                                     t_time * (1.0 * cell_hash2.z +
                                             cell_hash2.w * cell_hash2.w * 4.0 * (char_hash.y * char_hash.y * char_hash.y * char_hash.y)));
-                            float a = random_char(float2(char_hash.x, time_factor), float2(u, q), max(1.0, 3.0 - c / 2.0) * 0.2);
-                            a *= saturate((chars_count - 0.5 - c) / 2.0);
+                            float a = random_char(float2(char_hash.x, time_factor), float2(u, q), max(1.0, 3.0 - c * 0.5) * 0.2);
+                            a *= saturate((chars_count - 0.5 - c) * 0.5);
                             if (a > 0.0) {
                                 float attenFactor = 0.06 * tmin / t3_to_t2;
                                 float attenuation = 1.0 + attenFactor * attenFactor;
@@ -269,14 +269,14 @@ float4 PSMain(PSInput input) : SV_Target {
     float t_time = time * SPEED;
 
     const float turn_rad = 0.25 / BLOCKS_BEFORE_TURN;
-    const float turn_abs_time = (PI / 2.0 * turn_rad) * 1.5;
+    const float turn_abs_time = (PI * 0.5 * turn_rad) * 1.5;
     const float turn_time = turn_abs_time / (1.0 - 2.0 * turn_rad + turn_abs_time);
 
     float level1_size = (float)BLOCK_SIZE * BLOCKS_BEFORE_TURN * XYCELL_SIZE;
     float level2_size = 4.0 * level1_size;
     float gap_size = (float)BLOCK_GAP * XYCELL_SIZE;
 
-    float3 ro = float3(gap_size / 2.0, gap_size / 2.0, 0.0);
+    float3 ro = float3(gap_size * 0.5, gap_size * 0.5, 0.0);
     float3 rd = float3(uv.x, 2.0, uv.y);
 
     float tq = frac(t_time / (level2_size * 4.0) * WALK_SPEED);
@@ -308,7 +308,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 turn;
     float turn_sign = 0.0;
-    float2 dirL = rotate2d(dir, -PI / 2.0);
+    float2 dirL = rotate2d(dir, -PI * 0.5);
     float2 dirR = -dirL;
     float up_down = 0.0;
     float rotate_on_turns = 1.0;
@@ -383,7 +383,7 @@ float4 PSMain(PSInput input) : SV_Target {
     else if (t1 > (1.0 - turn_time)) {
         float tr = (t1 - (1.0 - turn_time)) / turn_time;
         float2 c = prev + dir * (1.0 - turn_rad) + turn * turn_rad;
-        p = c + turn_rad * rotate2d(dir, (tr - 1.0) * turn_sign * PI / 2.0);
+        p = c + turn_rad * rotate2d(dir, (tr - 1.0) * turn_sign * PI * 0.5);
         angle += tr * turn_sign * rotate_on_turns;
         rd = rotateY(rd, sin(tr * turn_sign * PI) * 0.2 * roll_on_turns);
     } else {
@@ -391,7 +391,7 @@ float4 PSMain(PSInput input) : SV_Target {
         p = prev + dir * (turn_rad + (1.0 - turn_rad * 2.0) * t1);
     }
 
-    rd = rotateZ(rd, angle * PI / 2.0);
+    rd = rotateZ(rd, angle * PI * 0.5);
 
     ro.xy += level1_size * p;
 

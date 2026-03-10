@@ -49,8 +49,8 @@ float3 gradient(float shade) {
     float3 col1 = float3(mouseScaled.x, 0.0, 1.0 - mouseScaled.x);
     float3 col2 = float3(1.0 - mouseScaled.x, 0.0, mouseScaled.x);
     float3 col3 = float3(mouseScaled.y, 1.0 - mouseScaled.y, mouseScaled.y);
-    float3 col4 = float3((mouseScaled.x + mouseScaled.y) / 2.0, (mouseScaled.x + mouseScaled.y) / 2.0,
-                         1.0 - (mouseScaled.x + mouseScaled.y) / 2.0);
+    float3 col4 = float3((mouseScaled.x + mouseScaled.y) * 0.5, (mouseScaled.x + mouseScaled.y) * 0.5,
+                         1.0 - (mouseScaled.x + mouseScaled.y) * 0.5);
     float3 col5 = float3(mouseScaled.y, mouseScaled.y, mouseScaled.y);
 
     colour += band(shade, 0.0, 0.3, colour, col1);

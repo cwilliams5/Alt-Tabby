@@ -21,14 +21,14 @@ float4 PSMain(PSInput input) : SV_Target {
         float d = uv.y;
         float w = uv.x;
 
-        d = sin(d - 0.3 * 0.1 * (wave / 5.0 + 5.0)) + sin(uv.x * 2.0 + time / 2.0) / 20.0 - sin(i) / 10.0 + sin(uv.x * 4.3 + time * 1.3 * i * 0.2) / 20.0;
-        d = abs(d / 2.0);
+        d = sin(d - 0.3 * 0.1 * (wave / 5.0 + 5.0)) + sin(uv.x * 2.0 + time * 0.5) / 20.0 - sin(i) / 10.0 + sin(uv.x * 4.3 + time * 1.3 * i * 0.2) / 20.0;
+        d = abs(d * 0.5);
         d = 0.003 / d / 8.0 * i;
 
         w += sin(uv.y * 2.0 + time) / 60.0;
         w = abs(sin(w * 20.0 * i / 4.0 + time * sin(i)) / 20.0 + sin(w * 10.0 * i) / 17.0) * 30.0;
         w += uv.y * 2.4 - 1.6;
-        w /= 3.0;
+        w *= 0.333333;
         w = smoothstep(0.4, 0.7, w) / 20.0;
 
         float3 col = palette(uv.x + time / 3.0);

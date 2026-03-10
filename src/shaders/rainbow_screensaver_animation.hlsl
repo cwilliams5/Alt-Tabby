@@ -25,7 +25,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col2 = palette(d2 + t, float3(0.5, 0.5, 0.5), float3(0.5, 0.5, 0.5), float3(1.0, 1.0, 1.0), float3(0.0, 0.33, 0.67));
 
     // Output to screen
-    float3 color = (col1 + col2) / 2.0;
+    float3 color = (col1 + col2) * 0.5;
 
     return AT_PostProcess(color);
 }

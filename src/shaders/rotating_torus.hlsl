@@ -14,7 +14,7 @@ struct Ray {
 
 Ray createRayPerspective(float2 res, float2 screenPosition, float verticalFov) {
     float2 topLeft = float2(-res.x, -res.y) * 0.5;
-    float z = (res.x * 0.5) / abs(tan(verticalFov / 2.0));
+    float z = (res.x * 0.5) / abs(tan(verticalFov * 0.5));
 
     Ray r;
     r.origin = (float3)0.0;
@@ -54,7 +54,7 @@ float sdSegment(float2 pt, float2 a, float2 b) {
 void drawSegment(float2 fragmentCoordinates, float2 p0, float2 p1,
                  float thickness, float4 color, inout float4 outputColor) {
     float d = sdSegment(fragmentCoordinates, p0, p1);
-    float a = 1.0 - saturate(d - thickness / 2.0 + 0.5);
+    float a = 1.0 - saturate(d - thickness * 0.5 + 0.5);
 
     outputColor = lerp(outputColor, color, a * color.a);
 }
@@ -109,7 +109,7 @@ float4 trace(Ray ray) {
 }
 
 float4 takeSample(float2 fragCoord) {
-    float fov = pi / 2.0;
+    float fov = pi * 0.5;
 
     Ray ray = createRayPerspective(resolution, fragCoord, fov);
     return trace(ray);

@@ -48,7 +48,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float delta = time / 1.5;
 
-    rd.yz = mul(rot2(-delta / 2.0), rd.yz);
+    rd.yz = mul(rot2(-delta * 0.5), rd.yz);
     rd.xz = mul(rot2(delta * 3.0), rd.xz);
     float3 p = ro + rd;
 

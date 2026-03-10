@@ -78,7 +78,7 @@ float3 march(float3 from, float3 dir) {
         float b = fractal(boxp.xy) + fractal(boxp.xz) + fractal(boxp.yz);
         float3 colf = float3(f * f, f, f * f * f);
         float3 colb = float3(b + 0.1, b * b + 0.05, 0.0);
-        g += colf / (3.0 + d * d * 2.0) * exp(-0.0015 * td * td) * step(5.0, td) / 2.0 * (1.0 - boxhit);
+        g += colf / (3.0 + d * d * 2.0) * exp(-0.0015 * td * td) * step(5.0, td) * 0.5 * (1.0 - boxhit);
         g += colb / (10.0 + d * d * 20.0) * boxhit * 0.5;
     }
     return g;

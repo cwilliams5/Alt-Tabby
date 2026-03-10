@@ -21,11 +21,12 @@ float2 voronoi(float2 p) {
     float2 f = frac(p);
     float md = 8.0;
     float md2 = 8.0;
+    float timePhase = time * 0.4;
     for (int j = -1; j <= 1; j++)
     for (int i = -1; i <= 1; i++) {
         float2 g = float2((float)i, (float)j);
         float2 o = hash2(n + g);
-        o = 0.5 + 0.4 * sin(time * 0.4 + 6.28318 * o); // slow animation
+        o = 0.5 + 0.4 * sin(timePhase + 6.28318 * o); // slow animation
         float2 r = g + o - f;
         float d = dot(r, r);
         if (d < md) { md2 = md; md = d; }

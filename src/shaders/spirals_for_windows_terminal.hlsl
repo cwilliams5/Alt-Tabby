@@ -122,7 +122,7 @@ float3 effect(float2 p, float2 pp) {
     dro.x = dro_xz.x;
     dro.z = dro_xz.y;
     // dro.yz *= ROT(0.2*sin(0.05*tm*sqrt(0.5)))
-    float2 dro_yz = rot2(float2(dro.y, dro.z), 0.2 * sin(0.05 * tm * sqrt(0.5)));
+    float2 dro_yz = rot2(float2(dro.y, dro.z), 0.2 * sin(0.05 * tm * 0.707106781));
     dro.y = dro_yz.x;
     dro.z = dro_yz.y;
     float3 up = float3(0.0, 1.0, 0.0);
