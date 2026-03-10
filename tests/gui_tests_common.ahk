@@ -211,6 +211,10 @@ GUI_HideOverlay() {
 Win_ApplyAcrylic(hWnd, argbColor) {
 }
 
+; DWM backdrop refresh mock (#235)
+GUI_RefreshBackdrop() {
+}
+
 ; GDI+ icon cache invalidation mock
 Gdip_InvalidateIconCache(hwnd) {
     global gGdip_IconCache

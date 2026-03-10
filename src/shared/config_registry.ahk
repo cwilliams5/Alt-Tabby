@@ -83,6 +83,10 @@ global gConfigRegistry := [
      min: 0, max: 500,
      d: "Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems."},
 
+    {s: "AltTab", k: "BackdropRefreshDelayMs", g: "AltTabBackdropRefreshDelayMs", t: "int", default: 250,
+     min: 50, max: 1000,
+     d: "Delay (ms) before forcing DWM to re-sample the acrylic backdrop after a workspace switch. Komorebi cloaking is asynchronous — this delay lets the desktop settle before the refresh. Increase if the acrylic still shows stale content after switching workspaces."},
+
     {type: "subsection", section: "AltTab", name: "Activation Retry",
      desc: "When the selected window is gone, retry the next MRU window"},
 
