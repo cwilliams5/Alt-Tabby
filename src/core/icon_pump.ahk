@@ -140,7 +140,7 @@ _IP_Log(msg) {
     global _IP_DiagEnabled, _IP_LogPath
     if (!_IP_DiagEnabled || _IP_LogPath = "")
         return
-    LogAppend(_IP_LogPath, msg)
+    try LogAppend(_IP_LogPath, msg)
 }
 
 ; Stop the icon pump timer

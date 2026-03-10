@@ -43,11 +43,9 @@ ProcPump_SetCallbacks(popBatch, getProcNameCached, updateProcessName) {
 
 _PP_Log(msg) {
     global cfg, LOG_PATH_PROCPUMP
-    if (!cfg.DiagProcPumpLog)
+    if (!cfg.DiagProcPumpLog || LOG_PATH_PROCPUMP = "")
         return
-    try {
-        LogAppend(LOG_PATH_PROCPUMP, msg)
-    }
+    try LogAppend(LOG_PATH_PROCPUMP, msg)
 }
 
 ; Start the process pump timer

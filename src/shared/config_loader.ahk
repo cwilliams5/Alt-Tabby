@@ -214,6 +214,10 @@ _CL_CreateDefaultIni(path) {
     }
 
     try FileAppend(content, path, "UTF-8")
+    catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "config_error Failed to create default config at " path ": " e.Message)
+    }
 }
 
 _CL_SupplementIni(path) {

@@ -84,8 +84,8 @@ _Pump_OnMessage(msg, hPipe) {
 
     try {
         parsed := JSON.Load(msg)
-    } catch {
-        _Pump_Log("ERROR: Failed to parse message")
+    } catch as e {
+        _Pump_Log("ERROR: Failed to parse message: " e.Message)
         return
     }
 
@@ -442,7 +442,7 @@ _Pump_PruneAllCaches() {
 
 _Pump_Log(msg) {
     global _Pump_DiagEnabled, LOG_PATH_PUMP
-    if (!_Pump_DiagEnabled)
+    if (!_Pump_DiagEnabled || LOG_PATH_PUMP = "")
         return
     try LogAppend(LOG_PATH_PUMP, msg)
 }

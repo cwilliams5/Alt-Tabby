@@ -563,11 +563,22 @@ GUI_RefilterForWorkspaceChange() {
 ; Unlike RefilterForWorkspaceChange (which selects foreground window),
 ; this preserves MRU-based selection since the user is browsing, not switching.
 GUI_ApplyWorkspaceFilter() {
-    Profiler.Enter("GUI_ApplyWorkspaceFilter") ; @profile
+    _GUI_ApplyFilter("GUI_ApplyWorkspaceFilter")
+}
+
+; Re-filter display items after monitor mode toggle.
+; Same pattern as ApplyWorkspaceFilter — preserves MRU selection.
+GUI_ApplyMonitorFilter() {
+    _GUI_ApplyFilter("GUI_ApplyMonitorFilter")
+}
+
+; Shared filter-and-repaint logic for workspace/monitor toggles.
+; RACE FIX: Keep Critical through repaint — a hotkey can interrupt between filter and
+; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
+; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
+_GUI_ApplyFilter(label) {
+    Profiler.Enter(label) ; @profile
     global gGUI_DisplayItems, gGUI_ToggleBase
-    ; RACE FIX: Keep Critical through repaint — a hotkey can interrupt between filter and
-    ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
-    ; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
     Critical "On"
     gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
@@ -575,21 +586,6 @@ GUI_ApplyWorkspaceFilter() {
     ; Let GUI_Repaint handle resize atomically — it paints at the new dimensions
     ; first, then SetClip + SetWindowPos + Commit in one DComp batch. Calling
     ; GUI_ResizeToRows separately causes a stale frame (old content at new size).
-    GUI_Repaint()
-    Critical "Off"
-    Profiler.Leave() ; @profile
-}
-
-; Re-filter display items after monitor mode toggle.
-; Same pattern as ApplyWorkspaceFilter — preserves MRU selection.
-GUI_ApplyMonitorFilter() {
-    Profiler.Enter("GUI_ApplyMonitorFilter") ; @profile
-    global gGUI_DisplayItems, gGUI_ToggleBase
-    Critical "On"
-    gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
-    _GUI_ResetSelectionToMRU()
-    GUI_ClearHoverState()  ; Row indices are stale after refilter
-    ; Let GUI_Repaint handle resize atomically (same as ApplyWorkspaceFilter).
     GUI_Repaint()
     Critical "Off"
     Profiler.Leave() ; @profile
