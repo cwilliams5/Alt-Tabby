@@ -10,7 +10,7 @@ Enter planning mode. Review which functions are instrumented for profiling and i
 
 Alt-Tabby has a build-time strip profiler (`src/shared/profiler.ahk`). Functions are instrumented with `Profiler.Enter("FuncName") ; @profile` / `Profiler.Leave() ; @profile` pairs. In release builds, `compile.ps1` strips all `; @profile` lines — true zero cost. In `--profile` builds, the profiler records QPC-timestamped events to a ring buffer and exports speedscope flame graphs.
 
-The static analysis check `tests/check_profile_markers.ps1` validates balanced Enter/Leave per function (catches the early-return problem).
+The static analysis check validates balanced Enter/Leave per function (sub-check `profile_markers` in `tests/check_batch_directives.ps1`) — catches the early-return problem.
 
 ## Step 1 — Generate the instrumentation map
 
@@ -88,7 +88,7 @@ Produce a summary of all YES recommendations:
 
 | File | Function | Why (one line) |
 |------|----------|----------------|
-| `gui_paint.ahk` | `_GP_DrawItem` | Variable cost per-item, parent `GUI_Repaint` can't show which item is slow |
+| `gui_paint.ahk` | `_GUI_PaintOverlay` | Variable cost per-item, parent `GUI_Repaint` can't show which item is slow |
 
 And a count: "X new functions recommended, bringing total from Y to Z (N% coverage)."
 
