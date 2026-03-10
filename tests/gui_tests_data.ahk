@@ -604,7 +604,7 @@ RunGUITests_Data() {
     gWS_Store[1000] := {present: true, iconHicon: 50001}
     GUI_KickPreCache()
     ; Timer should NOT have been set; verify by calling tick manually after brief wait
-    Sleep(150)  ; 3x the -50ms timer period for reliable negative assertion
+    Sleep(500)  ; 10x the timer period for reliability under load
     GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "KickPreCache ACTIVE: timer not set, no icons cached")
 
     ; ============================================================

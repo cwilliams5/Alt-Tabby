@@ -126,14 +126,19 @@ RunLiveTests_Execution() {
         }
 
         ; Kill launcher and its children (targeted by PID tree)
+        killPids := []
         for _, child in _Test_FindChildProcesses(launcherPid, EXECTEST_EXE_NAME) {
             try ProcessClose(child.pid)
+            killPids.Push(child.pid)
         }
         try ProcessClose(launcherPid)
-        waitStart := A_TickCount
-        while (ProcessExist(launcherPid) && (A_TickCount - waitStart) < 2000)
-            Sleep(20)
-        Sleep(50)  ; Brief grace for handle release
+        killPids.Push(launcherPid)
+        deadline := A_TickCount + 2000
+        for _, pid in killPids {
+            while (ProcessExist(pid) && (A_TickCount < deadline))
+                Sleep(20)
+        }
+        Sleep(50)  ; handle release grace
     }
 
     ; --- Config/Blacklist Recreation Test (in isolated dir) ---

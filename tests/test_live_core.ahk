@@ -201,7 +201,6 @@ RunLiveTests_Core() {
         try FileDelete(tmpState)
         cmdLine := 'cmd.exe /c ""' komorebicPath '" state > "' tmpState '"" 2>&1'
         _Test_RunWaitSilent(cmdLine)
-        Sleep(200)  ; Give file time to write
         stateTxt := ""
         try stateTxt := FileRead(tmpState, "UTF-8")
         try FileDelete(tmpState)

@@ -622,9 +622,6 @@ RunUnitTests_CoreConfig() {
             break
         Sleep(50)
     }
-    ; Additional grace for processes still running to finish init
-    Sleep(200)
-
     ; Collect results from all entry points
     for idx, ep in entryPoints {
         pid := pids[idx]
@@ -638,7 +635,10 @@ RunUnitTests_CoreConfig() {
         if (InStr(ep.name, "launcher") && stillRunning) {
             ; taskkill /T kills the entire process tree (cmd → launcher → store + gui)
             _Test_RunWaitSilent('taskkill /F /T /PID ' pid)
-            stillRunning := false  ; We just killed it
+            killDeadline := A_TickCount + 2000
+            while (ProcessExist(pid) && (A_TickCount < killDeadline))
+                Sleep(20)
+            stillRunning := ProcessExist(pid)
         } else if (stillRunning) {
             ProcessClose(pid)
             closeDeadline := A_TickCount + 2000
