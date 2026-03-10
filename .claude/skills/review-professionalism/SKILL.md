@@ -81,7 +81,7 @@ Group by user-facing area:
 | Area | File | Lines | Issue | User Impact | Fix |
 |------|------|-------|-------|------------|-----|
 | Wizard | `launcher_wizard.ahk` | 88 | "Click OK to continue" — no explanation of what happens next | Confusing first-run | Rewrite to "This will install Alt-Tabby to Program Files and create a startup task." |
-| Tray menu | `launcher.ahk` | 42 | Menu item "Debug Viewer" — technical jargon | Intimidating to non-technical users | Rename to "Window Inspector" or similar |
+| Tray menu | `launcher_tray.ahk` | 42 | Menu item "Debug Viewer" — technical jargon | Intimidating to non-technical users | Rename to "Window Inspector" or similar |
 | Config editor | `config_editor.ahk` | 200 | Setting description uses ms units without explanation | User doesn't know what 150ms means | Add "(lower = faster response)" hint |
 
 Order by user exposure: high-traffic surfaces first (overlay, tray, config editor), rarely-seen surfaces last (wizard, error dialogs).

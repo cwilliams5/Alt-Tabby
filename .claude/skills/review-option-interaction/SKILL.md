@@ -98,7 +98,7 @@ For each candidate:
 
 | Pattern | Files | Variations | Proposed Consolidation |
 |---------|-------|-----------|----------------------|
-| "Is installed to PF?" check | `launcher.ahk:30`, `update.ahk:55`, `wizard.ahk:80` | Slightly different path comparisons | Shared `IsInstalledToProgramFiles()` helper |
+| "Is installed to PF?" check | `launcher_main.ahk:30`, `update.ahk:55`, `wizard.ahk:80` | Slightly different path comparisons | Shared `IsInstalledToProgramFiles()` helper |
 
 Order by severity: data-loss risks first, cosmetic inconsistencies last.
 
