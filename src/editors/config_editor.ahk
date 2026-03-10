@@ -41,7 +41,7 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
     ; Try WebView2 first if not forcing native
     if (!forceNative && IsWebView2Available()) {
         try {
-            return CE_RunWebView2(launcherHwnd)
+            return CE_RunWebView2()
         } catch as e {
             ; WebView2 detection succeeded but init failed - fall back to native
             ; This can happen if WebView2 is registered but DLL is missing/corrupt
