@@ -139,13 +139,24 @@ if ($Query) {
             # Track function boundaries
             if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
                 $fname = $Matches[1]
-                if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
-                    $inFunc = $true
-                    $funcDepth = $depth
-                    $funcName = $fname
+                if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
+                    }
+                    if ($hasBody) {
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                        $funcName = $fname
+                    }
                 }
             }
 
+            if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
             $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
 
             if ($inFunc -and $depth -le $funcDepth) {
@@ -329,12 +340,23 @@ foreach ($file in $srcFiles) {
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
-            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
-                $inFunc = $true
-                $funcDepth = $depth
+            if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
+                $hasBody = $cleaned.Contains('{')
+                if (-not $hasBody) {
+                    for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                        $peek = $lines[$la].Trim()
+                        if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                        if ($peek.Contains('{')) { $hasBody = $true; break }
+                    }
+                }
+                if ($hasBody) {
+                    $inFunc = $true
+                    $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += $delta
 
         if ($inFunc -and $depth -le $funcDepth) {
@@ -466,13 +488,24 @@ foreach ($file in $srcFiles) {
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
-            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
-                $inFunc = $true
-                $funcDepth = $depth
-                $funcName = $fname
+            if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
+                $hasBody = $cleaned.Contains('{')
+                if (-not $hasBody) {
+                    for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                        $peek = $lines[$la].Trim()
+                        if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                        if ($peek.Contains('{')) { $hasBody = $true; break }
+                    }
+                }
+                if ($hasBody) {
+                    $inFunc = $true
+                    $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                    $funcName = $fname
+                }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += $delta
 
         if ($inFunc -and $depth -le $funcDepth) {

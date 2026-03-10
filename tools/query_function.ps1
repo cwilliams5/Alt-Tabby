@@ -62,87 +62,98 @@ foreach ($file in $srcFiles) {
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
             $fkey = $fname.ToLower()
-            if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
-                $inFunc = $true
-                $funcDepth = $depth
-
-                # Check if this is our target function (case-insensitive)
-                if ($fname -ieq $FuncName) {
-                    # Extract params from raw line
-                    $params = ""
-                    if ($lines[$i] -match '\(([^)]*)\)') {
-                        $params = $Matches[1].Trim()
+            if (-not $AHK_KEYWORDS_SET.Contains($fkey)) {
+                $hasBody = $cleaned.Contains('{')
+                if (-not $hasBody) {
+                    for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                        $peek = $lines[$la].Trim()
+                        if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                        if ($peek.Contains('{')) { $hasBody = $true; break }
                     }
+                }
+                if ($hasBody) {
+                    $inFunc = $true
+                    $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
 
-                    $startLine = $i
-                    $startDepth = $depth
+                    # Check if this is our target function (case-insensitive)
+                    if ($fname -ieq $FuncName) {
+                        # Extract params from raw line
+                        $params = ""
+                        if ($lines[$i] -match '\(([^)]*)\)') {
+                            $params = $Matches[1].Trim()
+                        }
 
-                    # Walk backwards to capture leading comment block
-                    $commentLines = @()
-                    $ci = $i - 1
-                    while ($ci -ge 0) {
-                        $cTrimmed = $lines[$ci].TrimStart()
-                        if ($cTrimmed -match '^\s*;') {
-                            # Comment line — prepend
-                            $commentLines = @($lines[$ci]) + $commentLines
-                            $ci--
-                        } elseif ($cTrimmed -eq '') {
-                            # Blank line — skip over it (might separate comment groups)
-                            # But only if there's a comment above it
-                            if ($ci -gt 0 -and $lines[$ci - 1].TrimStart() -match '^\s*;') {
+                        $startLine = $i
+                        $startDepth = $depth
+
+                        # Walk backwards to capture leading comment block
+                        $commentLines = @()
+                        $ci = $i - 1
+                        while ($ci -ge 0) {
+                            $cTrimmed = $lines[$ci].TrimStart()
+                            if ($cTrimmed -match '^\s*;') {
+                                # Comment line — prepend
                                 $commentLines = @($lines[$ci]) + $commentLines
                                 $ci--
+                            } elseif ($cTrimmed -eq '') {
+                                # Blank line — skip over it (might separate comment groups)
+                                # But only if there's a comment above it
+                                if ($ci -gt 0 -and $lines[$ci - 1].TrimStart() -match '^\s*;') {
+                                    $commentLines = @($lines[$ci]) + $commentLines
+                                    $ci--
+                                } else {
+                                    break
+                                }
                             } else {
                                 break
                             }
-                        } else {
-                            break
                         }
-                    }
-                    if ($commentLines.Count -gt 0) {
-                        $startLine = $ci + 1
-                    }
-
-                    # Now find the end of this function
-                    $funcBody = @($commentLines) + @($lines[$i])
-                    $currentDepth = $depth + $braceOpen - $braceClose
-
-                    for ($j = $i + 1; $j -lt $lines.Count; $j++) {
-                        $funcBody += $lines[$j]
-                        $jCleaned = Clean-Line $lines[$j]
-                        if ($jCleaned -ne '') {
-                            $currentDepth += ($jCleaned.Length - $jCleaned.Replace('{','').Length) - ($jCleaned.Length - $jCleaned.Replace('}','').Length)
+                        if ($commentLines.Count -gt 0) {
+                            $startLine = $ci + 1
                         }
-                        if ($currentDepth -le $startDepth) {
-                            # Function closed
+
+                        # Now find the end of this function
+                        $funcBody = @($commentLines) + @($lines[$i])
+                        $currentDepth = $depth + $braceOpen - $braceClose
+
+                        for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                            $funcBody += $lines[$j]
+                            $jCleaned = Clean-Line $lines[$j]
+                            if ($jCleaned -ne '') {
+                                $currentDepth += ($jCleaned.Length - $jCleaned.Replace('{','').Length) - ($jCleaned.Length - $jCleaned.Replace('}','').Length)
+                            }
+                            if ($currentDepth -le $startDepth) {
+                                # Function closed
+                                $found = @{
+                                    Name      = $fname
+                                    Params    = $params
+                                    RelPath   = $relPath
+                                    StartLine = $startLine + 1
+                                    EndLine   = $j + 1
+                                    Body      = $funcBody
+                                }
+                                break
+                            }
+                        }
+
+                        # If we hit EOF without closing, still capture what we have
+                        if (-not $found) {
                             $found = @{
                                 Name      = $fname
                                 Params    = $params
                                 RelPath   = $relPath
                                 StartLine = $startLine + 1
-                                EndLine   = $j + 1
+                                EndLine   = $lines.Count
                                 Body      = $funcBody
                             }
-                            break
                         }
+                        break
                     }
-
-                    # If we hit EOF without closing, still capture what we have
-                    if (-not $found) {
-                        $found = @{
-                            Name      = $fname
-                            Params    = $params
-                            RelPath   = $relPath
-                            StartLine = $startLine + 1
-                            EndLine   = $lines.Count
-                            Body      = $funcBody
-                        }
-                    }
-                    break
                 }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += $braceOpen - $braceClose
         if ($depth -lt 0) { $depth = 0 }
 

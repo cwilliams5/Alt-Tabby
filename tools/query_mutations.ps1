@@ -70,13 +70,24 @@ foreach ($file in $srcFiles) {
             $m = $script:_rxFuncDef.Match($cleaned)
             if ($m.Success) {
                 $fn = $m.Groups[1].Value
-                if (-not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
-                    $inFunc = $true
-                    $funcDepth = $depth
+                if (-not $AHK_KEYWORDS_SET.Contains($fn)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
+                    }
+                    if ($hasBody) {
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                    }
                 }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
 
@@ -180,15 +191,26 @@ foreach ($file in $srcFiles) {
             $m = $script:_rxFuncDef.Match($cleaned)
             if ($m.Success) {
                 $fn = $m.Groups[1].Value
-                if (-not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
-                    $inFunc = $true
-                    $funcDepth = $depth
-                    $funcName = $fn
-                    $funcStartIdx = $i
+                if (-not $AHK_KEYWORDS_SET.Contains($fn)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
+                    }
+                    if ($hasBody) {
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                        $funcName = $fn
+                        $funcStartIdx = $i
+                    }
                 }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
 

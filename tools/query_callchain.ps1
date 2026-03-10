@@ -89,19 +89,30 @@ foreach ($file in $srcFiles) {
             if ($m.Success) {
                 $fname = $m.Groups[1].Value
                 $fkey = $fname.ToLower()
-                if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
-                    if (-not $funcRegistry.ContainsKey($fkey)) {
-                        $funcRegistry[$fkey] = @{
-                            Name    = $fname
-                            File    = $file.FullName
-                            RelPath = $relPath
-                            Line    = ($i + 1)
+                if (-not $AHK_KEYWORDS_SET.Contains($fkey)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
+                    }
+                    if ($hasBody) {
+                        if (-not $funcRegistry.ContainsKey($fkey)) {
+                            $funcRegistry[$fkey] = @{
+                                Name    = $fname
+                                File    = $file.FullName
+                                RelPath = $relPath
+                                Line    = ($i + 1)
+                            }
                         }
                     }
                 }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
     }
@@ -172,19 +183,30 @@ foreach ($file in $srcFiles) {
             if ($m.Success) {
                 $fname = $m.Groups[1].Value
                 $fkey = $fname.ToLower()
-                if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
-                    $inFunc = $true
-                    $funcDepth = $depth
-                    $curFuncKey = $fkey
-                    $seen.Clear()
+                if (-not $AHK_KEYWORDS_SET.Contains($fkey)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
+                    }
+                    if ($hasBody) {
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                        $curFuncKey = $fkey
+                        $seen.Clear()
 
-                    if (-not $callGraph.ContainsKey($curFuncKey)) {
-                        $callGraph[$curFuncKey] = [System.Collections.ArrayList]::new()
+                        if (-not $callGraph.ContainsKey($curFuncKey)) {
+                            $callGraph[$curFuncKey] = [System.Collections.ArrayList]::new()
+                        }
                     }
                 }
             }
         }
 
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
 
