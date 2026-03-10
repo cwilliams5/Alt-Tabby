@@ -343,38 +343,6 @@ function Write-RegisterBody($sb, $shaders, $dxbcGlobals, $indent) {
     [void]$sb.AppendLine("${indent}}")
 }
 
-# _Shader_RegisterAll() — background shaders only (backward compat)
-[void]$sb.AppendLine('_Shader_RegisterAll() {')
-[void]$sb.AppendLine("    global $dxbcGlobals")
-[void]$sb.AppendLine('')
-Write-RegisterBody $sb $bgShaders $dxbcGlobals '    '
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
-# _Shader_RegisterAllMouse()
-[void]$sb.AppendLine('_Shader_RegisterAllMouse() {')
-[void]$sb.AppendLine("    global $dxbcGlobals")
-[void]$sb.AppendLine('')
-if ($mouseShaders.Count -gt 0) {
-    Write-RegisterBody $sb $mouseShaders $dxbcGlobals '    '
-} else {
-    [void]$sb.AppendLine('    ; No mouse shaders defined')
-}
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
-# _Shader_RegisterAllSelection()
-[void]$sb.AppendLine('_Shader_RegisterAllSelection() {')
-[void]$sb.AppendLine("    global $dxbcGlobals")
-[void]$sb.AppendLine('')
-if ($selShaders.Count -gt 0) {
-    Write-RegisterBody $sb $selShaders $dxbcGlobals '    '
-} else {
-    [void]$sb.AppendLine('    ; No selection shaders defined')
-}
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
 # Shader_RegisterByKey(key) — unified across all categories
 [void]$sb.AppendLine('; Register a single shader by registry key. Used for selective loading at boot.')
 [void]$sb.AppendLine('Shader_RegisterByKey(key) {')
@@ -408,96 +376,6 @@ foreach ($shader in $allShaders) {
 }
 [void]$sb.AppendLine('        }')
 [void]$sb.AppendLine('    }')
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
-# _Shader_RegisterAllRemaining() — background shaders only (backward compat)
-[void]$sb.AppendLine('; Register all background shaders that are not yet registered. Used for lazy-loading on first cycle.')
-[void]$sb.AppendLine('_Shader_RegisterAllRemaining() {')
-[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
-[void]$sb.AppendLine('')
-[void]$sb.AppendLine('    if (A_IsCompiled) {')
-foreach ($shader in $bgShaders) {
-    $fn = $shader.FuncName
-    $rk = $shader.RegKey
-    $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-    [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-    [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
-}
-[void]$sb.AppendLine('    } else {')
-foreach ($shader in $bgShaders) {
-    $fn = $shader.FuncName
-    $rk = $shader.RegKey
-    $hlslFile = $shader.RelHlsl
-    [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-    [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
-}
-[void]$sb.AppendLine('    }')
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
-# _Shader_RegisterAllRemainingMouse()
-[void]$sb.AppendLine('; Register all mouse shaders that are not yet registered.')
-[void]$sb.AppendLine('_Shader_RegisterAllRemainingMouse() {')
-[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
-[void]$sb.AppendLine('')
-if ($mouseShaders.Count -gt 0) {
-    [void]$sb.AppendLine('    if (A_IsCompiled) {')
-    foreach ($shader in $mouseShaders) {
-        $fn = $shader.FuncName
-        $rk = $shader.RegKey
-        $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`")) {")
-        if ($null -ne $shader.Compute) {
-            $csConst = "RES_ID_SHADER_CS_$($shader.FuncName.ToUpper())"
-            [void]$sb.AppendLine("            Shader_RegisterComputeFromResource(`"$rk`", $csConst, $psConst, _Shader_Meta_$fn())")
-        } else {
-            [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
-        }
-        [void]$sb.AppendLine("        }")
-    }
-    [void]$sb.AppendLine('    } else {')
-    foreach ($shader in $mouseShaders) {
-        $fn = $shader.FuncName
-        $rk = $shader.RegKey
-        $hlslFile = $shader.RelHlsl
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`")) {")
-        if ($null -ne $shader.Compute) {
-            [void]$sb.AppendLine("            Shader_RegisterComputeFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
-        } else {
-            [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
-        }
-        [void]$sb.AppendLine("        }")
-    }
-    [void]$sb.AppendLine('    }')
-}
-[void]$sb.AppendLine('}')
-[void]$sb.AppendLine('')
-
-# _Shader_RegisterAllRemainingSelection()
-[void]$sb.AppendLine('; Register all selection shaders that are not yet registered.')
-[void]$sb.AppendLine('_Shader_RegisterAllRemainingSelection() {')
-[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
-[void]$sb.AppendLine('')
-if ($selShaders.Count -gt 0) {
-    [void]$sb.AppendLine('    if (A_IsCompiled) {')
-    foreach ($shader in $selShaders) {
-        $fn = $shader.FuncName
-        $rk = $shader.RegKey
-        $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-        [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
-    }
-    [void]$sb.AppendLine('    } else {')
-    foreach ($shader in $selShaders) {
-        $fn = $shader.FuncName
-        $rk = $shader.RegKey
-        $hlslFile = $shader.RelHlsl
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-        [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
-    }
-    [void]$sb.AppendLine('    }')
-}
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
