@@ -23,12 +23,14 @@ float noise(in float2 p) {
 float fbm(float2 p) {
     float f = 0.0;
     float gat = 0.0;
+    float la = 1.0;
+    float ga = 0.5;
 
-    for (float octave = 0.; octave < 5.; ++octave) {
-        float la = exp2(octave);
-        float ga = exp2(-(octave + 1.));
+    for (int octave = 0; octave < 5; ++octave) {
         f += ga * noise(la * p);
         gat += ga;
+        la *= 2.0;
+        ga *= 0.5;
     }
 
     f = f / gat;

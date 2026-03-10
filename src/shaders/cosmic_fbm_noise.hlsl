@@ -119,10 +119,10 @@ float sin1d(float p) { return sin(p * TWOPI) * 0.25 + 0.25; }
 static const float D2R = PI_VAL / 180.0;
 static const float OC = 15.0;
 
-float3 Oilnoise(float2 pos, float3 RGB, float sinTime) {
+float3 Oilnoise(float2 pos, float3 RGB, float sinTime, float oilBase) {
     float2 q = (float2)1.0;
     float result = 0.0;
-    float t = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(pos.xy) + 0.07)) * 2.2;
+    float t = time * 0.1 + (oilBase / (length(pos.xy) + 0.07)) * 2.2;
     float si, co;
     sincos(t, si, co);
     float2x2 ma = float2x2(co, si, -si, co);
@@ -137,7 +137,6 @@ float3 Oilnoise(float2 pos, float3 RGB, float sinTime) {
     for (float i = 0.0; i < OC; i++) {
         pos = mul(pos, rot30);
 
-        q = pos * s + tm;
         q = pos * s + aPos + tm;
         q = cos(q);
         q = mul(q, ma);
@@ -166,6 +165,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float st_time, ct_time;
     sincos(time, st_time, ct_time);
+    float sinT01 = sin(time * 0.1);
+    float oilBase = 0.25 + 0.05 * sinT01;
     uv2.x += 0.1 * ct_time;
     uv2.y += 0.1 * st_time;
     uv.y *= resolution.y / resolution.x;
@@ -199,7 +200,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 st = (fragCoord / resolution.xy);
     st.x = ((st.x - 0.5) * (resolution.x / resolution.y)) + 0.5;
 
-    float t2 = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(uv3.xy) + 0.57)) * 25.2;
+    float t2 = time * 0.1 + (oilBase / (length(uv3.xy) + 0.57)) * 25.2;
     float si, co;
     sincos(t2, si, co);
     float2x2 ma = float2x2(co, si, -si, co);
@@ -210,7 +211,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 pix = 1.0 / resolution.xy;
     float2 aaST = st + pix * float2(1.5, 0.5);
-    col2 += Oilnoise(aaST, rgb, st_time);
+    col2 += Oilnoise(aaST, rgb, st_time, oilBase);
 
     float scale = 5.0;
     uv *= scale;
