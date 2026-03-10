@@ -589,6 +589,7 @@ $guiScript = "$PSScriptRoot\gui_tests.ahk"
 $guiLogFile = "$env:TEMP\gui_tests_${worktreeId}.log"
 $guiHandle = [IntPtr]::Zero
 $guiTimingRecorded = $false
+$unitEarlyDone = @{}
 $frScript = "$PSScriptRoot\test_unit_flight_recorder.ahk"
 $frLogFile = "$env:TEMP\fr_tests_${worktreeId}.log"
 $frHandle = [IntPtr]::Zero
@@ -827,8 +828,33 @@ if ($live) {
     Write-Host "`n--- Compilation Phase (compile.ps1) ---" -ForegroundColor Yellow
 
     if ($compileHandle -ne [IntPtr]::Zero) {
-        # Compilation was started in background — wait for it
+        # Compilation was started in background — poll until done.
+        # While waiting, capture unit/GUI test exits for accurate --timing data.
         Write-Host "  Waiting for background compilation..."
+        $compileExitPoll = [SilentProcess]::TryGetExitCode($compileHandle)
+        while ($compileExitPoll -eq -259) {
+            if ($timing) {
+                # Capture unit suite exits as they happen
+                foreach ($us in $unitSuites) {
+                    if ($unitEarlyDone.ContainsKey($us.Label)) { continue }
+                    $code = [SilentProcess]::TryGetExitCode($us.Handle)
+                    if ($code -ne -259) {
+                        $unitEarlyDone[$us.Label] = $masterSw.ElapsedMilliseconds - $guiStartTickMs
+                    }
+                }
+                # Capture GUI Tests exit
+                if (-not $guiTimingRecorded -and $guiHandle -ne [IntPtr]::Zero) {
+                    $code = [SilentProcess]::TryGetExitCode($guiHandle)
+                    if ($code -ne -259) {
+                        $guiDurationMs = $masterSw.ElapsedMilliseconds - $guiStartTickMs
+                        $guiTimingRecorded = $true
+                    }
+                }
+            }
+            Start-Sleep -Milliseconds 25
+            $compileExitPoll = [SilentProcess]::TryGetExitCode($compileHandle)
+        }
+        # Process exited — get exit code and close handle
         $compileExit = [SilentProcess]::WaitAndGetExitCode($compileHandle)
         Record-PhaseEnd "Compilation"
         # Parse compile.ps1 step timings from captured output
@@ -962,7 +988,7 @@ if ($live) {
 # --- Check if GUI tests already finished (accurate timing) ---
 # GUI tests take ~1s but WaitAndGetExitCode below is called much later,
 # so snapshot the duration now if the process has already exited.
-if ($guiHandle -ne [IntPtr]::Zero) {
+if (-not $guiTimingRecorded -and $guiHandle -ne [IntPtr]::Zero) {
     $guiCode = [SilentProcess]::TryGetExitCode($guiHandle)
     if ($guiCode -ne -259) {
         $guiDurationMs = $masterSw.ElapsedMilliseconds - $guiStartTickMs
@@ -1052,7 +1078,10 @@ if ($live) {
         if ($guiInPoll) { $suiteHandles["GUI Tests"] = $guiHandle }
 
         $suiteDone = @{}
-        # If GUI Tests already finished, record it now
+        # Pre-seed with unit/GUI suites captured during compilation wait
+        foreach ($label in $unitEarlyDone.Keys) {
+            $suiteDone[$label] = $unitEarlyDone[$label]
+        }
         if ($guiTimingRecorded) { $suiteDone["GUI Tests"] = $guiDurationMs }
 
         $totalToWait = $suiteHandles.Count

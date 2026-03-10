@@ -184,15 +184,7 @@ if ($staleShaders.Count -eq 0) {
 } else {
     Write-Host "  $cachedCount cached, $($staleShaders.Count) to compile"
 
-    # === Write manifest for worker ===
-    $manifestPath = Join-Path ([IO.Path]::GetTempPath()) "alttabby_shader_manifest_$([Guid]::NewGuid().ToString('N').Substring(0,8)).txt"
-    $manifestLines = @()
-    foreach ($s in $staleShaders) {
-        $manifestLines += "$($s.HlslPath)|$($s.BinPath)|$($s.Entry)|$($s.Target)"
-    }
-    [IO.File]::WriteAllLines($manifestPath, $manifestLines)
-
-    # === Invoke worker ===
+    # === Validate worker prerequisites ===
     if (!(Test-Path $ahk2base)) {
         Write-Host "ERROR: AutoHotkey v2 not found at: $ahk2base" -ForegroundColor Red
         exit 1
@@ -202,48 +194,95 @@ if ($staleShaders.Count -eq 0) {
         exit 1
     }
 
-    $proc = Start-Process -FilePath $ahk2base -ArgumentList "/ErrorStdOut `"$workerScript`" `"$manifestPath`"" `
-        -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput "$manifestPath.out" -RedirectStandardError "$manifestPath.err"
+    # === Partition shaders into N chunks for parallel compilation ===
+    $workerCount = [Math]::Min([Math]::Max([int]([Environment]::ProcessorCount / 2), 1), 8)
+    if ($staleShaders.Count -lt $workerCount) { $workerCount = $staleShaders.Count }
+    Write-Host "  Compiling with $workerCount parallel worker(s)..."
 
-    # Display worker output
-    if (Test-Path "$manifestPath.out") {
-        $workerOutput = Get-Content "$manifestPath.out" -Raw
-        if ($workerOutput) {
-            # Parse output for reporting
-            $lines = $workerOutput -split "`r?`n" | Where-Object { $_ -ne '' }
-            foreach ($line in $lines) {
-                if ($line -match '^OK ') {
-                    $shortName = [IO.Path]::GetFileNameWithoutExtension(($line -replace '^OK\s+', '' -replace '\s+\(.*$', ''))
-                    $sizeInfo = ''
-                    if ($line -match '\(([^)]+)\)') { $sizeInfo = " ($($Matches[1]))" }
-                    Write-Host "  NEW  $shortName$sizeInfo"
-                } elseif ($line -match '^FAIL') {
-                    Write-Host "  $line" -ForegroundColor Red
-                } elseif ($line -match '^SUMMARY') {
-                    # Skip — we'll report our own summary
-                } else {
-                    Write-Host "  $line"
+    # Round-robin partition into chunks
+    $chunks = @()
+    for ($i = 0; $i -lt $workerCount; $i++) { $chunks += ,@() }
+    for ($i = 0; $i -lt $staleShaders.Count; $i++) {
+        $chunks[$i % $workerCount] += $staleShaders[$i]
+    }
+
+    # === Write manifests and spawn workers ===
+    $workers = @()
+    $guid = [Guid]::NewGuid().ToString('N').Substring(0,8)
+    for ($i = 0; $i -lt $workerCount; $i++) {
+        $manifestPath = Join-Path ([IO.Path]::GetTempPath()) "alttabby_shader_manifest_${guid}_${i}.txt"
+        $manifestLines = @()
+        foreach ($s in $chunks[$i]) {
+            $manifestLines += "$($s.HlslPath)|$($s.BinPath)|$($s.Entry)|$($s.Target)"
+        }
+        [IO.File]::WriteAllLines($manifestPath, $manifestLines)
+
+        $proc = Start-Process -FilePath $ahk2base `
+            -ArgumentList "/ErrorStdOut `"$workerScript`" `"$manifestPath`"" `
+            -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput "$manifestPath.out" `
+            -RedirectStandardError "$manifestPath.err"
+
+        $workers += @{
+            Process      = $proc
+            ManifestPath = $manifestPath
+            ShaderCount  = $chunks[$i].Count
+        }
+    }
+
+    # === Wait for all workers and collect results ===
+    $totalFailures = 0
+    foreach ($w in $workers) {
+        $w.Process.WaitForExit()
+
+        # Display worker output
+        $outPath = "$($w.ManifestPath).out"
+        if (Test-Path $outPath) {
+            $workerOutput = Get-Content $outPath -Raw
+            if ($workerOutput) {
+                $lines = $workerOutput -split "`r?`n" | Where-Object { $_ -ne '' }
+                foreach ($line in $lines) {
+                    if ($line -match '^OK ') {
+                        $shortName = [IO.Path]::GetFileNameWithoutExtension(($line -replace '^OK\s+', '' -replace '\s+\(.*$', ''))
+                        $sizeInfo = ''
+                        if ($line -match '\(([^)]+)\)') { $sizeInfo = " ($($Matches[1]))" }
+                        Write-Host "  NEW  $shortName$sizeInfo"
+                    } elseif ($line -match '^FAIL') {
+                        Write-Host "  $line" -ForegroundColor Red
+                    } elseif ($line -match '^SUMMARY') {
+                        # Skip — we'll report our own summary
+                    } else {
+                        Write-Host "  $line"
+                    }
                 }
             }
+            Remove-Item $outPath -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item "$manifestPath.out" -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path "$manifestPath.err") {
-        $errContent = Get-Content "$manifestPath.err" -Raw
-        if ($errContent) { Write-Host $errContent -ForegroundColor Red }
-        Remove-Item "$manifestPath.err" -Force -ErrorAction SilentlyContinue
+        $errPath = "$($w.ManifestPath).err"
+        if (Test-Path $errPath) {
+            $errContent = Get-Content $errPath -Raw
+            if ($errContent) { Write-Host $errContent -ForegroundColor Red }
+            Remove-Item $errPath -Force -ErrorAction SilentlyContinue
+        }
+
+        # Accumulate failures (exit code = number of failed shaders)
+        if ($w.Process.ExitCode -ne 0) {
+            $totalFailures += $w.Process.ExitCode
+        }
+
+        # Cleanup manifest
+        Remove-Item $w.ManifestPath -Force -ErrorAction SilentlyContinue
     }
 
-    # Cleanup
-    Remove-Item $manifestPath -Force -ErrorAction SilentlyContinue
+    # Cleanup VS temp HLSL
     if ($vsTempHlsl -and (Test-Path $vsTempHlsl)) {
         Remove-Item $vsTempHlsl -Force -ErrorAction SilentlyContinue
     }
 
-    # Check worker exit code (= number of failures)
-    if ($proc.ExitCode -ne 0) {
+    # Check for failures
+    if ($totalFailures -ne 0) {
         Write-Host ""
-        Write-Host "ERROR: $($proc.ExitCode) shader(s) failed to compile." -ForegroundColor Red
+        Write-Host "ERROR: $totalFailures shader(s) failed to compile." -ForegroundColor Red
         exit 1
     }
 }
