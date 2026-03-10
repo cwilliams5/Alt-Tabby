@@ -362,6 +362,11 @@ _GUI_StartZPump() {
 }
 
 _GUI_ZPumpTick() {
+    global gGUI_State
+    ; PERF: Skip during overlay session - FullScan costs 5-20ms of main thread.
+    ; Display list is frozen during ACTIVE anyway; Z updates can wait.
+    if (gGUI_State = "ACTIVE" || gGUI_State = "ALT_PENDING")
+        return
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
