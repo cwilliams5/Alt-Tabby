@@ -79,6 +79,8 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $funcDefs = @{}
 $fileCache = @{}
 $fileCacheText = @{}
+# cleanedCache: filePath -> string[] (cleaned lines, parallel to fileCache)
+$cleanedCache = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -91,10 +93,18 @@ foreach ($file in $srcFiles) {
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
+    # Pre-clean all lines and cache for Pass 2 reuse
+    $lineCount = $lines.Count
+    $cleaned_arr = [string[]]::new($lineCount)
+    for ($ci = 0; $ci -lt $lineCount; $ci++) {
+        $cleaned_arr[$ci] = Clean-Line $lines[$ci]
+    }
+    $cleanedCache[$file.FullName] = $cleaned_arr
+
     $depth = 0
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         # Function definition at file scope (depth 0)
@@ -154,7 +164,8 @@ if (-not $Query) {
     $privateFuncRegex = $null
     if ($privateFuncKeys.Count -gt 0) {
         $escapedNames = @($privateFuncKeys | ForEach-Object { [regex]::Escape($funcDefs[$_].Name) })
-        $privateFuncRegex = [regex]::new('(?i)(?:' + ($escapedNames -join '|') + ')', 'Compiled, IgnoreCase')
+        # No 'Compiled' — JIT-compiling an 812-way alternation is a ~1800ms net loss vs interpreted
+        $privateFuncRegex = [regex]::new('(?i)(?:' + ($escapedNames -join '|') + ')', 'IgnoreCase')
     }
 
     # Pre-compile per-line reference pattern (avoids recompilation per line)
@@ -172,6 +183,7 @@ if (-not $Query) {
         if ($privateFuncRegex -and -not $privateFuncRegex.IsMatch($fileCacheText[$file.FullName])) { continue }
 
         $lines = $fileCache[$file.FullName]
+        $cleaned_arr = $cleanedCache[$file.FullName]
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
         $depth = 0
@@ -182,7 +194,7 @@ if (-not $Query) {
             [System.StringComparer]::OrdinalIgnoreCase)
 
         for ($i = 0; $i -lt $lines.Count; $i++) {
-            $cleaned = Clean-Line $lines[$i]
+            $cleaned = $cleaned_arr[$i]
             if ($cleaned -eq '') { continue }
 
             # Track function context for reporting
@@ -274,9 +286,18 @@ if ($Query) {
 
         # Lazy line splitting: only split files that pass pre-filter and weren't split in Pass 1
         if (-not $fileCache.ContainsKey($file.FullName)) {
-            $fileCache[$file.FullName] = Split-Lines $fileCacheText[$file.FullName]
+            $qSplitLines = Split-Lines $fileCacheText[$file.FullName]
+            $fileCache[$file.FullName] = $qSplitLines
+            # Also build cleaned cache for lazily-split files
+            $qLineCount = $qSplitLines.Count
+            $qCleanedArr = [string[]]::new($qLineCount)
+            for ($qci = 0; $qci -lt $qLineCount; $qci++) {
+                $qCleanedArr[$qci] = Clean-Line $qSplitLines[$qci]
+            }
+            $cleanedCache[$file.FullName] = $qCleanedArr
         }
         $qLines = $fileCache[$file.FullName]
+        $qCleanedLines = $cleanedCache[$file.FullName]
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
@@ -286,7 +307,7 @@ if ($Query) {
         $qCurFunc = ""
 
         for ($qi = 0; $qi -lt $qLines.Count; $qi++) {
-            $cleaned = Clean-Line $qLines[$qi]
+            $cleaned = $qCleanedLines[$qi]
             if ($cleaned -eq '') { continue }
 
             $mFD3 = $script:RX_FUNC_DEF.Match($cleaned)
