@@ -623,7 +623,7 @@ _AdminToggle_CheckComplete() {
 }
 
 Tray_InstallToProgramFiles() {
-    global APP_NAME, ALTTABBY_INSTALL_DIR, TEMP_INSTALL_PF_STATE
+    global APP_NAME, ALTTABBY_INSTALL_DIR, ALTTABBY_INSTALL_EXE, TEMP_INSTALL_PF_STATE
     global g_UpdateCheckInProgress
 
     if (!A_IsCompiled || IsInProgramFiles())
@@ -647,7 +647,7 @@ Tray_InstallToProgramFiles() {
         return
 
     ; Self-elevate and exit (elevated instance handles install + relaunch)
-    targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+    targetPath := ALTTABBY_INSTALL_EXE
     if (Setup_ElevateWithState({
         stateFile: TEMP_INSTALL_PF_STATE,
         flag: "--install-to-pf",

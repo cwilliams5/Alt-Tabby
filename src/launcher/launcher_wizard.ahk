@@ -224,7 +224,7 @@ WizardContinue() {
 ; Internal: Apply wizard choices (called from both wizard and continuation)
 ; Returns the installed exe path if we installed to a different location, empty string otherwise
 _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
-    global cfg, gConfigIniPath, APP_NAME, ALTTABBY_INSTALL_DIR
+    global cfg, gConfigIniPath, APP_NAME, ALTTABBY_INSTALL_EXE
 
     ; Determine exe path
     exePath := A_ScriptFullPath
@@ -234,7 +234,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     ; Step 1: Install to Program Files (if selected)
     ; Uses Update_ApplyCore() — same code path as tray/dashboard install and auto-update
     if (install) {
-        targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+        targetPath := ALTTABBY_INSTALL_EXE
         if (IsInProgramFiles()) {
             ; Already in Program Files
             installSucceeded := true

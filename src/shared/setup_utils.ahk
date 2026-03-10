@@ -17,6 +17,7 @@ global ADMIN_TASK_ID_PATTERN := "\[ID:([A-Fa-f0-9]{8})\]"
 
 ; Install directory constant - uses localized Program Files path
 global ALTTABBY_INSTALL_DIR := A_ProgramFiles "\Alt-Tabby"
+global ALTTABBY_INSTALL_EXE := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
 
 ; PE validation constants
 global PE_MIN_SIZE := 102400                ; 100KB minimum for valid AHK exe
@@ -52,10 +53,10 @@ IsAdminModeFullyActive() {
 ; Get the path to the installed exe (from config or well-known PF location)
 ; Returns empty string if no installation found
 Setup_GetInstalledPath() {
-    global cfg, ALTTABBY_INSTALL_DIR
+    global cfg, ALTTABBY_INSTALL_EXE
     if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "")
         return cfg.SetupExePath
-    pfPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+    pfPath := ALTTABBY_INSTALL_EXE
     if (FileExist(pfPath))
         return pfPath
     return ""
@@ -1173,7 +1174,14 @@ Update_ApplyCore(opts) {
 ; Apply update: rename current exe, move new exe, relaunch
 ; Wrapper for auto-update flow - uses Update_ApplyCore with appropriate options
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
-    global g_PumpPID, g_GuiPID
+    global g_PumpPID, g_GuiPID, g_ConfigEditorPID, g_BlacklistEditorPID
+
+    ; Gracefully close any open editors before the force-kill sweep.
+    ; Editors have unsaved-changes prompts on WM_CLOSE — sending it first
+    ; gives the user a chance to save. Without this, the force sweep in
+    ; Update_ApplyCore silently kills editors via taskkill /F.
+    _Update_CloseEditors()
+
     Update_ApplyCore({
         sourcePath: newExePath,
         targetPath: targetExePath,
@@ -1184,6 +1192,40 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         cleanupSourceOnFailure: true,
         killPids: {gui: g_GuiPID, pump: g_PumpPID}
     })
+}
+
+; Send WM_CLOSE to editor windows and wait briefly for them to close.
+; This allows unsaved-changes prompts to appear before the update's force-kill sweep.
+_Update_CloseEditors() {
+    global g_ConfigEditorPID, g_BlacklistEditorPID
+
+    editorsClosed := true
+    for pid in [g_ConfigEditorPID, g_BlacklistEditorPID] {
+        if (!pid || !ProcessExist(pid))
+            continue
+        editorsClosed := false
+        try {
+            hwnd := WinExist("ahk_pid " pid)
+            if (hwnd)
+                PostMessage(0x0010, 0, 0, , "ahk_id " hwnd)  ; WM_CLOSE
+        }
+    }
+
+    if (editorsClosed)
+        return
+
+    ; Wait up to 3s for editors to close (user may be saving)
+    deadline := A_TickCount + 3000
+    while (A_TickCount < deadline) {
+        allGone := true
+        if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
+            allGone := false
+        if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
+            allGone := false
+        if (allGone)
+            return
+        Sleep(200)
+    }
 }
 
 ; Called on startup to clean up old exe from previous update
