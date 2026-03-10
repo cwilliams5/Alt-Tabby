@@ -264,7 +264,7 @@ if ($ssIssues.Count -gt 0) {
 
 # ============================================================
 # Sub-check 3b: phase_strings
-# Validates gGUI_PendingPhase string literals ("", "polling", "waiting", "flushing")
+# Validates gGUI_Pending.phase string literals ("", "polling", "waiting", "flushing")
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $VALID_PHASES = @('', 'polling', 'waiting', 'flushing')
@@ -276,18 +276,18 @@ foreach ($file in $allFiles) {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         if ($line -match '^\s*;') { continue }
-        if ($line -notmatch 'gGUI_PendingPhase') { continue }
+        if ($line -notmatch 'gGUI_Pending\.phase') { continue }
         # Strip string contents to avoid matching the variable name inside string literals
-        # (e.g., flight recorder: out .= "gGUI_PendingPhase = " ...)
+        # (e.g., flight recorder: out .= "gGUI_Pending.phase = " ...)
         $stripped = $line -replace '\s;.*$', ''
         $stripped = $stripped -replace '"[^"]*"', '""'
-        if ($stripped -notmatch 'gGUI_PendingPhase') { continue }
+        if ($stripped -notmatch 'gGUI_Pending\.phase') { continue }
         # Re-strip from original (we need real string content for regex captures)
         $stripped = $line -replace '\s;.*$', ''
         $phasePatterns = @(
-            'gGUI_PendingPhase\s*:=\s*"([^"]*)"',
-            'gGUI_PendingPhase\s*[!=]=?\s*"([^"]*)"',
-            '"([^"]*)"\s*[!=]=?\s*gGUI_PendingPhase'
+            'gGUI_Pending\.phase\s*:=\s*"([^"]*)"',
+            'gGUI_Pending\.phase\s*[!=]=?\s*"([^"]*)"',
+            '"([^"]*)"\s*[!=]=?\s*gGUI_Pending\.phase'
         )
         foreach ($pattern in $phasePatterns) {
             $regex = [regex]$pattern
@@ -310,7 +310,7 @@ $sw.Stop()
 if ($psIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
-    [void]$failOutput.AppendLine("  FAIL: $($psIssues.Count) invalid gGUI_PendingPhase string(s) found.")
+    [void]$failOutput.AppendLine("  FAIL: $($psIssues.Count) invalid gGUI_Pending.phase string(s) found.")
     [void]$failOutput.AppendLine("  Valid phases: `"`"`, polling, waiting, flushing")
     $grouped = $psIssues | Group-Object File
     foreach ($group in $grouped | Sort-Object Name) {

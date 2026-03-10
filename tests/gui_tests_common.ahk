@@ -56,14 +56,8 @@ global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_MouseTracking := false  ; WM_MOUSELEAVE tracking state
 global gGUI_BaseH := 0              ; Window handle for overlay base
 
-; Async activation globals (for cross-workspace support)
-global gGUI_PendingPhase := ""
-global gGUI_PendingHwnd := 0
-global gGUI_PendingWSName := ""
-global gGUI_PendingDeadline := 0
-global gGUI_PendingWaitUntil := 0
-global gGUI_PendingShell := ""
-global gGUI_PendingTempFile := ""
+; Async activation state (packed object — see gui_state.ahk _GUI_NewPendingState)
+global gGUI_Pending := { hwnd: 0, wsName: "", deadline: 0, phase: "", waitUntil: 0, shell: "", tempFile: "" }
 global gGUI_EventBuffer := []
 
 ; Stats globals (from gui_main.ahk, used by gui_state.ahk and gui_workspace.ahk)
@@ -514,7 +508,7 @@ ResetGUIState() {
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_WSContextSwitch, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap
-    global gGUI_EventBuffer, gGUI_PendingPhase
+    global gGUI_EventBuffer, gGUI_Pending
     global gMock_VisibleRows, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
     global gMock_PreCachedIcons, gGdip_IconCache
@@ -538,7 +532,7 @@ ResetGUIState() {
     gGUI_Revealed := false
     gGUI_WSContextSwitch := false
     gGUI_EventBuffer := []
-    gGUI_PendingPhase := ""
+    gGUI_Pending := _GUI_NewPendingState()
     gMock_VisibleRows := 5
     gMock_BypassResult := false
     gINT_BypassMode := false

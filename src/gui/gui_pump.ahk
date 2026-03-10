@@ -368,9 +368,11 @@ _GUIPump_OnMessage(msg, hPipe) {
     }
 
     results := parsed["results"]
-    applied := 0
     iconCount := 0
 
+    ; Build batch patches map: hwnd -> fields (single Critical + single rev bump)
+    ; All other multi-window producers (winevent_hook, komorebi_sub) use batch update.
+    patches := Map()
     for hwndStr, data in results {
         hwnd := hwndStr + 0
         if (!hwnd)
@@ -411,10 +413,15 @@ _GUIPump_OnMessage(msg, hPipe) {
             ; else: window has no icon AND pump returned none — don't update throttle
         }
 
-        if (fields.Count > 0) {
-            WL_UpdateFields(hwnd, fields, "pump_enrich")
-            applied++
-        }
+        if (fields.Count > 0)
+            patches[hwnd] := fields
+    }
+
+    ; Apply all enrichment results in a single batch (1 Critical section + 1 rev bump)
+    applied := 0
+    if (patches.Count > 0) {
+        batchResult := WL_BatchUpdateFields(patches, "pump_enrich")
+        applied := batchResult.changed
     }
 
     if (cfg.DiagPumpLog)

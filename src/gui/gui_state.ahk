@@ -23,16 +23,22 @@ global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 ; ============================================================
 ; ASYNC CROSS-WORKSPACE ACTIVATION STATE
 ; ============================================================
-; These 7 globals form a coherent state group for non-blocking workspace switches.
-; IMPORTANT: Always use _GUI_ClearPendingState() to reset ALL of them together.
+; Single object for non-blocking workspace switch state.
+; Reset atomically via gGUI_Pending := _GUI_NewPendingState().
 ; Phase progression: "" -> "polling" -> "waiting" -> "flushing" -> ""
-global gGUI_PendingHwnd := 0             ; Target hwnd
-global gGUI_PendingWSName := ""          ; Target workspace name
-global gGUI_PendingDeadline := 0         ; Polling deadline (when to give up)
-global gGUI_PendingPhase := ""           ; "polling", "waiting", "flushing", or ""
-global gGUI_PendingWaitUntil := 0        ; End of post-switch wait
-global gGUI_PendingShell := ""           ; WScript.Shell COM object (reused)
-global gGUI_PendingTempFile := ""        ; Temp file for query results
+global gGUI_Pending := _GUI_NewPendingState()
+
+_GUI_NewPendingState() {
+    return {
+        hwnd: 0,            ; Target hwnd
+        wsName: "",          ; Target workspace name
+        deadline: 0,         ; Polling deadline (when to give up)
+        phase: "",           ; "polling", "waiting", "flushing", or ""
+        waitUntil: 0,        ; End of post-switch wait
+        shell: "",           ; WScript.Shell COM object (reused)
+        tempFile: ""         ; Temp file for query results
+    }
+}
 
 ; COM interfaces for direct window uncloaking (mimic native Alt+Tab)
 ; These allow us to uncloak a single window without switching workspaces,
@@ -137,7 +143,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
-    global gGUI_PendingPhase, gGUI_EventBuffer, gAnim_HidePending
+    global gGUI_Pending, gGUI_EventBuffer, gAnim_HidePending
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
@@ -156,13 +162,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
     if (diagLog) {
         evName := _GUI_GetEventName(evCode)
-        GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
+        GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_Pending.phase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
     }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
     ; Exception: ESC cancels immediately
-    if (gGUI_PendingPhase != "") {
+    if (gGUI_Pending.phase != "") {
         if (evCode = TABBY_EV_ESCAPE) {
             if (diagLog)
                 GUI_LogEvent("ESC during async - canceling")
@@ -193,7 +199,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gFR_Enabled)
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (diagLog)
-            GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
+            GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_Pending.phase ")")
         Profiler.Leave() ; @profile
         return
     }
@@ -924,9 +930,7 @@ _GUI_NextValidSel(currentSel, listLen, startSel) {
 _GUI_ActivateItem(item) {
     Profiler.Enter("_GUI_ActivateItem") ; @profile
     global cfg
-    global gGUI_PendingHwnd, gGUI_PendingWSName
-    global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
-    global gGUI_PendingShell, gGUI_PendingTempFile
+    global gGUI_Pending
     global gGUI_LiveItems, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
 
     hwnd := item.hwnd
@@ -1061,28 +1065,26 @@ _GUI_ActivateItem(item) {
 _GUI_StartSwitchActivate(hwnd, wsName) {
     Profiler.Enter("_GUI_StartSwitchActivate") ; @profile
     global cfg
-    global gGUI_PendingHwnd, gGUI_PendingWSName
-    global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
-    global gGUI_PendingShell, gGUI_PendingTempFile
+    global gGUI_Pending
     global gGUI_EventBuffer
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("SWITCH-ACTIVATE: Starting for hwnd=" hwnd " ws='" wsName "'")
 
     ; Initialize pending state
-    gGUI_PendingHwnd := hwnd
-    gGUI_PendingWSName := wsName
-    gGUI_PendingDeadline := A_TickCount + cfg.AltTabWSPollTimeoutMs
-    gGUI_PendingWaitUntil := 0
+    gGUI_Pending.hwnd := hwnd
+    gGUI_Pending.wsName := wsName
+    gGUI_Pending.deadline := A_TickCount + cfg.AltTabWSPollTimeoutMs
+    gGUI_Pending.waitUntil := 0
     gGUI_EventBuffer := []
 
     ; Create WScript.Shell for async command execution (reuse if exists)
-    if (!gGUI_PendingShell)
-        gGUI_PendingShell := ComObject("WScript.Shell")
+    if (!gGUI_Pending.shell)
+        gGUI_Pending.shell := ComObject("WScript.Shell")
 
     ; Temp file for komorebic query output (PollKomorebic method)
-    if (!gGUI_PendingTempFile)
-        gGUI_PendingTempFile := A_Temp "\tabby_ws_query.txt"
+    if (!gGUI_Pending.tempFile)
+        gGUI_Pending.tempFile := A_Temp "\tabby_ws_query.txt"
 
     ; Trigger workspace switch (via socket or komorebic.exe)
     try {
@@ -1099,7 +1101,7 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
 
     ; Start polling phase
     Critical "On"
-    gGUI_PendingPhase := "polling"
+    gGUI_Pending.phase := "polling"
     Critical "Off"
 
     ; Start async timer
@@ -1115,9 +1117,7 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
 ; Yields control between fires, allowing keyboard hook callbacks to run
 _GUI_AsyncActivationTick() {
     global cfg
-    global gGUI_PendingHwnd, gGUI_PendingWSName
-    global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
-    global gGUI_PendingShell, gGUI_PendingTempFile
+    global gGUI_Pending
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
     global gGUI_LiveItems, gGUI_CurrentWSName
 
@@ -1129,14 +1129,14 @@ _GUI_AsyncActivationTick() {
     Critical "On"
 
     ; Safety: if no pending activation, stop timer
-    if (gGUI_PendingPhase = "") {
+    if (gGUI_Pending.phase = "") {
         SetTimer(_GUI_AsyncActivationTick, 0)
         Critical "Off"
         Profiler.Leave() ; @profile
         return
     }
     ; Read phase into local variable for consistent use throughout function
-    phase := gGUI_PendingPhase
+    phase := gGUI_Pending.phase
     Critical "Off"
 
     ; === CRITICAL: Detect missed Tab events ===
@@ -1173,20 +1173,20 @@ _GUI_AsyncActivationTick() {
     ; === PHASE 1: Poll for workspace switch completion ===
     if (phase = "polling") {
         ; Check if deadline exceeded
-        if (now > gGUI_PendingDeadline) {
+        if (now > gGUI_Pending.deadline) {
             ; Timeout - do activation anyway
             if (diagLog)
-                GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
+                GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_Pending.wsName "'")
             ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
             ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
             Critical "On"
-            if (gGUI_PendingPhase = "") {
+            if (gGUI_Pending.phase = "") {
                 Critical "Off"
                 Profiler.Leave() ; @profile
                 return  ; Cancelled while running — don't resurrect
             }
-            gGUI_PendingPhase := "waiting"
-            gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
+            gGUI_Pending.phase := "waiting"
+            gGUI_Pending.waitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
             Profiler.Leave() ; @profile
             return
@@ -1201,7 +1201,7 @@ _GUI_AsyncActivationTick() {
             ; When komorebi switches workspaces, it uncloaks windows on the target workspace
             ; Sub-microsecond DllCall vs 50-100ms cmd.exe spawn
             ; DWMWA_CLOAKED = 14 (Windows constant)
-            cloakVal := _GUI_IsCloaked(gGUI_PendingHwnd)
+            cloakVal := _GUI_IsCloaked(gGUI_Pending.hwnd)
             isCloaked := (cloakVal > 0)
             if (!isCloaked) {
                 switchComplete := true
@@ -1211,7 +1211,7 @@ _GUI_AsyncActivationTick() {
         } else if (confirmMethod = "AwaitDelta") {
             ; AwaitDelta: Watch gGUI_CurrentWSName (updated by heartbeat via direct gWS_Meta read in gui_main)
             ; Zero spawning, zero DllCalls - but depends on heartbeat latency
-            if (gGUI_CurrentWSName = gGUI_PendingWSName) {
+            if (gGUI_CurrentWSName = gGUI_Pending.wsName) {
                 switchComplete := true
                 if (diagLog)
                     GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
@@ -1221,17 +1221,17 @@ _GUI_AsyncActivationTick() {
             ; Spawns cmd.exe /c komorebic query focused-workspace-name every tick
             ; Highest CPU but works on multi-monitor setups where PollCloak may not
             try {
-                try FileDelete(gGUI_PendingTempFile)
-                queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' gGUI_PendingTempFile '"'
+                try FileDelete(gGUI_Pending.tempFile)
+                queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' gGUI_Pending.tempFile '"'
                 ; Run hidden, DON'T wait (false) - let it run async
-                gGUI_PendingShell.Run(queryCmd, 0, false)
+                gGUI_Pending.shell.Run(queryCmd, 0, false)
             }
 
             ; Check if switch completed (file from PREVIOUS tick)
-            if (FileExist(gGUI_PendingTempFile)) {
+            if (FileExist(gGUI_Pending.tempFile)) {
                 try {
-                    result := Trim(FileRead(gGUI_PendingTempFile))
-                    if (result = gGUI_PendingWSName) {
+                    result := Trim(FileRead(gGUI_Pending.tempFile))
+                    if (result = gGUI_Pending.wsName) {
                         switchComplete := true
                         if (diagLog)
                             GUI_LogEvent("ASYNC POLLKOMOREBIC: workspace name matches, switch complete")
@@ -1245,13 +1245,13 @@ _GUI_AsyncActivationTick() {
             ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
             ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
             Critical "On"
-            if (gGUI_PendingPhase = "") {
+            if (gGUI_Pending.phase = "") {
                 Critical "Off"
                 Profiler.Leave() ; @profile
                 return  ; Cancelled while running — don't resurrect
             }
-            gGUI_PendingPhase := "waiting"
-            gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
+            gGUI_Pending.phase := "waiting"
+            gGUI_Pending.waitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
             Profiler.Leave() ; @profile
             return
@@ -1262,13 +1262,13 @@ _GUI_AsyncActivationTick() {
 
     ; === PHASE 2: Wait for komorebi's post-switch focus logic ===
     if (phase = "waiting") {
-        if (now < gGUI_PendingWaitUntil) {
+        if (now < gGUI_Pending.waitUntil) {
             Profiler.Leave() ; @profile
             return  ; Keep waiting
         }
 
         ; Wait complete - do robust activation
-        hwnd := gGUI_PendingHwnd
+        hwnd := gGUI_Pending.hwnd
         if (diagLog)
             GUI_LogEvent("ASYNC COMPLETE: activating hwnd " hwnd " (buf=" gGUI_EventBuffer.Length ")")
         try _GUI_RobustActivate(hwnd)
@@ -1277,15 +1277,15 @@ _GUI_AsyncActivationTick() {
         SetTimer(_GUI_AsyncActivationTick, 0)
 
         ; CRITICAL: Update current workspace name IMMEDIATELY
-        ; Don't wait for IPC - we know we just switched to gGUI_PendingWSName
+        ; Don't wait for IPC - we know we just switched to gGUI_Pending.wsName
         ; This ensures buffered Alt+Tab events use correct workspace data
         ; Also fixes stale workspace data when buffered events replay
-        if (gGUI_PendingWSName != "") {
+        if (gGUI_Pending.wsName != "") {
             if (diagLog)
-                GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
+                GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_Pending.wsName "'")
             ; RACE FIX: Protect workspace name and items iteration from producer timer callbacks
             Critical "On"
-            gGUI_CurrentWSName := gGUI_PendingWSName
+            gGUI_CurrentWSName := gGUI_Pending.wsName
 
             ; Update isOnCurrentWorkspace flags in gGUI_LiveItems to match new workspace
             ; This ensures display lists have correct workspace data
@@ -1298,11 +1298,11 @@ _GUI_AsyncActivationTick() {
         }
 
         ; CRITICAL: Update MRU order - move activated window to position 1
-        ; Don't wait for IPC - we know we just activated gGUI_PendingHwnd
+        ; Don't wait for IPC - we know we just activated gGUI_Pending.hwnd
         ; This ensures buffered Alt+Tab selects the PREVIOUS window, not the same one
-        _GUI_UpdateLocalMRU(gGUI_PendingHwnd)
+        _GUI_UpdateLocalMRU(gGUI_Pending.hwnd)
 
-        ; CRITICAL: Do NOT clear gGUI_PendingPhase yet!
+        ; CRITICAL: Do NOT clear gGUI_Pending.phase yet!
         ; If we clear it now, any pending Tab_Decide timers from the interceptor
         ; will send events that bypass the buffer, arriving out of order.
         ; Keep the phase set to "flushing" so events continue to be buffered
@@ -1310,19 +1310,19 @@ _GUI_AsyncActivationTick() {
         ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
         ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
         Critical "On"
-        if (gGUI_PendingPhase = "") {
+        if (gGUI_Pending.phase = "") {
             Critical "Off"
             Profiler.Leave() ; @profile
             return  ; Cancelled while running — don't resurrect
         }
-        gGUI_PendingPhase := "flushing"
+        gGUI_Pending.phase := "flushing"
         Critical "Off"
 
         ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
         ; with stale store data. The store will get the focus update via WinEventHook.
 
         ; Process any buffered events (user did Alt+Tab during our async activation)
-        ; This will clear gGUI_PendingPhase when done
+        ; This will clear gGUI_Pending.phase when done
         if (diagLog)
             GUI_LogEvent("ASYNC: scheduling buffer processing")
         SetTimer(_GUI_ProcessEventBuffer, -1)
@@ -1333,17 +1333,17 @@ _GUI_AsyncActivationTick() {
 }
 
 ; Process buffered events after async activation completes
-; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
+; Called via SetTimer -1 after async complete, with gGUI_Pending.phase="flushing"
 _GUI_ProcessEventBuffer() {
     Profiler.Enter("_GUI_ProcessEventBuffer") ; @profile
-    global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, cfg
+    global gGUI_EventBuffer, gGUI_LiveItems, gGUI_Pending, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, cfg
 
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
 
     ; Validate we're in flushing phase - prevents stale timers from processing
-    if (gGUI_PendingPhase != "flushing") {
+    if (gGUI_Pending.phase != "flushing") {
         if (diagLog)
-            GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
+            GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_Pending.phase ")")
         Profiler.Leave() ; @profile
         return
     }
@@ -1407,8 +1407,8 @@ _GUI_ProcessEventBuffer() {
 
 ; Cancel pending async activation (e.g., on ESC)
 _GUI_CancelPendingActivation() {
-    global gGUI_PendingPhase, gGUI_EventBuffer
-    if (gGUI_PendingPhase != "") {
+    global gGUI_Pending, gGUI_EventBuffer
+    if (gGUI_Pending.phase != "") {
         _GUI_ClearPendingState()
         SetTimer(_GUI_AsyncActivationTick, 0)
         gGUI_EventBuffer := []  ; Clear any buffered events
@@ -1416,25 +1416,19 @@ _GUI_CancelPendingActivation() {
     }
 }
 
-; Clear all pending activation state
+; Clear all pending activation state (atomic object replacement)
 _GUI_ClearPendingState() {
-    global gGUI_PendingHwnd, gGUI_PendingWSName
-    global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
-    global gGUI_PendingTempFile, gGUI_PendingShell
+    global gGUI_Pending
 
     ; Clean up temp file
-    try FileDelete(gGUI_PendingTempFile)
+    try FileDelete(gGUI_Pending.tempFile)
 
     ; Release COM object to prevent memory leak
     ; In AHK v2, setting to "" releases the COM reference
-    gGUI_PendingShell := ""
+    gGUI_Pending.shell := ""
 
-    gGUI_PendingHwnd := 0
-    gGUI_PendingWSName := ""
-    gGUI_PendingDeadline := 0
-    gGUI_PendingPhase := ""
-    gGUI_PendingWaitUntil := 0
-    gGUI_PendingTempFile := ""
+    ; Atomic reset — impossible to forget a field
+    gGUI_Pending := _GUI_NewPendingState()
 }
 
 ; ========================= KEYBOARD STATE RESYNC =========================
@@ -1641,8 +1635,8 @@ _GUI_InitAppViewCollection() {
 ; Release COM objects allocated by _GUI_InitAppViewCollection / _GUI_StartSwitchActivate.
 ; Called from _GUI_OnExit to keep COM lifecycle in the declaring module.
 GUI_ReleaseComObjects() {
-    global gGUI_PendingShell, gGUI_ImmersiveShell, gGUI_AppViewCollection
-    gGUI_PendingShell := ""
+    global gGUI_Pending, gGUI_ImmersiveShell, gGUI_AppViewCollection
+    gGUI_Pending.shell := ""
     gGUI_ImmersiveShell := ""
     gGUI_AppViewCollection := ""
 }
