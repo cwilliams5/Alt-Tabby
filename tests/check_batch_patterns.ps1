@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1990,6 +1990,112 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_numeric_string_comparison"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 16: map_iteration_mutation
+# Detects .Delete(), .Push(), or [key]:= on the iteration source
+# variable inside a for loop body. AHK v2 doesn't throw — it
+# silently produces undefined iteration behavior.
+# Suppress: ; lint-ignore: map-iteration-mutation
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$mimIssues = [System.Collections.ArrayList]::new()
+
+# Pre-compiled patterns
+# Capture full expression after 'in': variable name plus optional accessors like ["key"] or .prop
+$rxForIn = [regex]::new('(?i)^\s*for\s+[\w,\s]+\s+in\s+(\w+(?:\s*\[.*?\]|\s*\.\s*\w+)*)', 'Compiled')
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName
+    if ($relPath.StartsWith($SourceDir)) {
+        $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
+    }
+
+    # Track active for-loop iteration sources with brace-depth scoping
+    # Stack of @{ Collection, Depth, StartLine }
+    $forStack = [System.Collections.ArrayList]::new()
+    $depth = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+
+        $cleaned = BP_Clean-Line $raw
+        if ($cleaned -eq '') { continue }
+
+        # Code with strings intact (only comments stripped) — used for collection name matching
+        $codePart = $raw
+        if ($codePart.IndexOf(';') -ge 0) {
+            $codePart = $script:RX_CMT_TAIL.Replace($codePart, '')
+        }
+
+        # Detect for...in loops (use codePart to preserve string content like ["key"])
+        $m = $rxForIn.Match($codePart)
+        if ($m.Success) {
+            $collection = $m.Groups[1].Value.Trim()
+            # Record the depth BEFORE counting this line's braces
+            [void]$forStack.Add(@{ Collection = $collection; Depth = $depth; StartLine = $i })
+        }
+
+        # Count braces (use cleaned line — strings already stripped)
+        $opens = 0; $closes = 0
+        foreach ($c in $cleaned.ToCharArray()) {
+            if ($c -eq '{') { $opens++ }
+            elseif ($c -eq '}') { $closes++ }
+        }
+        $depth += $opens - $closes
+
+        # Pop for-loops that have closed (depth returned to or below entry depth)
+        for ($s = $forStack.Count - 1; $s -ge 0; $s--) {
+            if ($depth -le $forStack[$s].Depth -and $i -gt $forStack[$s].StartLine) {
+                $forStack.RemoveAt($s)
+            }
+        }
+
+        # Check for mutations on any active for-loop's collection variable
+        if ($forStack.Count -gt 0) {
+            if ($raw -match 'lint-ignore:\s*map-iteration-mutation') { continue }
+
+            foreach ($entry in $forStack) {
+                $col = $entry.Collection
+                $colEsc = [regex]::Escape($col)
+                # Check: collection.Delete(, collection.Push(, etc. (use codePart for string-intact matching)
+                if ($codePart -match "(?<![.\w])${colEsc}\s*\.\s*(?:Delete|Push|Pop|InsertAt|RemoveAt)\s*\(") {
+                    # Safe pattern: Delete + break on next line (FIFO "pop first" idiom)
+                    $nextIdx = $i + 1
+                    while ($nextIdx -lt $lines.Count) {
+                        $nextTrimmed = $lines[$nextIdx].TrimStart()
+                        if ($nextTrimmed.Length -eq 0 -or $nextTrimmed[0] -eq ';') { $nextIdx++; continue }
+                        break
+                    }
+                    if ($nextIdx -lt $lines.Count -and $lines[$nextIdx].TrimStart() -match '(?i)^\s*break\b') { continue }
+
+                    [void]$mimIssues.Add("${relPath}:$($i+1): $col.Delete/Push/etc inside for-loop iterating $col $([char]0x2014) undefined behavior in AHK v2")
+                }
+                # Check: collection[...] := (use codePart for string-intact matching)
+                if ($codePart -match "(?<![.\w])${colEsc}\s*\[.*\]\s*:=") {
+                    [void]$mimIssues.Add("${relPath}:$($i+1): $col[key]:= inside for-loop iterating $col $([char]0x2014) undefined behavior in AHK v2")
+                }
+            }
+        }
+    }
+}
+
+if ($mimIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($mimIssues.Count) map/array modification(s) during iteration.")
+    [void]$failOutput.AppendLine("  AHK v2 does not throw on concurrent modification $([char]0x2014) it silently misbehaves.")
+    [void]$failOutput.AppendLine("  Fix: collect into a temporary array first, then modify the original.")
+    [void]$failOutput.AppendLine("  Suppress: ; lint-ignore: map-iteration-mutation")
+    foreach ($issue in $mimIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_map_iteration_mutation"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1997,7 +2103,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

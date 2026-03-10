@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks (batch A)
 # Checks that require shared preprocessing data ($sharedFuncDefs, $sharedLineData, $sharedSetCallbacksDefs).
-# Sub-checks: guard_try_finally, critical_leaks, critical_sections, callback_signatures, producer_error_boundary, callback_invocation_arity, paint_resize_ordering
+# Sub-checks: guard_try_finally, critical_leaks, critical_sections, callback_signatures, producer_error_boundary, callback_invocation_arity, paint_resize_ordering, profiler_balance
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1413,6 +1413,148 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_paint_resize_ordering"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 8: profiler_balance
+# Detects Profiler.Enter() without matching Profiler.Leave() before
+# return statements. Missing Leave corrupts the profiler stack —
+# all subsequent measurements are misattributed.
+# Suppress: ; lint-ignore: profiler-balance
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$pbIssues = [System.Collections.ArrayList]::new()
+
+# Pre-filter: only files containing Profiler.Enter(
+$profilerFiles = [System.Collections.ArrayList]::new()
+foreach ($f in $allFiles) {
+    if ($fileCacheText[$f.FullName].IndexOf('Profiler.Enter(') -ge 0) {
+        [void]$profilerFiles.Add($f)
+    }
+}
+
+# Pre-compiled regex for profiler calls
+$script:RX_PROF_ENTER  = [regex]::new('Profiler\.Enter\(', 'Compiled')
+$script:RX_PROF_LEAVE  = [regex]::new('Profiler\.Leave\(\)', 'Compiled')
+
+foreach ($file in $profilerFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $funcName = ""
+    $funcStartLine = 0
+    $hasEnter = $false
+    $enterLine = -1
+    # Collect return line indices and the function closing-brace line
+    $returnLines = [System.Collections.ArrayList]::new()
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+
+        $cleaned = BC_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            $fname = $Matches[1]
+            if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
+                $inFunc = $true
+                $funcName = $fname
+                $funcDepth = $depth
+                $funcStartLine = $i
+                $hasEnter = $false
+                $enterLine = -1
+                [void]$returnLines.Clear()
+            }
+        }
+
+        $braces = BC_CountBraces $cleaned
+        $depth += $braces[0] - $braces[1]
+
+        if ($inFunc) {
+            if (-not $hasEnter -and $script:RX_PROF_ENTER.IsMatch($trimmed)) {
+                $hasEnter = $true
+                $enterLine = $i
+            }
+            if ($cleaned -match '(?i)^\s*return\b') { [void]$returnLines.Add($i) }
+
+            # Function end: closing brace at or below function depth
+            if ($depth -le $funcDepth) {
+                $funcEndLine = $i
+                $inFunc = $false
+                $funcDepth = -1
+
+                if ($hasEnter) {
+                    # Check each explicit return AFTER the Enter:
+                    # Profiler.Leave() must appear within the preceding
+                    # 5 non-blank/non-comment lines
+                    foreach ($retLine in $returnLines) {
+                        # Skip returns before the Enter (no Leave needed)
+                        if ($retLine -le $enterLine) { continue }
+                        if ($lines[$retLine] -match 'lint-ignore:\s*profiler-balance') { continue }
+                        $foundLeave = $false
+                        $lookback = 0
+                        for ($j = $retLine - 1; $j -ge $funcStartLine -and $lookback -lt 5; $j--) {
+                            $prev = $lines[$j].TrimStart()
+                            if ($prev.Length -eq 0 -or $prev[0] -eq ';') { continue }
+                            $lookback++
+                            if ($script:RX_PROF_LEAVE.IsMatch($prev)) { $foundLeave = $true; break }
+                        }
+                        if (-not $foundLeave) {
+                            [void]$pbIssues.Add([PSCustomObject]@{
+                                File = $relPath; Line = $retLine + 1; Function = $funcName
+                                Detail = "return without preceding Profiler.Leave()"
+                            })
+                        }
+                    }
+
+                    # Check implicit return (function closing brace):
+                    # Profiler.Leave(), return, or throw must appear within
+                    # the preceding 15 non-blank/non-comment lines
+                    if ($lines[$funcEndLine] -notmatch 'lint-ignore:\s*profiler-balance') {
+                        $foundLeave = $false
+                        $lookback = 0
+                        for ($j = $funcEndLine - 1; $j -ge $funcStartLine -and $lookback -lt 15; $j--) {
+                            $prev = $lines[$j].TrimStart()
+                            if ($prev.Length -eq 0 -or $prev[0] -eq ';') { continue }
+                            $lookback++
+                            if ($script:RX_PROF_LEAVE.IsMatch($prev)) { $foundLeave = $true; break }
+                            # return/throw = no implicit return reachable
+                            if ($prev -match '(?i)^\s*(?:return|throw)\b') { $foundLeave = $true; break }
+                        }
+                        if (-not $foundLeave) {
+                            [void]$pbIssues.Add([PSCustomObject]@{
+                                File = $relPath; Line = $funcEndLine + 1; Function = $funcName
+                                Detail = "implicit return (end of function) without preceding Profiler.Leave()"
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+if ($pbIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($pbIssues.Count) Profiler.Enter/Leave imbalance(s) found.")
+    [void]$failOutput.AppendLine("  Missing Profiler.Leave() before return corrupts the profiler stack $([char]0x2014)")
+    [void]$failOutput.AppendLine("  all subsequent measurements are misattributed.")
+    [void]$failOutput.AppendLine("  Suppress: ; lint-ignore: profiler-balance")
+    $grouped = $pbIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line) in $($issue.Function)(): $($issue.Detail)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_profiler_balance"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1420,7 +1562,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (callback_signatures, critical_leaks, critical_sections, producer_error_boundary, callback_invocation_arity, guard_try_finally, paint_resize_ordering)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (callback_signatures, critical_leaks, critical_sections, producer_error_boundary, callback_invocation_arity, guard_try_finally, paint_resize_ordering, profiler_balance)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
