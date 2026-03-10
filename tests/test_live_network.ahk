@@ -168,7 +168,7 @@ RunLiveTests_Network() {
                         if (win is Map && win.Has("hwnd")) {
                             directHwnds++
                             if (!firstTestHwnd)
-                                firstTestHwnd := KSafe_Int(win, "hwnd")
+                                firstTestHwnd := _KSafe_Int(win, "hwnd")
                         }
                     }
                 }
@@ -196,7 +196,7 @@ RunLiveTests_Network() {
         for _, wsObj in KSub_GetWorkspacesArray(monObj) {
             if !(wsObj is Map)
                 continue
-            wsName := KSafe_Str(wsObj, "name")
+            wsName := _KSafe_Str(wsObj, "name")
             if (wsName = "" && wsObj.Has("containers")) {
                 ; Fallback to workspace index
                 wsName := "ws-" A_Index
@@ -209,7 +209,7 @@ RunLiveTests_Network() {
                 for _, win in KSafe_Elements(cont["windows"]) {
                     if !(win is Map) || !win.Has("hwnd")
                         continue
-                    hwnd := KSafe_Int(win, "hwnd")
+                    hwnd := _KSafe_Int(win, "hwnd")
                     if (hwnd > 0) {
                         WL_UpdateFields(hwnd, {workspaceName: wsName}, "ksub_test")
                         enrichedCount++

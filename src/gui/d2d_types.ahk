@@ -30,7 +30,7 @@ D2D_RectF(left, top, right, bottom) { ; lint-ignore: dead-function
 ; ========================= D2D1_ROUNDED_RECT (24 bytes) =========================
 ; Layout: { D2D1_RECT_F rect (16), float radiusX, float radiusY }
 
-D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: dead-function
+_D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: dead-function
     if !IsSet(radiusY)
         radiusY := radiusX
     buf := Buffer(24)
@@ -43,7 +43,7 @@ D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: de
 ; ========================= D2D1_ELLIPSE (16 bytes) =========================
 ; Layout: { D2D1_POINT_2F center (8), float radiusX, float radiusY }
 
-D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function
+_D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function
     buf := Buffer(16)
     NumPut("float", Float(cx), "float", Float(cy),
            "float", Float(rx), "float", Float(ry), buf)
@@ -53,7 +53,7 @@ D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function
 ; ========================= D2D1_POINT_2F as int64 (8 bytes) =========================
 ; Pack two floats for by-value passing in x64 ComCall/DllCall
 
-D2D_Point2F(x, y) { ; lint-ignore: dead-function
+_D2D_Point2F(x, y) { ; lint-ignore: dead-function
     static buf := Buffer(8)
     NumPut("float", Float(x), "float", Float(y), buf)
     return NumGet(buf, "int64")
@@ -71,7 +71,7 @@ D2D_SizeU(w, h) { ; lint-ignore: dead-function
 ; ========================= D2D1_SIZE_F (8 bytes) =========================
 ; Layout: { float width, float height }
 
-D2D_SizeF(w, h) { ; lint-ignore: dead-function
+_D2D_SizeF(w, h) { ; lint-ignore: dead-function
     buf := Buffer(8)
     NumPut("float", Float(w), "float", Float(h), buf)
     return buf
@@ -114,7 +114,7 @@ global DWM_TNP_OPACITY         := 0x04
 global DWM_TNP_VISIBLE         := 0x08
 global DWM_TNP_SOURCECLIENTAREAONLY := 0x10
 
-DWM_ThumbnailProps(destL, destT, destR, destB, visible := true, opacity := 255, clientOnly := true) { ; lint-ignore: dead-function
+_DWM_ThumbnailProps(destL, destT, destR, destB, visible := true, opacity := 255, clientOnly := true) { ; lint-ignore: dead-function
     global DWM_TNP_RECTDESTINATION, DWM_TNP_VISIBLE, DWM_TNP_OPACITY, DWM_TNP_SOURCECLIENTAREAONLY
     ; Layout: { DWORD flags (4), RECT dest (16), RECT source (16),
     ;           BYTE opacity (1+3 pad), BOOL visible (4), BOOL srcClientOnly (4) }
@@ -136,7 +136,7 @@ DWM_ThumbnailProps(destL, destT, destR, destB, visible := true, opacity := 255, 
 ; ========================= D2D1_ARC_SEGMENT (28 bytes) =========================
 ; Used with path geometry for per-corner rounded rects
 
-D2D_ArcSegment(endX, endY, rx, ry, rotation := 0.0, sweepDir := 1, arcSize := 0) {
+_D2D_ArcSegment(endX, endY, rx, ry, rotation := 0.0, sweepDir := 1, arcSize := 0) {
     buf := Buffer(28, 0)
     NumPut("float", Float(endX), "float", Float(endY), buf, 0)
     NumPut("float", Float(rx), "float", Float(ry), buf, 8)
@@ -175,7 +175,7 @@ D2D_SwapChainDesc1(w, h, format, bufferCount, swapEffect, alphaMode, flags := 0)
 ;            D2D1_BITMAP_OPTIONS options, ID2D1ColorContext* colorContext }
 ; Size: 24 bytes (on x64: 20 + 4 pad = 24 with ptr alignment)
 
-D2D_BitmapProps1(options, dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) {
+_D2D_BitmapProps1(options, dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) {
     ; format 87 = DXGI_FORMAT_B8G8R8A8_UNORM
     ; alphaMode 1 = D2D1_ALPHA_MODE_PREMULTIPLIED
     buf := Buffer(A_PtrSize = 8 ? 32 : 24, 0)
@@ -385,7 +385,7 @@ D2D_ColorMatrix_Identity() {
 
 ; Build a tint matrix: multiplies RGB by tint color, preserves alpha.
 ; tintR/G/B in 0.0-1.0 range.
-D2D_ColorMatrix_Tint(tintR, tintG, tintB) {
+_D2D_ColorMatrix_Tint(tintR, tintG, tintB) {
     m := Buffer(80, 0)
     NumPut("float", Float(tintR), m, 0)   ; R scale
     NumPut("float", Float(tintG), m, 20)  ; G scale
