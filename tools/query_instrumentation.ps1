@@ -58,18 +58,28 @@ foreach ($dir in $scopeDirs) {
             # Function definition at file scope
             if (-not $inFunc -and $depthBefore -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
                 $fname = $Matches[1]
-                if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
-                    $isPrivate = $fname.StartsWith('_')
-                    $currentFunc = [PSCustomObject]@{
-                        Name = $fname
-                        File = $relPath
-                        Dir = $dir
-                        Line = ($i + 1)
-                        Private = $isPrivate
-                        Instrumented = $false
+                if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
+                        }
                     }
-                    $inFunc = $true
-                    $funcDepth = $depthBefore
+                    if ($hasBody) {
+                        $isPrivate = $fname.StartsWith('_')
+                        $currentFunc = [PSCustomObject]@{
+                            Name = $fname
+                            File = $relPath
+                            Dir = $dir
+                            Line = ($i + 1)
+                            Private = $isPrivate
+                            Instrumented = $false
+                        }
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depthBefore } else { -2 }
+                    }
                 }
             }
 
@@ -80,6 +90,7 @@ foreach ($dir in $scopeDirs) {
                 }
             }
 
+            if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
             $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
             if ($depth -lt 0) { $depth = 0 }
 

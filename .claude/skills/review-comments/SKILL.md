@@ -16,7 +16,7 @@ Grep all `.ahk` files in `src/` for comments (lines containing `;` after code, o
 
 ### What to cross-reference
 
-- **Function names** — comment says "calls _FooBar()" or "see _FooBar" — does `_FooBar` still exist? Use `query_function_visibility.ps1` to check.
+- **Function names** — comment says "calls _FooBar()" or "see _FooBar" — does `_FooBar` still exist? Use `query_function_visibility.ps1` to check. Use `query_impact.ps1` to validate comment references to affected functions.
 - **Global variable names** — comment references `gSomeGlobal` — does it still exist? Use `query_global_ownership.ps1` to check.
 - **File names** — comment says "see gui_store.ahk" or "defined in old_file.ahk" — does that file still exist? Use glob to check.
 - **Config keys** — comment references a config key name — does it still exist in the registry? Use `query_config.ps1` to check.

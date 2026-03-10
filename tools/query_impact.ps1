@@ -112,24 +112,34 @@ foreach ($file in $srcFiles) {
             if ($m.Success) {
                 $fname = $m.Groups[1].Value
                 $fkey = $fname.ToLower()
-                if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
-                    $inFunc = $true
-                    $funcDepth = $depth
-
-                    if (-not $funcRegistry.ContainsKey($fkey)) {
-                        $funcRegistry[$fkey] = @{
-                            Name    = $fname
-                            File    = $file.FullName
-                            RelPath = $relPath
-                            Line    = ($i + 1)
+                if (-not $AHK_KEYWORDS_SET.Contains($fkey)) {
+                    $hasBody = $cleaned.Contains('{')
+                    if (-not $hasBody) {
+                        for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                            $peek = $lines[$la].Trim()
+                            if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                            if ($peek.Contains('{')) { $hasBody = $true; break }
                         }
                     }
+                    if ($hasBody) {
+                        $inFunc = $true
+                        $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
 
-                    # If this is our target function, start capturing body
-                    if ($fkey -eq $FuncName.ToLower() -and -not $funcDef) {
-                        $funcDef = $funcRegistry[$fkey]
-                        $funcFile = $file.FullName
-                        $funcBodyStartIdx = $i
+                        if (-not $funcRegistry.ContainsKey($fkey)) {
+                            $funcRegistry[$fkey] = @{
+                                Name    = $fname
+                                File    = $file.FullName
+                                RelPath = $relPath
+                                Line    = ($i + 1)
+                            }
+                        }
+
+                        # If this is our target function, start capturing body
+                        if ($fkey -eq $FuncName.ToLower() -and -not $funcDef) {
+                            $funcDef = $funcRegistry[$fkey]
+                            $funcFile = $file.FullName
+                            $funcBodyStartIdx = $i
+                        }
                     }
                 }
             }
@@ -137,6 +147,7 @@ foreach ($file in $srcFiles) {
 
         $braceOpen = $cleaned.Length - $cleaned.Replace('{','').Length
         $braceClose = $cleaned.Length - $cleaned.Replace('}','').Length
+        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
         $depth += $braceOpen - $braceClose
         if ($depth -lt 0) { $depth = 0 }
 
@@ -327,15 +338,26 @@ foreach ($gw in $globalsWritten) {
                 $fm = $script:_rxFuncDef.Match($cleaned)
                 if ($fm.Success) {
                     $fn = $fm.Groups[1].Value
-                    if (-not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
-                        $inFunc = $true
-                        $funcDepth = $depth
-                        $curFunc = $fn
-                        $curFuncDeclaresGlobal = $false
+                    if (-not $AHK_KEYWORDS_SET.Contains($fn)) {
+                        $hasBody = $cleaned.Contains('{')
+                        if (-not $hasBody) {
+                            for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                                $peek = $lines[$la].Trim()
+                                if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                                if ($peek.Contains('{')) { $hasBody = $true; break }
+                            }
+                        }
+                        if ($hasBody) {
+                            $inFunc = $true
+                            $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                            $curFunc = $fn
+                            $curFuncDeclaresGlobal = $false
+                        }
                     }
                 }
             }
 
+            if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
             $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
             if ($depth -lt 0) { $depth = 0 }
 

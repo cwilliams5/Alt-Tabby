@@ -87,11 +87,10 @@ function Build-FuncBoundaryMap {
             if ($script:AHK_KEYWORDS_SET.Contains($candidate)) { continue }
             $hasBody = $Lines[$j].Contains('{')
             if (-not $hasBody) {
-                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $Lines.Count); $k++) {
+                for ($k = $j + 1; $k -lt [Math]::Min($j + 10, $Lines.Count); $k++) {
                     $next = $Lines[$k].Trim()
-                    if ($next -eq '') { continue }
-                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                    break
+                    if ($next -eq '' -or $next.StartsWith(';')) { continue }
+                    if ($next.Contains('{')) { $hasBody = $true; break }
                 }
             }
             if ($hasBody) { [void]$bounds.Add(@{ Name = $candidate; Line = $j }) }
