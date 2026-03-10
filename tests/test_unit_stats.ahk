@@ -296,6 +296,52 @@ RunUnitTests_Stats() {
     try FileDelete(testStatsBak)
 
     ; ============================================================
+    ; Corrupted INI Recovery Tests
+    ; ============================================================
+    Log("`n--- Stats Corrupted INI Recovery Tests ---")
+
+    ; Test: Non-numeric values in stats.ini default to 0 instead of crashing
+    Log("Testing corrupted INI: non-numeric values handled gracefully...")
+    try {
+        cfg.StatsTrackingEnabled := true
+        STATS_INI_PATH := testStatsPath
+        try FileDelete(testStatsPath)
+        try FileDelete(testStatsBak)
+
+        ; Write a mix of corrupted and valid values
+        IniWrite("abc", testStatsPath, "Lifetime", "TotalAltTabs")  ; Non-numeric
+        IniWrite("42", testStatsPath, "Lifetime", "TotalQuickSwitches")  ; Valid
+        IniWrite("", testStatsPath, "Lifetime", "TotalTabSteps")  ; Empty string
+        IniWrite("-5", testStatsPath, "Lifetime", "PeakWindowsInSession")  ; Negative (valid integer)
+        IniWrite("2", testStatsPath, "Lifetime", "TotalSessions")  ; Valid
+        IniWrite("complete", testStatsPath, "Lifetime", "_FlushStatus")
+
+        gStats_Lifetime := Map()
+        gStats_Session := Map()
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["peakWindows"] := 0
+        Stats_Init()
+
+        ; Non-numeric "abc" should default to 0 (Integer() throws, catch sets val=0)
+        AssertEq(gStats_Lifetime.Get("TotalAltTabs", -1), 0, "Corrupted INI: 'abc' defaults to 0")
+        ; Valid value loads normally
+        AssertEq(gStats_Lifetime.Get("TotalQuickSwitches", -1), 42, "Corrupted INI: valid '42' loads")
+        ; Empty string should default to 0 (Integer("") throws)
+        AssertEq(gStats_Lifetime.Get("TotalTabSteps", -1), 0, "Corrupted INI: empty string defaults to 0")
+        ; Negative integer is valid (Integer("-5") = -5)
+        AssertEq(gStats_Lifetime.Get("PeakWindowsInSession", -1), -5, "Corrupted INI: negative '-5' loads as -5")
+        ; TotalSessions incremented by 1 on init (2+1=3)
+        AssertEq(gStats_Lifetime.Get("TotalSessions", -1), 3, "Corrupted INI: TotalSessions=2+1=3")
+        Log("PASS: Corrupted INI values handled gracefully")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: Corrupted INI recovery crashed: " e.Message)
+        TestErrors++
+    }
+    try FileDelete(testStatsPath)
+    try FileDelete(testStatsBak)
+
+    ; ============================================================
     ; Dirty Flag & State Gate Tests
     ; ============================================================
     Log("`n--- Stats Dirty Flag & State Gate Tests ---")
