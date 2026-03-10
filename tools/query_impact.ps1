@@ -53,6 +53,12 @@ $funcFile = $null
 $funcRegistry = @{}
 $globalDecl = @{}
 $fileCache = @{}
+# cleanedCache: filePath -> string[] (cleaned lines, parallel to fileCache)
+$cleanedCache = @{}
+# fileCacheText: filePath -> raw text (avoids re-reading in Steps 2/4/5)
+$fileCacheText = @{}
+# boundaryCache: filePath -> boundary map (avoids re-building in Steps 4/5)
+$boundaryCache = @{}
 
 $MUTATING_METHODS = 'Push|Pop|Delete|InsertAt|RemoveAt|Set|Clear'
 
@@ -60,14 +66,23 @@ foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $lines = Split-Lines $text
     $fileCache[$file.FullName] = $lines
+    $fileCacheText[$file.FullName] = $text
     $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Pre-clean all lines and cache for later step reuse
+    $lineCount = $lines.Count
+    $cleaned_arr = [string[]]::new($lineCount)
+    for ($ci = 0; $ci -lt $lineCount; $ci++) {
+        $cleaned_arr[$ci] = Clean-Line $lines[$ci]
+    }
+    $cleanedCache[$file.FullName] = $cleaned_arr
 
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         # Collect file-scope globals
@@ -186,18 +201,20 @@ $escaped = [regex]::Escape($funcDef.Name)
 $rxRef = [regex]::new("(?<![.\w])$escaped(?=\s*[\(,\)\s\.\[]|`$)", 'Compiled, IgnoreCase')
 
 foreach ($file in $srcFiles) {
-    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $text = $fileCacheText[$file.FullName]
     if ($text.IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
     $lines = $fileCache[$file.FullName]
+    $cleaned_arr = $cleanedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $bounds = Build-FuncBoundaryMap $lines
+    $boundaryCache[$file.FullName] = $bounds
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         # Skip the definition line itself
         if ($file.FullName -eq $funcDef.File -and ($i + 1) -eq $funcDef.Line) { continue }
 
-        $cleaned = Clean-Line $lines[$i]
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         if ($rxRef.IsMatch($cleaned)) {
@@ -282,12 +299,18 @@ foreach ($gw in $globalsWritten) {
         [System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($file in $srcFiles) {
-        $text = [System.IO.File]::ReadAllText($file.FullName)
+        $text = $fileCacheText[$file.FullName]
         if ($text.IndexOf($gName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
         $lines = $fileCache[$file.FullName]
+        $cleaned_arr = $cleanedCache[$file.FullName]
         $relPath = $file.FullName.Replace("$projectRoot\", '')
-        $bounds = Build-FuncBoundaryMap $lines
+        if ($boundaryCache.ContainsKey($file.FullName)) {
+            $bounds = $boundaryCache[$file.FullName]
+        } else {
+            $bounds = Build-FuncBoundaryMap $lines
+            $boundaryCache[$file.FullName] = $bounds
+        }
 
         # Check if any function in this file declares global <gName>
         $inFunc = $false
@@ -297,7 +320,7 @@ foreach ($gw in $globalsWritten) {
         $depth = 0
 
         for ($i = 0; $i -lt $lines.Count; $i++) {
-            $cleaned = Clean-Line $lines[$i]
+            $cleaned = $cleaned_arr[$i]
             if ($cleaned -eq '') { continue }
 
             if (-not $inFunc) {
@@ -373,17 +396,23 @@ if ($Deep -and $callers.Count -gt 0) {
         $rxCallerRef = [regex]::new("(?<![.\w])$escapedCaller(?=\s*[\(,\)\s\.\[]|`$)", 'IgnoreCase')
 
         foreach ($file in $srcFiles) {
-            $text = [System.IO.File]::ReadAllText($file.FullName)
+            $text = $fileCacheText[$file.FullName]
             if ($text.IndexOf($callerDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
             $lines = $fileCache[$file.FullName]
+            $cleaned_arr = $cleanedCache[$file.FullName]
             $relPath = $file.FullName.Replace("$projectRoot\", '')
-            $bounds = Build-FuncBoundaryMap $lines
+            if ($boundaryCache.ContainsKey($file.FullName)) {
+                $bounds = $boundaryCache[$file.FullName]
+            } else {
+                $bounds = Build-FuncBoundaryMap $lines
+                $boundaryCache[$file.FullName] = $bounds
+            }
 
             for ($i = 0; $i -lt $lines.Count; $i++) {
                 if ($file.FullName -eq $callerDef.File -and ($i + 1) -eq $callerDef.Line) { continue }
 
-                $cleaned = Clean-Line $lines[$i]
+                $cleaned = $cleaned_arr[$i]
                 if ($cleaned -eq '') { continue }
 
                 if ($rxCallerRef.IsMatch($cleaned)) {
