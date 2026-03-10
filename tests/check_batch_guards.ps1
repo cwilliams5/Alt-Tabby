@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally, paint_resize_ordering
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -2350,6 +2350,96 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_guard_try_finally"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 16: paint_resize_ordering
+# Verifies GUI_Repaint's bidirectional resize ordering invariant:
+#   shrink SetWindowPos BEFORE D2D_Present, grow SetWindowPos AFTER.
+# Breaking this ordering causes visible BG image flash on grow resize.
+# See: #221, #234, #177
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$paintFile = $allFiles | Where-Object { $_.Name -eq 'gui_paint.ahk' } | Select-Object -First 1
+if ($paintFile) {
+    $paintLines = $fileCache[$paintFile.FullName]
+    # Find GUI_Repaint function boundaries
+    $inFunc = $false; $braceDepth = 0
+    $funcStart = -1; $funcEnd = -1
+    for ($i = 0; $i -lt $paintLines.Count; $i++) {
+        $ln = $paintLines[$i]
+        if (-not $inFunc -and $ln -match '^\s*GUI_Repaint\s*\(') {
+            $inFunc = $true; $funcStart = $i; $braceDepth = 0
+        }
+        if ($inFunc) {
+            foreach ($ch in $ln.ToCharArray()) {
+                if ($ch -eq '{') { $braceDepth++ }
+                elseif ($ch -eq '}') { $braceDepth--; if ($braceDepth -le 0 -and $funcStart -ne $i) { $funcEnd = $i; break } }
+            }
+            if ($funcEnd -ge 0) { break }
+        }
+    }
+
+    $proIssues = [System.Collections.ArrayList]::new()
+    if ($funcStart -lt 0) {
+        [void]$proIssues.Add("GUI_Repaint function not found in gui_paint.ahk")
+    } else {
+        # Collect line offsets of key calls within GUI_Repaint
+        $isGrowingLine = -1
+        $setPos1 = -1; $setPos2 = -1
+        $presentLine = -1; $dwmFlushLine = -1
+        for ($i = $funcStart; $i -le $funcEnd; $i++) {
+            $ln = $paintLines[$i]
+            if ($ln -match '^\s*;') { continue }
+            if ($ln -match 'isGrowing\s*:=' -and $isGrowingLine -lt 0) { $isGrowingLine = $i }
+            if ($ln -match 'Win_SetPosPhys\s*\(') {
+                if ($setPos1 -lt 0) { $setPos1 = $i } else { $setPos2 = $i }
+            }
+            if ($ln -match 'D2D_Present\s*\(') { $presentLine = $i }
+            if ($ln -match 'Win_DwmFlush\s*\(') { $dwmFlushLine = $i }
+        }
+
+        $ref = "See: https://github.com/cwilliams5/Alt-Tabby/issues/221"
+        if ($isGrowingLine -lt 0) {
+            [void]$proIssues.Add("isGrowing := not found in GUI_Repaint $([char]0x2014) bidirectional resize logic missing. $ref")
+        }
+        if ($setPos1 -lt 0 -or $setPos2 -lt 0) {
+            [void]$proIssues.Add("Expected 2 Win_SetPosPhys calls in GUI_Repaint (shrink + grow), found $(if ($setPos1 -lt 0) { 0 } elseif ($setPos2 -lt 0) { 1 } else { 2 }). $ref")
+        }
+        if ($presentLine -lt 0) {
+            [void]$proIssues.Add("D2D_Present not found in GUI_Repaint. $ref")
+        }
+        if ($proIssues.Count -eq 0) {
+            # Verify ordering: shrinkSetPos < Present < DwmFlush < growSetPos
+            if ($setPos1 -ge $presentLine) {
+                [void]$proIssues.Add("Shrink Win_SetPosPhys (line $($setPos1+1)) must be BEFORE D2D_Present (line $($presentLine+1)). $ref")
+            }
+            if ($setPos2 -le $presentLine) {
+                [void]$proIssues.Add("Grow Win_SetPosPhys (line $($setPos2+1)) must be AFTER D2D_Present (line $($presentLine+1)). $ref")
+            }
+            if ($dwmFlushLine -lt 0) {
+                [void]$proIssues.Add("Win_DwmFlush not found before grow Win_SetPosPhys $([char]0x2014) required to prevent stale-content flash. $ref")
+            } elseif ($dwmFlushLine -le $presentLine -or $dwmFlushLine -ge $setPos2) {
+                [void]$proIssues.Add("Win_DwmFlush (line $($dwmFlushLine+1)) must be between D2D_Present (line $($presentLine+1)) and grow Win_SetPosPhys (line $($setPos2+1)). $ref")
+            }
+        }
+    }
+
+    if ($proIssues.Count -gt 0) {
+        $anyFailed = $true
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("  FAIL: GUI_Repaint bidirectional resize ordering violated.")
+        [void]$failOutput.AppendLine("  The HWND must be $([char]0x2264) content size during SetWindowPos STA pump:")
+        [void]$failOutput.AppendLine("    Shrink: Win_SetPosPhys BEFORE D2D_Present")
+        [void]$failOutput.AppendLine("    Grow:   D2D_Present $([char]0x2192) Win_DwmFlush $([char]0x2192) Win_SetPosPhys")
+        [void]$failOutput.AppendLine("  DO NOT unify both directions to the same ordering (#221, #234).")
+        foreach ($issue in $proIssues) {
+            [void]$failOutput.AppendLine("    $([char]0x2022) $issue")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_paint_resize_ordering"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2357,7 +2447,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally, paint_resize_ordering)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
