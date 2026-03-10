@@ -39,7 +39,7 @@ global gFX_MousePrevValid := false   ; False until first valid sample
 ; Returns true on success, false if effects unavailable.
 FX_GPU_Init() {
     global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, cfg
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect, gShader_Registry
     global gFX_SoftRectFlood, gFX_SoftRectCrop, gFX_SoftRectBlur, gFX_SoftRectBlurOut
     global gFX_SoftRect2Flood, gFX_SoftRect2Crop, gFX_SoftRect2Blur, gFX_SoftRect2BlurOut
     global SHADER_KEYS ; lint-ignore: phantom-global
