@@ -15,12 +15,13 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 i = p;
     float c = 1.0;
     float inten = 0.005;
+    float2 pInten = p * inten;
 
     for (int n = 0; n < MAX_ITER; n++)
     {
         float t = stime * (1.0 - (3.5 / float(n + 1)));
         i = p + float2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
-        float2 cv = float2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten));
+        float2 cv = pInten / float2(sin(i.x + t), cos(i.y + t));
         c += rsqrt(dot(cv, cv));
     }
     c /= float(MAX_ITER);

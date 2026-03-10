@@ -8,9 +8,10 @@ float noise(float2 p) {
 
 float worley(float2 p) {
     float d = 1e30;
+    float2 fp = floor(p);
     for (int xo = -1; xo <= 1; ++xo) {
         for (int yo = -1; yo <= 1; ++yo) {
-            float2 tp = floor(p) + float2(xo, yo);
+            float2 tp = fp + float2(xo, yo);
             d = min(d, length2(p - tp - noise(tp)));
         }
     }

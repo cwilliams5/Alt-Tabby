@@ -30,13 +30,14 @@ float tex(float2 p, float z) {
     p = foldRotate(p, 8.0);
     float2 q = (frac(p / 10.0) - 0.5) * 10.0;
     static const float2x2 rotPIover4 = float2x2(0.7071068, 0.7071068, -0.7071068, 0.7071068);
+    float2x2 rotZ = rot(PI * 0.25 * z);
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 2; j++) {
             q = abs(q) - 0.25;
             q = mul(rotPIover4, q);
         }
         q = abs(q) - float2(1.0, 1.5);
-        q = mul(rot(PI * 0.25 * z), q);
+        q = mul(rotZ, q);
         q = foldRotate(q, 3.0);
     }
     float d = sdRect(q, float2(1.0, 1.0));
@@ -80,21 +81,30 @@ float4 PSMain(PSInput input) : SV_Target {
     #define INTERVAL 3.0
     #define INTENSITY (float3)((NN * INTERVAL - t) / (NN * INTERVAL))
 
+    // Precompute loop-invariant glsl_mod values and time-scaled vectors
+    float mod1 = glsl_mod(time - INTERVAL * 0.75, INTERVAL);
+    float mod2 = glsl_mod(time + INTERVAL * 0.5, INTERVAL);
+    float mod3 = glsl_mod(time - INTERVAL * 0.25, INTERVAL);
+    float mod4 = glsl_mod(time, INTERVAL);
+    float2 drift1 = float2(0.2, -0.2) * time;
+    float2 drift2 = float2(-0.2, -0.2) * time;
+    float modRing = glsl_mod(time * 30.0, 90.0);
+
     for (int i = 0; i < N; i++) {
         float t;
         float ii = float(N - i);
-        t = ii * INTERVAL - glsl_mod(time - INTERVAL * 0.75, INTERVAL);
-        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + float2(0.2, -0.2) * time, 1.2), 3.5));
+        t = ii * INTERVAL - mod1;
+        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + drift1, 1.2), 3.5));
 
-        t = ii * INTERVAL - glsl_mod(time + INTERVAL * 0.5, INTERVAL);
+        t = ii * INTERVAL - mod2;
         col = lerp(col, INTENSITY * float3(0.7, 0.8, 1.0) * 1.3, tex(uv * max(0.0, t), 4.45));
 
-        t = ii * INTERVAL - glsl_mod(time - INTERVAL * 0.25, INTERVAL);
-        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + float2(-0.2, -0.2) * time, 1.2), 3.5));
+        t = ii * INTERVAL - mod3;
+        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + drift2, 1.2), 3.5));
 
-        t = ii * INTERVAL - glsl_mod(time, INTERVAL);
+        t = ii * INTERVAL - mod4;
         float r = length(uv * 2.0 * max(0.0, t));
-        float rr = sm(-24.0, 0.0, r - glsl_mod(time * 30.0, 90.0), 10.0);
+        float rr = sm(-24.0, 0.0, r - modRing, 10.0);
         col = lerp(col, lerp(INTENSITY, INTENSITY * float3(0.7, 0.5, 1.0) * 3.0, rr), tex(uv * 2.0 * max(0.0, t), 0.27 + 2.0 * rr));
     }
 

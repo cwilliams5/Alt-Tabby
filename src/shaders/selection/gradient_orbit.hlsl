@@ -1,10 +1,5 @@
 // Gradient Orbit Selection — Moving gradient that smoothly rotates around the border
 
-float roundedRectSDF(float2 p, float2 center, float2 halfSize, float radius) {
-    float2 d = abs(p - center) - halfSize + radius;
-    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
-}
-
 float3 hue2rgb(float h) {
     float r = abs(h * 6.0 - 3.0) - 1.0;
     float g = 2.0 - abs(h * 6.0 - 2.0);
@@ -76,11 +71,5 @@ float4 PSMain(PSInput input) : SV_Target {
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 
-    // Post-process: darken + desaturate
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col *= (1.0 - darken);
-
-    a = saturate(a);
-    return float4(col * a, a) * opacity;
+    return AT_PostProcess(col, saturate(a));
 }

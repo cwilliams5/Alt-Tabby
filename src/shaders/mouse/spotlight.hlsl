@@ -77,7 +77,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float noisyRadius = baseRadius * (0.9 + edgeNoise * 0.2);
 
     // Main light cone
-    float light = smoothstep(noisyRadius, noisyRadius * 0.2, ellipseDist);
+    float nrInner = noisyRadius * 0.2;
+    float light = smoothstep(noisyRadius, nrInner, ellipseDist);
 
     // Penumbra: soft outer ring (the "almost lit" zone)
     float penumbra = smoothstep(noisyRadius * 1.4, noisyRadius * 0.8, ellipseDist);
@@ -94,8 +95,8 @@ float4 PSMain(PSInput input) : SV_Target {
     caustic = caustic * caustic * 0.15 * light;
 
     // Chromatic fringe at penumbra edge
-    float fringeR = smoothstep(noisyRadius * 1.08, noisyRadius * 0.2, ellipseDist);
-    float fringeB = smoothstep(noisyRadius * 0.92, noisyRadius * 0.2, ellipseDist);
+    float fringeR = smoothstep(noisyRadius * 1.08, nrInner, ellipseDist);
+    float fringeB = smoothstep(noisyRadius * 0.92, nrInner, ellipseDist);
 
     // Color: warm spotlight with natural tint
     float3 col = float3(
