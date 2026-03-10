@@ -190,7 +190,7 @@ _Viewer_CreateGui() {
     global gViewer_WSBtn, gViewer_MinBtn, gViewer_CloakBtn
     global gViewer_GuiEntry, gViewer_LVHeaderHwnd, gViewer_Columns
 
-    gViewer_Gui := Gui("+Resize +AlwaysOnTop", "WindowList Viewer")
+    gViewer_Gui := Gui("+Resize +AlwaysOnTop", "Alt-Tabby Window Viewer")
     GUI_AntiFlashPrepare(gViewer_Gui, Theme_GetBgColor())
     gViewer_Gui.SetFont("s9", "Segoe UI")
     gViewer_GuiEntry := Theme_ApplyToGui(gViewer_Gui)

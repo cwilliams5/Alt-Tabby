@@ -107,7 +107,7 @@ ShowDashboardDialog() {
 
     ; Install to Program Files (action or status label)
     if (A_IsCompiled && !IsInProgramFiles()) {
-        g_DashControls.installPFBtn := dg.AddButton("x640 y107 w115 h26", "Install to PF...")
+        g_DashControls.installPFBtn := dg.AddButton("x640 y107 w115 h26", "Install...")
         g_DashControls.installPFBtn.OnEvent("Click", (*) => Tray_InstallToProgramFiles())
         Theme_ApplyToControl(g_DashControls.installPFBtn, "Button", themeEntry)
     } else if (A_IsCompiled) {
@@ -240,7 +240,7 @@ ShowDashboardDialog() {
 
     ; GUI row (core — red when not running)
     subY += 30
-    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "gui", "GUI", g_GuiPID, true, _Dash_OnGuiBtn)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "gui", "Overlay", g_GuiPID, true, _Dash_OnGuiBtn)
 
     ; Config Editor row (optional — grey when not running)
     subY += 30
@@ -330,11 +330,11 @@ ShowDashboardDialog() {
         escalateTip := A_IsAdmin ? "Restart without administrator elevation" : "Restart with administrator elevation (UAC prompt)"
         Dash_SetTip(hTT, btnEscalate, escalateTip)
         Dash_SetTip(hTT, g_DashControls.pumpText
-            , "The Enrichment Pump resolves window icons and process`n"
-            . "names asynchronously in a subprocess via named pipe IPC")
+            , "Background process that resolves window icons`n"
+            . "and application names")
         Dash_SetTip(hTT, g_DashControls.guiText
             , "The Alt+Tab overlay — handles keyboard hooks,`n"
-            . "window selection, and rendering")
+            . "window selection, and display")
         Dash_SetTip(hTT, g_DashControls.configText
             , "Editor subprocess for modifying config.ini settings")
         Dash_SetTip(hTT, g_DashControls.blacklistText
@@ -358,8 +358,8 @@ ShowDashboardDialog() {
         guiRunning := LauncherUtils_IsRunning(g_GuiPID)
         configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
         blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-        Dash_SetTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the EnrichmentPump" : "Start the EnrichmentPump")
-        Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
+        Dash_SetTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the Enrichment Pump" : "Start the Enrichment Pump")
+        Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the overlay" : "Start the overlay")
         Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
         Dash_SetTip(hTT, g_DashControls.viewerBtn, _Dash_IsViewerOpen() ? "Close the debug viewer window" : "Open the debug viewer window")
@@ -544,9 +544,9 @@ Dash_Refresh() {
     }
 
     ; Subprocess labels + buttons
-    g_DashControls.pumpText.Value := "Pump: " (pumpRunning ? "Running (PID " g_PumpPID ")" : "Not running")
+    g_DashControls.pumpText.Value := "Enrichment Pump: " (pumpRunning ? "Running (PID " g_PumpPID ")" : "Not running")
     g_DashControls.pumpBtn.Text := pumpRunning ? "Restart" : "Launch"
-    g_DashControls.guiText.Value := "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
+    g_DashControls.guiText.Value := "Overlay: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
     g_DashControls.guiBtn.Text := guiRunning ? "Restart" : "Launch"
     g_DashControls.configText.Value := "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
     g_DashControls.configBtn.Text := configRunning ? "Restart" : "Launch"
@@ -587,7 +587,7 @@ Dash_Refresh() {
     if (g_DashControls.HasOwnProp("hTooltip") && g_DashControls.hTooltip) {
         hTT := g_DashControls.hTooltip
         _Dash_UpdateTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the Enrichment Pump" : "Start the Enrichment Pump")
-        _Dash_UpdateTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
+        _Dash_UpdateTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the overlay" : "Start the overlay")
         _Dash_UpdateTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         _Dash_UpdateTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
         _Dash_UpdateTip(hTT, g_DashControls.viewerBtn, viewerOpen ? "Close the debug viewer window" : "Open the debug viewer window")
@@ -738,7 +738,7 @@ _Dash_IsViewerOpen() {
     if (!LauncherUtils_IsRunning(g_GuiPID))
         return false
     DetectHiddenWindows(false)
-    result := WinExist("WindowList Viewer ahk_pid " g_GuiPID) ? true : false
+    result := WinExist("Alt-Tabby Window Viewer ahk_pid " g_GuiPID) ? true : false
     DetectHiddenWindows(true)
     return result
 }
