@@ -1084,6 +1084,8 @@ _KSub_OnNotification(jsonLine) {
             global _KSub_LastWorkspaceName
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
+            ; Track whether to fire WL_SetCurrentWorkspace after Critical release
+            switchWsNow := false
             if (wsName != _KSub_LastWorkspaceName) {
                 if (logEnabled) {
                     KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
@@ -1093,12 +1095,8 @@ _KSub_OnNotification(jsonLine) {
 
                 isMoveEvent := (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS)
                 if (!isMoveEvent) {
-                    ; SWITCH events: fire WL_SetCurrentWorkspace IMMEDIATELY.
-                    ; GUI re-filters frozen items (which have correct workspaceNames
-                    ; for pure switches) and repaints before ProcessFullState blocks
-                    ; the thread. Matches old BroadcastWorkspaceFlips pattern — the
-                    ; GUI had all the data it needed, just needed to know which WS.
-                    try WL_SetCurrentWorkspace("", wsName)
+                    ; SWITCH events: deferred to after Critical release below.
+                    switchWsNow := true
                 } else {
                     ; MOVE events: defer until AFTER ProcessFullState + post-fix
                     ; so the moved window's workspace data is correct when the
@@ -1132,6 +1130,14 @@ _KSub_OnNotification(jsonLine) {
             ; GUI notification is now handled inside WL_SetCurrentWorkspace itself.
             handledWorkspaceEvent := true
             Critical "Off"
+
+            ; NARROWED: WL_SetCurrentWorkspace has its own internal Critical
+            ; (window_list.ahk:787). Moving it outside saves the store iteration
+            ; + GUI callback time (~50-200μs) from the Critical hold duration.
+            ; GUI re-filters frozen items and repaints before ProcessFullState
+            ; blocks the thread.
+            if (switchWsNow)
+                try WL_SetCurrentWorkspace("", wsName)
         }
     }
 
@@ -1223,8 +1229,10 @@ _KSub_ScheduleCloakPush() {
     Critical "On"
 
     ; Already scheduled — nothing to do, new cloaks batch into same push
-    if (_KSub_CloakPushPending)
+    if (_KSub_CloakPushPending) {
+        Critical "Off"
         return
+    }
 
     _KSub_CloakPushPending := true
     _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch.Bind()
