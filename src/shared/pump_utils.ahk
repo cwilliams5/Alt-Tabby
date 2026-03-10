@@ -60,8 +60,10 @@ Pump_EnsureRunning(&timerOn, &idleTicks, intervalMs, timerFn) {
     ; RACE FIX: Wrap check-then-start in Critical to prevent HandleIdle
     ; from pausing timer between our timerOn check and SetTimer start
     Critical "On"
-    if (timerOn)
+    if (timerOn) {
+        Critical "Off"
         return
+    }
     timerOn := true
     idleTicks := 0
     SetTimer(timerFn, intervalMs)
