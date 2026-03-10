@@ -47,8 +47,9 @@ foreach ($file in $srcFiles) {
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
+    $lineCount = $lines.Count
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
+    for ($i = 0; $i -lt $lineCount; $i++) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') { continue }
 
@@ -86,10 +87,11 @@ $results = [System.Collections.ArrayList]::new()
 foreach ($def in $funcDefs) {
     $escaped = [regex]::Escape($def.Name)
     $pattern = "(?<![.\w])$escaped(?=\s*[\(,\)\s\.\[]|$)"
-    $def.CompiledRegex = [regex]::new($pattern, 'Compiled, IgnoreCase')
+    # No 'Compiled' — JIT-compiling 458 regexes each tested against ~72 files is a ~1600ms net loss
+    $def.CompiledRegex = [regex]::new($pattern, 'IgnoreCase')
 }
 
-# Pre-build per-file word sets for O(1) name lookup (replaces IndexOf pre-filter)
+# Pre-build per-file word sets for O(1) name lookup (IndexOf is ~2x slower due to substring false positives hitting regex)
 $fileWordSets = @{}
 foreach ($file in $srcFiles) {
     $words = [System.Collections.Generic.HashSet[string]]::new(

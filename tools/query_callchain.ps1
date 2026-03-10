@@ -60,6 +60,8 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $funcRegistry = @{}
 # fileCache: filePath -> string[] (lazy-split lines)
 $fileCache = @{}
+# cleanedCache: filePath -> string[] (cleaned lines, parallel to fileCache)
+$cleanedCache = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -67,10 +69,18 @@ foreach ($file in $srcFiles) {
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
+    # Pre-clean all lines and cache for Pass 2 reuse
+    $lineCount = $lines.Count
+    $cleaned_arr = [string[]]::new($lineCount)
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $cleaned_arr[$i] = Clean-Line $lines[$i]
+    }
+    $cleanedCache[$file.FullName] = $cleaned_arr
+
     $depth = 0
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         # Function definition at file scope (depth 0)
@@ -143,6 +153,7 @@ $hasCallbackKeyword = $false
 
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
+    $cleaned_arr = $cleanedCache[$file.FullName]
 
     $depth = 0
     $inFunc = $false
@@ -152,7 +163,7 @@ foreach ($file in $srcFiles) {
         [System.StringComparer]::OrdinalIgnoreCase)
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         # Track function boundaries
