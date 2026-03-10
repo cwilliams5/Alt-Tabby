@@ -44,6 +44,53 @@ $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
 $failOutput = [System.Text.StringBuilder]::new()
 
+# === Pre-compiled regex for BD_RP_CleanLine (used by return_paths + unreachable_code) ===
+$script:RP_RX_DBL = [regex]::new('"[^"]*"', 'Compiled')
+$script:RP_RX_SGL = [regex]::new("'[^']*'", 'Compiled')
+$script:RP_RX_CMT = [regex]::new('\s;.*$', 'Compiled')
+
+function BD_RP_CleanLine {
+    param([string]$line)
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed
+    if ($trimmed.IndexOf('"') -ge 0) { $cleaned = $script:RP_RX_DBL.Replace($cleaned, '""') }
+    if ($trimmed.IndexOf("'") -ge 0) { $cleaned = $script:RP_RX_SGL.Replace($cleaned, "''") }
+    if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RP_RX_CMT.Replace($cleaned, '') }
+    return $cleaned
+}
+
+# === Shared preprocessing for return_paths + unreachable_code ===
+# Both sub-checks call BD_RP_CleanLine() on every line and compute brace depth.
+# Pre-compute once here to avoid ~2x redundant work.
+$ppSw = [System.Diagnostics.Stopwatch]::StartNew()
+$rpCleanedCache = @{}
+
+foreach ($f in $allFiles) {
+    $lines = $fileCache[$f.FullName]
+    $count = $lines.Count
+    $entries = [object[]]::new($count)
+    for ($li = 0; $li -lt $count; $li++) {
+        $cleaned = BD_RP_CleanLine $lines[$li]
+        $opens = 0
+        $closes = 0
+        if ($cleaned -ne '') {
+            foreach ($c in $cleaned.ToCharArray()) {
+                if ($c -eq '{') { $opens++ }
+                elseif ($c -eq '}') { $closes++ }
+            }
+        }
+        $entries[$li] = @{ Cleaned = $cleaned; Opens = $opens; Closes = $closes }
+    }
+    $rpCleanedCache[$f.FullName] = $entries
+}
+
+$ppSw.Stop()
+[void]$subTimings.Add(@{ Name = "preprocess_rp_clean"; DurationMs = [math]::Round($ppSw.Elapsed.TotalMilliseconds, 1) })
+
 # ============================================================
 # Sub-check 1: requires_directive
 # Ensures every .ahk file declares #Requires AutoHotkey v2.0
@@ -686,37 +733,20 @@ $sw.Stop()
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-# Pre-compiled regex for BD_RP_CleanLine (avoids per-call regex compilation)
-$script:RP_RX_DBL = [regex]::new('"[^"]*"', 'Compiled')
-$script:RP_RX_SGL = [regex]::new("'[^']*'", 'Compiled')
-$script:RP_RX_CMT = [regex]::new('\s;.*$', 'Compiled')
-
-function BD_RP_CleanLine {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed
-    if ($trimmed.IndexOf('"') -ge 0) { $cleaned = $script:RP_RX_DBL.Replace($cleaned, '""') }
-    if ($trimmed.IndexOf("'") -ge 0) { $cleaned = $script:RP_RX_SGL.Replace($cleaned, "''") }
-    if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RP_RX_CMT.Replace($cleaned, '') }
-    return $cleaned
-}
-
 $RP_SUPPRESSION = 'lint-ignore: mixed-returns'
 $rpIssues = [System.Collections.ArrayList]::new()
 
 foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
+    $cachedLines = $rpCleanedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # Single-pass: detect functions, track body boundaries, and collect return statements
     # simultaneously — eliminates the redundant second brace-depth pass.
     $i = 0
     while ($i -lt $lines.Count) {
-        $cleaned = BD_RP_CleanLine $lines[$i]
+        $entry = $cachedLines[$i]
+        $cleaned = $entry.Cleaned
 
         # Detect function definition: FuncName(params) {
         if ($cleaned -match '^(\w+)\s*\([^)]*\)\s*\{?\s*$') {
@@ -737,7 +767,7 @@ foreach ($file in $allFiles) {
             if (-not $braceOnSameLine) {
                 $j = $i + 1
                 while ($j -lt $lines.Count) {
-                    $nextCleaned = BD_RP_CleanLine $lines[$j]
+                    $nextCleaned = $cachedLines[$j].Cleaned
                     if ($nextCleaned -ne '') {
                         if ($nextCleaned -match '^\{') {
                             $funcStart = $j
@@ -760,14 +790,13 @@ foreach ($file in $allFiles) {
             $voidReturns = [System.Collections.ArrayList]::new()
 
             for ($j = $funcStart; $j -lt $lines.Count; $j++) {
-                $bodyCleaned = BD_RP_CleanLine $lines[$j]
+                $bodyEntry = $cachedLines[$j]
+                $bodyCleaned = $bodyEntry.Cleaned
                 if ($bodyCleaned -eq '') { continue }
 
                 $prevDepth = $depth
-                foreach ($c in $bodyCleaned.ToCharArray()) {
-                    if ($c -eq '{') { $depth++; $foundOpenBrace = $true }
-                    elseif ($c -eq '}') { $depth-- }
-                }
+                if ($bodyEntry.Opens -gt 0) { $depth += $bodyEntry.Opens; $foundOpenBrace = $true }
+                $depth -= $bodyEntry.Closes
 
                 # Check if we've closed the function body
                 if ($foundOpenBrace -and $depth -eq 0) {
@@ -783,12 +812,11 @@ foreach ($file in $allFiles) {
                     # Skip ahead through nested function by tracking depth
                     $j++
                     while ($j -lt $lines.Count) {
-                        $skipCleaned = BD_RP_CleanLine $lines[$j]
+                        $skipEntry = $cachedLines[$j]
+                        $skipCleaned = $skipEntry.Cleaned
                         if ($skipCleaned -ne '') {
-                            foreach ($c in $skipCleaned.ToCharArray()) {
-                                if ($c -eq '{') { $depth++ }
-                                elseif ($c -eq '}') { $depth-- }
-                            }
+                            $depth += $skipEntry.Opens
+                            $depth -= $skipEntry.Closes
                             if ($depth -le $prevDepth) {
                                 # Check if this also closed the outer function
                                 if ($foundOpenBrace -and $depth -eq 0) {
@@ -896,6 +924,7 @@ foreach ($file in $allFiles) {
         $joined.IndexOf('throw') -lt 0 -and
         $joined.IndexOf('ExitApp') -lt 0) { continue }
 
+    $cachedLines = $rpCleanedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false
@@ -909,15 +938,14 @@ foreach ($file in $allFiles) {
     $terminatorBracketDepth = 0
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BD_RP_CleanLine $lines[$i]
+        $entry = $cachedLines[$i]
+        $cleaned = $entry.Cleaned
         if ($cleaned -eq '') { continue }
 
-        # Compute depth changes
+        # Compute depth changes from cached brace counts
         $depthBefore = $depth
-        foreach ($c in $cleaned.ToCharArray()) {
-            if ($c -eq '{') { $depth++ }
-            elseif ($c -eq '}') { $depth-- }
-        }
+        $depth += $entry.Opens
+        $depth -= $entry.Closes
 
         # Detect function boundaries
         if (-not $inFunc -and $cleaned -match '^(\w+)\s*\([^)]*\)\s*\{') {
@@ -995,7 +1023,7 @@ foreach ($file in $allFiles) {
                 # Check if preceded by a braceless conditional
                 $isBracelessConditional = $false
                 for ($j = $i - 1; $j -ge 0; $j--) {
-                    $prevCleaned = BD_RP_CleanLine $lines[$j]
+                    $prevCleaned = $cachedLines[$j].Cleaned
                     if ($prevCleaned -eq '') { continue }
                     $prevTrimmed = $prevCleaned.Trim()
                     # Skip continuation lines (multi-line if conditions, etc.)
