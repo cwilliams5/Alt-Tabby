@@ -60,6 +60,38 @@ _GUI_ApplyConfigBackdrop() {
     }
 }
 
+; Force DWM to re-sample the acrylic/glass backdrop after a workspace switch.
+; Komorebi cloaks/uncloaks windows asynchronously — when the workspace event
+; fires, cloaking is still in flight. A delayed geometry nudge (SetWindowPos
+; +1px/-1px) forces DWM to re-evaluate the backdrop area after the desktop
+; has settled. The DComp clip rect masks the transient 1px, so no visual
+; artifact. (#235)
+GUI_RefreshBackdrop() {
+    global cfg
+    SetTimer(_GUI_BackdropNudge, -cfg.AltTabBackdropRefreshDelayMs)
+}
+
+_GUI_BackdropNudge() {
+    global gGUI_BaseH, gGUI_Revealed, gGUI_OverlayVisible
+    global SWP_NOZORDER, SWP_NOOWNERZORDER, SWP_NOACTIVATE
+    if (!gGUI_BaseH || !gGUI_Revealed || !gGUI_OverlayVisible)
+        return
+
+    rect := Buffer(16, 0)
+    if (!DllCall("user32\GetWindowRect", "ptr", gGUI_BaseH, "ptr", rect.Ptr))
+        return
+    x := NumGet(rect, 0, "int")
+    y := NumGet(rect, 4, "int")
+    w := NumGet(rect, 8, "int") - x
+    h := NumGet(rect, 12, "int") - y
+
+    flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE
+    DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,
+        "int", x, "int", y, "int", w, "int", h + 1, "uint", flags, "int")
+    DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,
+        "int", x, "int", y, "int", w, "int", h, "uint", flags, "int")
+}
+
 ; ========================= CORNER STYLE =========================
 
 ; Apply DWM corner preference from config.

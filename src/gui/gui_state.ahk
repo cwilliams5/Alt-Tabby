@@ -504,8 +504,10 @@ GUI_HandleWorkspaceSwitch() {
     ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
     ; with deferred SetWindowPos (right before ULW) so DWM can't present a
     ; frame with the resized acrylic base but stale overlay content.
-    if (gGUI_OverlayVisible)
+    if (gGUI_OverlayVisible) {
         GUI_Repaint()
+        GUI_RefreshBackdrop()  ; Force DWM to re-sample acrylic for new workspace (#235)
+    }
     Profiler.Leave() ; @profile
 }
 
