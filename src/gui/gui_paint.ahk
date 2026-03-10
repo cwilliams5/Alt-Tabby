@@ -147,10 +147,17 @@ GUI_Repaint() {
     if (FX_HasActiveShaders())
         Anim_EnsureTimer()
 
-    ; Phase 2: Track whether resize is needed. Actual resize is atomic after
-    ; Present — SetClip + SetWindowPos + Commit all take effect on the same
-    ; compositor frame. No bidirectional ordering needed.
+    ; Bidirectional resize: SetWindowPos pumps STA and CANNOT be made atomic
+    ; with DComp Commit / DXGI Present.  During the STA pump a VSync can
+    ; fire, compositing an intermediate frame.  The strategy ensures the HWND
+    ; is always ≤ content size during the race window so the smaller boundary
+    ; hides any overflow:
+    ;   Shrink: SetWindowPos FIRST → HWND clips old content cleanly
+    ;   Grow:   SetWindowPos LAST  → old HWND clips new content cleanly
+    ; DComp SetClipRect + Commit + Present stay adjacent (no STA pump between
+    ; them) and always land on the same compositor frame.  (#177, #234)
     needsResize := (rowsChanged && gGUI_Revealed)
+    isGrowing := (needsResize && rowsDesired > oldRows)
     if (needsResize) {
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_RESIZE, oldRows, rowsDesired, phW, phH)
@@ -160,6 +167,10 @@ GUI_Repaint() {
         global gGUI_HoverRow, gGUI_HoverBtn
         gGUI_HoverRow := 0
         gGUI_HoverBtn := ""
+        ; Shrink: resize HWND before paint.  During STA pump, old content is
+        ; shown clipped by the smaller HWND — no stale-pixel exposure.
+        if (!isGrowing && phW > 0 && phH > 0)
+            Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
     }
     if (diagTiming)
         tResize := QPC() - t1
@@ -216,6 +227,14 @@ GUI_Repaint() {
                 global gAnim_FrameTimeDisplay
                 gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
+
+                ; DComp clip + Commit + Present: no STA pump between them,
+                ; guaranteed to land on the same compositor frame.
+                if (needsResize && phW > 0 && phH > 0) {
+                    D2D_SetClipRect(phW, phH)
+                    D2D_Commit()
+                }
+
                 D2D_Present()
             } catch as e {
                 D2D_ReleaseBackBuffer()
@@ -237,14 +256,10 @@ GUI_Repaint() {
         }
     }
 
-    ; Phase 2: Atomic resize after Present — paint already rendered at new
-    ; dimensions within the oversized swap chain buffer.  SetClip + SetWindowPos
-    ; + Commit are batched by DComp, all take effect on the same compositor frame.
-    if (needsResize && phW > 0 && phH > 0) {
-        D2D_SetClipRect(phW, phH)
+    ; Grow: resize HWND AFTER present + commit.  During STA pump, new content
+    ; is shown clipped by the old (smaller) HWND — clean transition.
+    if (isGrowing && phW > 0 && phH > 0)
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        D2D_Commit()
-    }
 
     ; ===== TIMING: Reveal =====
     if (diagTiming)
