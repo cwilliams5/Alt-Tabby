@@ -501,6 +501,7 @@ Win_GetRectPhys(params*) {
 #Include %A_ScriptDir%\..\src\gui\gui_monitor.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_data.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_state.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_activation.ahk
 
 ; ============================================================
 ; 4. TEST UTILITIES

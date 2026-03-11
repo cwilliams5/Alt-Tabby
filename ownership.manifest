@@ -23,7 +23,9 @@
 cfg: config_loader, launcher_tray, setup_utils
 gD2D_RT: gui_animation, gui_bgimage, gui_overlay, gui_paint
 gGUI_DisplayItems: gui_animation, gui_state
-gGUI_LiveItems: gui_state, gui_data
+gGUI_CurrentWSName: gui_activation, gui_state
+gGUI_EventBuffer: gui_activation, gui_state
+gGUI_LiveItems: gui_activation, gui_data
 gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
 gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
 gGUI_LastRowsDesired: gui_paint, gui_state
@@ -33,6 +35,7 @@ gGUI_HoverRow: gui_input, gui_paint
 gGUI_Sel: gui_input, gui_state
 gGUI_FocusBeforeShow: gui_state, gui_paint
 gPaint_RepaintInProgress: gui_animation, gui_overlay, gui_paint
+gStats_CrossWorkspace: gui_activation
 gAnim_DeferredTimerStart: gui_animation, gui_paint
 gAnim_OverlayOpacity: gui_animation, gui_state
 gAnim_HidePending: gui_animation, gui_overlay
