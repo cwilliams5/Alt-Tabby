@@ -64,16 +64,16 @@ RunGUITests_Data() {
     GUI_AssertTrue(result, "UpdateLocalMRU: returns true for first item")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
 
-    ; ----- Test: _GUI_RobustActivate returns false for invalid hwnd -----
+    ; ----- Test: GUI_RobustActivate returns false for invalid hwnd -----
     ; Regression guard: ensures activation returns a testable result (not void)
-    GUI_Log("Test: _GUI_RobustActivate returns false for invalid hwnd")
-    result := _GUI_RobustActivate(0xDEAD)
-    GUI_AssertEq(result, false, "_GUI_RobustActivate: returns false for non-existent window")
+    GUI_Log("Test: GUI_RobustActivate returns false for invalid hwnd")
+    result := GUI_RobustActivate(0xDEAD)
+    GUI_AssertEq(result, false, "GUI_RobustActivate: returns false for non-existent window")
 
-    ; ----- Test: _GUI_RobustActivate returns false for hwnd 0 -----
-    GUI_Log("Test: _GUI_RobustActivate returns false for hwnd 0")
-    result := _GUI_RobustActivate(0)
-    GUI_AssertEq(result, false, "_GUI_RobustActivate: returns false for hwnd 0")
+    ; ----- Test: GUI_RobustActivate returns false for hwnd 0 -----
+    GUI_Log("Test: GUI_RobustActivate returns false for hwnd 0")
+    result := GUI_RobustActivate(0)
+    GUI_AssertEq(result, false, "GUI_RobustActivate: returns false for hwnd 0")
 
     ; ----- Test: Failed activation does NOT corrupt MRU order -----
     ; Core regression test for phantom MRU bug: before the fix, _GUI_UpdateLocalMRU
@@ -86,10 +86,10 @@ RunGUITests_Data() {
     origSecond := gGUI_LiveItems[2].hwnd
 
     ; Call the real production activation function with a fake item.
-    ; _GUI_RobustActivate will return false (WinExist fails for fake hwnds),
+    ; GUI_RobustActivate will return false (WinExist fails for fake hwnds),
     ; so the production guard should prevent _GUI_UpdateLocalMRU from running.
     fakeItem := { hwnd: origSecond, isOnCurrentWorkspace: true, WS: "" }
-    _GUI_ActivateItem(fakeItem)
+    GUI_ActivateItem(fakeItem)
 
     ; MRU should be UNCHANGED — item 1 still in position 1
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "FailedActivation: MRU order preserved (first item unchanged)")

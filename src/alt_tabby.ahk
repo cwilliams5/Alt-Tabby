@@ -203,6 +203,7 @@ for _, arg in A_Args {
 #Include gui_data.ahk
 #Include gui_pump.ahk
 #Include gui_state.ahk
+#Include gui_activation.ahk
 #Include gui_interceptor.ahk
 #Include gui_main.ahk
 

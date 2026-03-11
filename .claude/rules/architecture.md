@@ -32,6 +32,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `src/shared/stats.ahk` - Lifetime & session usage statistics
 - `src/gui/gui_main.ahk` - MainProcess init, producers, heartbeat, cleanup
 - `src/gui/gui_data.ahk` - Snapshot + pre-cache functions (replaces gui_store.ahk)
+- `src/gui/gui_activation.ahk` - Window activation engine (sync, async cross-workspace, COM uncloaking, robust Win32 activation)
 - `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
 - `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
 - `src/editors/config_editor_webview.ahk` - WebView2 editor (HTML/JS UI)

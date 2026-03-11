@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -424,28 +424,28 @@ $CHECKS = @(
     },
     @{
         Id       = "activate_returns_bool"
-        File     = "gui\gui_state.ahk"
-        Desc     = "_GUI_RobustActivate returns success/failure boolean"
-        Function = "_GUI_RobustActivate"
+        File     = "gui\gui_activation.ahk"
+        Desc     = "GUI_RobustActivate returns success/failure boolean"
+        Function = "GUI_RobustActivate"
         Patterns = @("return true", "return false")
     },
     @{
         Id       = "activate_verifies_foreground"
-        File     = "gui\gui_state.ahk"
-        Desc     = "_GUI_RobustActivate calls GetForegroundWindow to verify activation"
-        Function = "_GUI_RobustActivate"
+        File     = "gui\gui_activation.ahk"
+        Desc     = "GUI_RobustActivate calls GetForegroundWindow to verify activation"
+        Function = "GUI_RobustActivate"
         Patterns = @("GetForegroundWindow")
     },
     @{
         Id       = "activate_gated_mru"
-        File     = "gui\gui_state.ahk"
-        Desc     = "_GUI_ActivateItem gates _GUI_UpdateLocalMRU on _GUI_RobustActivate success"
-        Function = "_GUI_ActivateItem"
-        Patterns = @("if (_GUI_RobustActivate(hwnd))")
+        File     = "gui\gui_activation.ahk"
+        Desc     = "GUI_ActivateItem gates _GUI_UpdateLocalMRU on GUI_RobustActivate success"
+        Function = "GUI_ActivateItem"
+        Patterns = @("if (GUI_RobustActivate(hwnd))")
     },
     @{
         Id       = "mru_update_no_critical_off"
-        File     = "gui\gui_state.ahk"
+        File     = "gui\gui_activation.ahk"
         Desc     = "_GUI_UpdateLocalMRU does not call Critical Off (callers hold Critical)"
         Function = "_GUI_UpdateLocalMRU"
         NotPresent = @('Critical "Off"')
@@ -2096,6 +2096,57 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_map_iteration_mutation"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 17: profiler_name_consistency
+# Verifies Profiler.Enter("X") matches the enclosing function name.
+# Catches rename-without-profiler-update bugs (e.g., _Foo -> Foo but
+# Profiler.Enter still says "_Foo").
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$pncIssues = @()
+
+# Regex: function definition line -> capture function name
+$rxFuncDef = [regex]::new('(?m)^[ \t]*(?:static\s+)?(\w+)\([^)]*\)\s*\{', 'Compiled')
+# Regex: Profiler.Enter("name") inside function body
+$rxProfilerEnter = [regex]::new('Profiler\.Enter\("([^"]+)"\)', 'Compiled')
+
+foreach ($f in $allFiles) {
+    $text = $fileCacheText[$f.FullName]
+    $funcMatches = $rxFuncDef.Matches($text)
+
+    foreach ($fm in $funcMatches) {
+        $funcName = $fm.Groups[1].Value
+        # Extract function body using shared helper
+        $body = BP_Extract-FunctionBody $text $funcName
+        if ($null -eq $body) { continue }
+
+        # Find Profiler.Enter in the body (only check the first one)
+        $pm = $rxProfilerEnter.Match($body)
+        if (-not $pm.Success) { continue }
+
+        $profilerName = $pm.Groups[1].Value
+        if ($profilerName -ne $funcName) {
+            $relPath = $f.FullName
+            if ($relPath.StartsWith($SourceDir)) {
+                $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
+            }
+            $pncIssues += "${relPath}: $funcName() has Profiler.Enter(`"$profilerName`") - should be `"$funcName`""
+        }
+    }
+}
+
+if ($pncIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($pncIssues.Count) Profiler.Enter name mismatch(es).")
+    [void]$failOutput.AppendLine("  Profiler.Enter string must match the enclosing function name.")
+    foreach ($issue in $pncIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_profiler_name_consistency"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2103,7 +2154,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
