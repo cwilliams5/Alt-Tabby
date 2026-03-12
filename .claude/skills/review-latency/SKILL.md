@@ -71,7 +71,7 @@ Key files:
 - `src/gui/gui_interceptor.ahk` — keyboard hook callbacks, event dispatch
 - `src/gui/gui_state.ahk` — state machine transitions
 - `src/gui/gui_input.ahk` — input handling, selection movement
-- `src/gui/gui_data.ahk` — snapshot, display list building, pre-cache
+- `src/gui/gui_data.ahk` — live data layer, refresh, pre-cache, display eviction
 - `src/gui/gui_overlay.ahk` — show/hide mechanics (DWM cloaking, anti-flash)
 - `src/shared/gui_antiflash.ahk` — DWM cloaking / alpha sequencing
 - `src/gui/gui_monitor.ahk` — monitor detection, DPI
