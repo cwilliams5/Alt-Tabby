@@ -652,11 +652,34 @@ Launcher_ShowAdminRepairDialog(taskPath) {
     return result
 }
 
+; Low-level mutex helper: CreateMutex + conflict detection + logging
+; Returns true if acquired, false if already held by another process
+_Launcher_TryAcquireMutex(&outHandle, mutexName, logLabel) {
+    global cfg, ERROR_ALREADY_EXISTS
+
+    outHandle := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
+    lastError := DllCall("GetLastError", "uint")
+
+    if (lastError = ERROR_ALREADY_EXISTS) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log(logLabel ": already exists, another instance holds it")
+        if (outHandle) {
+            DllCall("CloseHandle", "ptr", outHandle)
+            outHandle := 0
+        }
+        return false
+    }
+
+    if (cfg.DiagLauncherLog)
+        Launcher_Log(logLabel ": acquired successfully (name=" mutexName ")")
+    return (outHandle != 0)
+}
+
 ; Try to acquire the launcher mutex
 ; Returns true if acquired (we're the only launcher), false if already held
 ; Uses InstallationId so renamed exes within same installation share mutex
 Launcher_AcquireMutex() {
-    global g_LauncherMutex, cfg, ERROR_ALREADY_EXISTS
+    global g_LauncherMutex, cfg
 
     ; Build mutex name using InstallationId (prevents different-named exes running together)
     ; Falls back to hardcoded name if no ID yet (shouldn't happen - EnsureInstallationId runs first)
@@ -664,24 +687,7 @@ Launcher_AcquireMutex() {
         ? cfg.SetupInstallationId : "default"
     mutexName := "AltTabby_Launcher_" installId
 
-    ; Try to create named mutex
-    g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
-    lastError := DllCall("GetLastError", "uint")
-
-    if (lastError = ERROR_ALREADY_EXISTS) {
-        ; Mutex already exists - another launcher is running
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
-        if (g_LauncherMutex) {
-            DllCall("CloseHandle", "ptr", g_LauncherMutex)
-            g_LauncherMutex := 0
-        }
-        return false
-    }
-
-    if (cfg.DiagLauncherLog)
-        Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
-    return (g_LauncherMutex != 0)
+    return _Launcher_TryAcquireMutex(&g_LauncherMutex, mutexName, "MUTEX")
 }
 
 ; Try to acquire the system-wide active mutex
@@ -689,27 +695,9 @@ Launcher_AcquireMutex() {
 ; This is separate from the launcher mutex (which uses InstallationId) to prevent
 ; multiple installations from running simultaneously regardless of their ID.
 _Launcher_AcquireActiveMutex() {
-    global g_ActiveMutex, ERROR_ALREADY_EXISTS, cfg
+    global g_ActiveMutex
 
-    ; System-wide mutex with no ID suffix
-    mutexName := "AltTabby_Active"
-
-    g_ActiveMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
-    lastError := DllCall("GetLastError", "uint")
-
-    if (lastError = ERROR_ALREADY_EXISTS) {
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
-        if (g_ActiveMutex) {
-            DllCall("CloseHandle", "ptr", g_ActiveMutex)
-            g_ActiveMutex := 0
-        }
-        return false
-    }
-
-    if (cfg.DiagLauncherLog)
-        Launcher_Log("ACTIVE_MUTEX: acquired successfully")
-    return (g_ActiveMutex != 0)
+    return _Launcher_TryAcquireMutex(&g_ActiveMutex, "AltTabby_Active", "ACTIVE_MUTEX")
 }
 
 ; Kill all Alt-Tabby processes system-wide (for cross-installation conflicts)
