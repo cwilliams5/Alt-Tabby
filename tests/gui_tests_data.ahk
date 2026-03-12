@@ -1313,6 +1313,111 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "CloseActive: selected item is hwnd=3000")
     GUI_AssertEq(gGUI_LiveItems.Length, 4, "CloseActive: live items also reduced")
 
+    ; ============================================================
+    ; REFERENCE-BASED FREEZE INVARIANTS (#178 followup tests)
+    ; Verify the core invariant: store record mutations are visible
+    ; through frozen display items, and structural guards work.
+    ; ============================================================
+
+    ; ----- Test: Live record refs — title change visible through frozen display -----
+    GUI_Log("Test: Live ref — title mutation visible through gGUI_DisplayItems")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(3)
+    gGUI_LiveItems := items
+    gGUI_LiveItemsMap := Map()
+    for _, item in items
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_DisplayItems := items  ; Same references (no .Clone())
+    gGUI_ToggleBase := items
+    gGUI_Sel := 2
+
+    ; Mutate the store record directly (simulates producer updating title)
+    items[2].title := "Renamed Window"
+    items[2].processName := "newproc.exe"
+    items[2].iconHicon := 42
+
+    ; Display items should see the mutation immediately (same object reference)
+    GUI_AssertEq(gGUI_DisplayItems[2].title, "Renamed Window", "LiveRef: title mutation visible")
+    GUI_AssertEq(gGUI_DisplayItems[2].processName, "newproc.exe", "LiveRef: processName mutation visible")
+    GUI_AssertEq(gGUI_DisplayItems[2].iconHicon, 42, "LiveRef: iconHicon mutation visible")
+    ; Verify other items unchanged
+    GUI_AssertEq(gGUI_DisplayItems[1].title, "Window 1", "LiveRef: item 1 unchanged")
+    GUI_AssertEq(gGUI_DisplayItems[3].title, "Window 3", "LiveRef: item 3 unchanged")
+
+    ; ----- Test: Live record refs — workspace field change visible for re-filter -----
+    GUI_Log("Test: Live ref — workspace field change visible for toggle re-filter")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Main"
+    items := CreateTestItems(4, 3)  ; 3 on Main, 1 on Other
+    gGUI_LiveItems := items
+    gGUI_LiveItemsMap := Map()
+    for _, item in items
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items
+    gGUI_Sel := 1
+
+    ; Simulate workspace switch: flip isOnCurrentWorkspace on record (like WL_SetCurrentWorkspace does)
+    items[1].isOnCurrentWorkspace := false
+    items[4].isOnCurrentWorkspace := true
+
+    ; Display items should see the flipped values immediately
+    GUI_AssertEq(gGUI_DisplayItems[1].isOnCurrentWorkspace, false, "LiveRef: ws flip visible on item 1")
+    GUI_AssertEq(gGUI_DisplayItems[4].isOnCurrentWorkspace, true, "LiveRef: ws flip visible on item 4")
+
+    ; ----- Test: Evict when ToggleBase IS DisplayItems (same array, no filtering) -----
+    GUI_Log("Test: Evict with same-array ToggleBase (ObjPtr guard)")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(4)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    ; Key: ToggleBase and DisplayItems are the SAME array reference
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items
+    GUI_AssertEq(ObjPtr(gGUI_ToggleBase), ObjPtr(gGUI_DisplayItems), "SameArray: confirmed same ObjPtr")
+    gGUI_Sel := 3  ; hwnd=3000
+
+    remaining := GUI_EvictDisplayItem(1)  ; Evict hwnd=1000
+
+    GUI_AssertEq(remaining, 3, "SameArray: 3 items remaining")
+    GUI_AssertEq(gGUI_Sel, 2, "SameArray: sel tracked hwnd=3000 at index 2")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "SameArray: correct hwnd selected")
+    ; ToggleBase IS DisplayItems — both should have 3 items (single RemoveAt, not double)
+    GUI_AssertEq(gGUI_ToggleBase.Length, 3, "SameArray: ToggleBase also has 3 (same array)")
+    GUI_AssertEq(ObjPtr(gGUI_ToggleBase), ObjPtr(gGUI_DisplayItems), "SameArray: still same ObjPtr after evict")
+
+    ; ----- Test: GUI_DismissOverlay resets all state correctly -----
+    GUI_Log("Test: GUI_DismissOverlay resets state to IDLE")
+    ResetGUIState()
+    ; Set up ACTIVE state with visible overlay
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(3)
+    gGUI_LiveItems := items
+    gGUI_LiveItemsMap := Map()
+    for _, item in items
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_DisplayItems := items
+    gGUI_ToggleBase := items
+    gGUI_Sel := 2
+    gGUI_ScrollTop := 1
+    ; Bump a stat so Stats_AccumulateSession has something to send
+    gStats_AltTabs := 1
+    ; Populate mock store so RefreshLiveItems (called by DismissOverlay) has data
+    MockStore_SetItems(CreateTestItems(3))
+
+    GUI_DismissOverlay()
+
+    GUI_AssertEq(gGUI_State, "IDLE", "Dismiss: state is IDLE")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "Dismiss: overlay hidden")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 0, "Dismiss: display items cleared")
+    GUI_AssertTrue(gMock_LastStatsMsg != "", "Dismiss: Stats_AccumulateSession called")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)
