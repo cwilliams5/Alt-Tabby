@@ -382,28 +382,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
-        global gStats_Cancellations, gGUI_StealFocus, gGUI_FocusBeforeShow
+        global gStats_Cancellations
         gStats_Cancellations += 1
-        SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
-        if (gGUI_OverlayVisible) {
-            GUI_HideOverlay()
-            ; Restore focus to the window that was active before overlay stole it
-            if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
-                GUI_RobustActivate(gGUI_FocusBeforeShow)
-                gGUI_FocusBeforeShow := 0
-            }
-        }
-        if (gFR_Enabled)
-            FR_Record(FR_EV_STATE, FR_ST_IDLE)
-        gGUI_State := "IDLE"
-        gGUI_DisplayItems := []
-        Stats_AccumulateSession()
-
-        ; #178: Probe for pump connection — retries may have been starved during ACTIVE.
-        GUIPump_ProbeConnect()
-
-        ; Resync — refresh live items after ACTIVE state
-        GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
+        GUI_DismissOverlay()
         Profiler.Leave() ; @profile
         return
     }
@@ -457,6 +438,34 @@ GUI_OnWorkspaceFlips() {
         try LogAppend(LOG_PATH_STORE, "workspace_flip_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
     Profiler.Leave() ; @profile
+}
+
+; ========================= OVERLAY DISMISS =========================
+
+; Dismiss overlay and return to IDLE — shared by ESC, empty-list eviction, etc.
+; Hides overlay, restores focus if StealFocus, clears display items, flushes stats.
+; Caller may hold Critical (RefreshLiveItems manages its own).
+GUI_DismissOverlay() {
+    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems
+    global gGUI_StealFocus, gGUI_FocusBeforeShow
+    global gFR_Enabled, FR_EV_STATE, FR_ST_IDLE
+
+    SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+    if (gGUI_OverlayVisible) {
+        GUI_HideOverlay()
+        if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
+            GUI_RobustActivate(gGUI_FocusBeforeShow)
+            gGUI_FocusBeforeShow := 0
+        }
+    }
+    if (gFR_Enabled)
+        FR_Record(FR_EV_STATE, FR_ST_IDLE)
+    Log178("STATE: ACTIVE → IDLE (dismiss)")
+    gGUI_State := "IDLE"
+    gGUI_DisplayItems := []
+    Stats_AccumulateSession()
+    GUIPump_ProbeConnect()
+    GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
 }
 
 ; ========================= FROZEN STATE HELPERS =========================

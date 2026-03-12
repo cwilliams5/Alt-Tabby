@@ -343,22 +343,32 @@ _GUI_PerformAction(action, idx1 := 0) {
 }
 
 _GUI_RemoveItemAt(idx1) {
-    global gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_State, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
 
     Critical "On"
-    if (idx1 < 1 || idx1 > gGUI_LiveItems.Length) {
+    if (gGUI_State = "ACTIVE") {
+        ; During ACTIVE: evict from frozen display list (hwnd-tracked selection)
+        remaining := GUI_EvictDisplayItem(idx1)
         Critical "Off"
-        return
+        if (remaining = 0) {
+            GUI_DismissOverlay()
+            return
+        }
+    } else {
+        ; IDLE/ALT_PENDING: remove from live items directly
+        if (idx1 < 1 || idx1 > gGUI_LiveItems.Length) {
+            Critical "Off"
+            return
+        }
+        remaining := GUI_RemoveLiveItemAt(idx1)
+        if (remaining = 0) {
+            gGUI_Sel := 1
+            gGUI_ScrollTop := 0
+        } else if (gGUI_Sel > remaining) {
+            gGUI_Sel := remaining
+        }
+        Critical "Off"
     }
-    remaining := GUI_RemoveLiveItemAt(idx1)
-
-    if (remaining = 0) {
-        gGUI_Sel := 1
-        gGUI_ScrollTop := 0
-    } else if (gGUI_Sel > remaining) {
-        gGUI_Sel := remaining
-    }
-    Critical "Off"
 
     GUI_RecalcHover()
     GUI_Repaint()

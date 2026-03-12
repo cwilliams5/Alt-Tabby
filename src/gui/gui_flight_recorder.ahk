@@ -63,6 +63,9 @@ global FR_EV_PRODUCER_RECOVER  := 61  ; d1=errCount d2=backoffMs — producer re
 global FR_EV_PAINT_RESIZE      := 70  ; d1=oldRows d2=newRows d3=newW d4=newH — window resize during paint
 global FR_EV_PAINT_BLOCKED      := 73  ; d1=reason(1=reentrant,2=noRT,3=acquireFailed) — paint skipped entirely
 
+; Display list events (80-89)
+global FR_EV_DISPLAY_EVICT     := 80  ; d1=hwnd d2=remainingCount d3=wasSelected(0/1) — item evicted from frozen display list
+
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
 global FR_ST_ALT_PENDING := 1
@@ -363,6 +366,7 @@ _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_ACTIVATE_GONE, FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
+    global FR_EV_DISPLAY_EVICT
     ; Collect all unique hwnds from entries + items + foreground
     hwnds := Map()
     for _, entry in entries {
@@ -372,7 +376,8 @@ _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
             || ev = FR_EV_MRU_UPDATE
             || ev = FR_EV_WINDOW_ADD || ev = FR_EV_WINDOW_REMOVE
             || ev = FR_EV_ACTIVATE_GONE || ev = FR_EV_FOCUS || ev = FR_EV_FOCUS_SUPPRESS
-            || ev = FR_EV_KSUB_MRU_STALE || ev = FR_EV_FG_GUARD) {
+            || ev = FR_EV_KSUB_MRU_STALE || ev = FR_EV_FG_GUARD
+            || ev = FR_EV_DISPLAY_EVICT) {
             h := entry[3]
             if (h)
                 hwnds[h] := true
@@ -446,6 +451,7 @@ _FR_GetEventName(ev) {
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
     global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
+    global FR_EV_DISPLAY_EVICT
 
     switch ev {
         case FR_EV_ALT_DN:            return "ALT_DN"
@@ -488,6 +494,7 @@ _FR_GetEventName(ev) {
         case FR_EV_PRODUCER_RECOVER:  return "PRODUCER_RECOVER"
         case FR_EV_PAINT_RESIZE:      return "PAINT_RESIZE"
         case FR_EV_PAINT_BLOCKED:     return "PAINT_BLOCKED"
+        case FR_EV_DISPLAY_EVICT:    return "DISPLAY_EVICT"
         default:                      return "UNKNOWN(" ev ")"
     }
 }
@@ -520,6 +527,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
     global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
+    global FR_EV_DISPLAY_EVICT
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -608,6 +616,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
         case FR_EV_PAINT_BLOCKED:
             reasonStr := (d1 = 1) ? "reentrant" : (d1 = 2) ? "noRT" : "?(" d1 ")"
             return "reason=" reasonStr
+        case FR_EV_DISPLAY_EVICT:
+            return _FR_HwndStr(d1, hwndMap) "  remaining=" d2 "  wasSel=" d3
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
     }

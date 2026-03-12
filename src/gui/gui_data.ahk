@@ -89,6 +89,120 @@ GUI_RemoveLiveItemAt(idx1) {
 ; Display items are now direct store record references — cosmetic data is always live.
 ; Repaint trigger moved to _GUI_OnProducerRevChanged (debounced GUI_Repaint).
 
+; ========================= DISPLAY ITEM EVICTION (ACTIVE STATE) =========================
+; #178 followup: Allow window destroys through frozen display list during ACTIVE.
+; The freeze protects against noise (adds, reorders); a destroy is signal.
+; Display list may shrink but never grow or reorder during ACTIVE.
+
+; Evict item at index from frozen display list.
+; Maintains hwnd-based selection tracking: destroyed above selection → index adjusts
+; down to keep same hwnd selected. Destroyed IS selection → clamp to next.
+; Caller must hold Critical. Returns remaining display item count.
+GUI_EvictDisplayItem(idx1) {
+    global gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems, gGUI_LiveItemsMap
+    global gGUI_Sel, gGUI_ScrollTop
+    global gFR_Enabled, FR_EV_DISPLAY_EVICT
+
+    if (idx1 < 1 || idx1 > gGUI_DisplayItems.Length)
+        return gGUI_DisplayItems.Length
+
+    item := gGUI_DisplayItems[idx1]
+    hwnd := item.hwnd
+
+    ; Capture selected hwnd before mutation
+    selectedHwnd := 0
+    if (gGUI_Sel >= 1 && gGUI_Sel <= gGUI_DisplayItems.Length)
+        selectedHwnd := gGUI_DisplayItems[gGUI_Sel].hwnd
+    wasSelected := (hwnd = selectedHwnd)
+
+    ; Remove from display list
+    gGUI_DisplayItems.RemoveAt(idx1)
+
+    ; Remove from ToggleBase (may be same array ref when no filtering active)
+    if (ObjPtr(gGUI_ToggleBase) != ObjPtr(gGUI_DisplayItems)) {
+        i := gGUI_ToggleBase.Length
+        while (i >= 1) {
+            if (gGUI_ToggleBase[i].hwnd = hwnd) {
+                gGUI_ToggleBase.RemoveAt(i)
+                break
+            }
+            i--
+        }
+    }
+
+    ; Remove from live items + map
+    for j, liveItem in gGUI_LiveItems {
+        if (liveItem.hwnd = hwnd) {
+            gGUI_LiveItems.RemoveAt(j)
+            break
+        }
+    }
+    if (gGUI_LiveItemsMap.Has(hwnd))
+        gGUI_LiveItemsMap.Delete(hwnd)
+
+    ; Adjust selection — track by hwnd
+    remaining := gGUI_DisplayItems.Length
+    if (remaining = 0) {
+        gGUI_Sel := 1
+        gGUI_ScrollTop := 0
+    } else if (wasSelected) {
+        ; Selected item was destroyed — clamp to next (or last if at end)
+        gGUI_Sel := Min(idx1, remaining)
+        gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
+    } else {
+        ; Find selectedHwnd in updated array — it shifted position
+        newIdx := 0
+        for j, di in gGUI_DisplayItems {
+            if (di.hwnd = selectedHwnd) {
+                newIdx := j
+                break
+            }
+        }
+        gGUI_Sel := newIdx > 0 ? newIdx : Min(gGUI_Sel, remaining)
+        gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
+    }
+
+    if (gFR_Enabled)
+        FR_Record(FR_EV_DISPLAY_EVICT, hwnd, remaining, wasSelected ? 1 : 0)
+    Log178("EVICT hwnd=" Format("0x{:X}", hwnd) " remaining=" remaining " wasSelected=" wasSelected)
+
+    return remaining
+}
+
+; Scan frozen display list for windows no longer in the store and evict them.
+; Called from _GUI_OnProducerRevChanged when a structural change arrives during ACTIVE.
+; Returns count of items removed.
+GUI_ReconcileDestroys() {
+    global gGUI_State, gGUI_DisplayItems, gWS_Store
+
+    if (gGUI_State != "ACTIVE")
+        return 0
+
+    Critical "On"
+    removed := 0
+    i := gGUI_DisplayItems.Length
+    while (i >= 1) {
+        if (!gWS_Store.Has(gGUI_DisplayItems[i].hwnd + 0)) {
+            GUI_EvictDisplayItem(i)
+            removed++
+        }
+        i--
+    }
+    Critical "Off"
+
+    if (removed > 0) {
+        Log178("RECONCILE removed=" removed " remaining=" gGUI_DisplayItems.Length)
+        if (gGUI_DisplayItems.Length > 0) {
+            GUI_RecalcHover()
+            GUI_Repaint()
+        } else {
+            GUI_DismissOverlay()
+        }
+    }
+
+    return removed
+}
+
 ; ========================= BACKGROUND ICON PRE-CACHE =========================
 
 ; Kick the background HICON→bitmap pre-cache timer.

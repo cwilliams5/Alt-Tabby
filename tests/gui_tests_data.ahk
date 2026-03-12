@@ -1086,6 +1086,233 @@ RunGUITests_Data() {
     ; Restore gWS_Meta to Map for cleanup
     gWS_Meta := Map()
 
+    ; ============================================================
+    ; DISPLAY ITEM EVICTION DURING ACTIVE (#178 followup)
+    ; Tests GUI_EvictDisplayItem hwnd-tracked selection and
+    ; GUI_ReconcileDestroys store-based dead window detection.
+    ; ============================================================
+
+    ; ----- Test: Evict item ABOVE selection — selection tracks same hwnd -----
+    GUI_Log("Test: Evict above selection — sel tracks same hwnd")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; Selected hwnd = 3000
+    gGUI_ScrollTop := 2
+
+    remaining := GUI_EvictDisplayItem(1)  ; Remove item above sel (hwnd=1000)
+
+    GUI_AssertEq(remaining, 4, "EvictAbove: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 2, "EvictAbove: sel adjusted from 3 to 2 (same hwnd 3000)")
+    ; Verify the selected item IS hwnd 3000
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "EvictAbove: selected item hwnd=3000")
+
+    ; ----- Test: Evict the SELECTED item — clamp to next -----
+    GUI_Log("Test: Evict selected item — clamp to next")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; Selected hwnd = 3000
+
+    remaining := GUI_EvictDisplayItem(3)  ; Remove the selected item
+
+    GUI_AssertEq(remaining, 4, "EvictSel: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 3, "EvictSel: sel clamped to 3 (next item slides up)")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 4000, "EvictSel: now pointing at hwnd=4000")
+
+    ; ----- Test: Evict item BELOW selection — no change -----
+    GUI_Log("Test: Evict below selection — sel unchanged")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 2  ; Selected hwnd = 2000
+
+    remaining := GUI_EvictDisplayItem(4)  ; Remove item below sel (hwnd=4000)
+
+    GUI_AssertEq(remaining, 4, "EvictBelow: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 2, "EvictBelow: sel unchanged at 2")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 2000, "EvictBelow: still pointing at hwnd=2000")
+
+    ; ----- Test: Evict last item when selected — sel decrements to new last -----
+    GUI_Log("Test: Evict last item when selected — sel decrements")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(4)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 4  ; Last item selected (hwnd=4000)
+
+    remaining := GUI_EvictDisplayItem(4)
+
+    GUI_AssertEq(remaining, 3, "EvictLast: 3 items remaining")
+    GUI_AssertEq(gGUI_Sel, 3, "EvictLast: sel clamped to new last (3)")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "EvictLast: pointing at hwnd=3000")
+
+    ; ----- Test: Evict all items — triggers empty state -----
+    GUI_Log("Test: Evict all items — empty display list")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(1)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    gGUI_LiveItemsMap[items[1].hwnd] := items[1]
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 1
+
+    remaining := GUI_EvictDisplayItem(1)
+
+    GUI_AssertEq(remaining, 0, "EvictAll: 0 items remaining")
+    GUI_AssertEq(gGUI_Sel, 1, "EvictAll: sel reset to 1")
+    GUI_AssertEq(gGUI_ScrollTop, 0, "EvictAll: scrollTop reset to 0")
+
+    ; ----- Test: ToggleBase consistency — evict removes from both arrays -----
+    GUI_Log("Test: ToggleBase consistency after evict")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5, 3)  ; 3 on current WS, 2 on other
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    ; Simulate WS filtering: display only current-WS items
+    gGUI_DisplayItems := []
+    for _, item in items {
+        if (item.isOnCurrentWorkspace)
+            gGUI_DisplayItems.Push(item)
+    }
+    gGUI_Sel := 1
+
+    ; Evict from display (hwnd=1000) — should also remove from ToggleBase
+    GUI_EvictDisplayItem(1)
+
+    ; Verify ToggleBase doesn't contain hwnd=1000
+    found := false
+    for _, item in gGUI_ToggleBase {
+        if (item.hwnd = 1000) {
+            found := true
+            break
+        }
+    }
+    GUI_AssertTrue(!found, "ToggleBase: hwnd=1000 removed from ToggleBase")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 4, "ToggleBase: length reduced from 5 to 4")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "ToggleBase: display length reduced from 3 to 2")
+
+    ; ----- Test: ReconcileDestroys detects store-removed items -----
+    GUI_Log("Test: ReconcileDestroys removes dead windows")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 2
+
+    ; Simulate store: only hwnds 1000, 2000, 4000 exist (3000 and 5000 destroyed)
+    gWS_Store := Map()
+    gWS_Store[1000] := {present: true}
+    gWS_Store[2000] := {present: true}
+    gWS_Store[4000] := {present: true}
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 2, "Reconcile: 2 items removed")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "Reconcile: 3 items remaining")
+    ; Verify only surviving hwnds remain
+    hwnds := []
+    for _, item in gGUI_DisplayItems
+        hwnds.Push(item.hwnd)
+    GUI_AssertTrue(hwnds[1] = 1000, "Reconcile: first item hwnd=1000")
+    GUI_AssertTrue(hwnds[2] = 2000, "Reconcile: second item hwnd=2000")
+    GUI_AssertTrue(hwnds[3] = 4000, "Reconcile: third item hwnd=4000")
+    ; Selection should track hwnd=2000 (was sel=2, stays sel=2)
+    GUI_AssertEq(gGUI_Sel, 2, "Reconcile: sel=2 tracks hwnd=2000")
+
+    ; ----- Test: ReconcileDestroys all dead — triggers dismiss -----
+    GUI_Log("Test: ReconcileDestroys all dead — dismisses overlay")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(3)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 1
+    ; Mock store to populate for RefreshLiveItems during dismiss
+    MockStore_SetItems([])
+
+    ; Empty store — all 3 items are dead
+    gWS_Store := Map()
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 3, "ReconcileAll: 3 items removed")
+    GUI_AssertEq(gGUI_State, "IDLE", "ReconcileAll: state returned to IDLE")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "ReconcileAll: overlay hidden")
+
+    ; ----- Test: ReconcileDestroys skips during non-ACTIVE state -----
+    GUI_Log("Test: ReconcileDestroys skips during IDLE")
+    ResetGUIState()
+    gGUI_State := "IDLE"
+    gGUI_DisplayItems := CreateTestItems(3)
+    gWS_Store := Map()  ; Empty store
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 0, "ReconcileIdle: 0 removed (skipped)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "ReconcileIdle: display list unchanged")
+
+    ; ----- Test: Close button during ACTIVE evicts from display list -----
+    GUI_Log("Test: _GUI_RemoveItemAt during ACTIVE uses eviction path")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; hwnd=3000
+
+    _GUI_RemoveItemAt(2)  ; Close button on item above selection
+
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "CloseActive: 4 items in display list")
+    GUI_AssertEq(gGUI_Sel, 2, "CloseActive: sel tracked hwnd=3000 at new index 2")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "CloseActive: selected item is hwnd=3000")
+    GUI_AssertEq(gGUI_LiveItems.Length, 4, "CloseActive: live items also reduced")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)

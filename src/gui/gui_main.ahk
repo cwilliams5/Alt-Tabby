@@ -298,7 +298,10 @@ _GUI_OnProducerRevChanged(isStructural := true) {
                     SetTimer(_GUI_CosmeticTrailingRepaint, -remaining)
                 }
             } else {
-                Log178("SKIP structural during ACTIVE")
+                ; #178: Structural change during ACTIVE — reconcile destroys.
+                ; New windows and reorders are still blocked (freeze protects against noise),
+                ; but destroyed windows are evicted (a destroy is signal, not noise).
+                GUI_ReconcileDestroys()
             }
         }
 
