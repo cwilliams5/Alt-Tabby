@@ -110,8 +110,6 @@ global DWMWA_CLOAKED := 14
 ; Constants from config_loader.ahk
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 global LOG_PATH_STORE := A_Temp "\tabby_store_error.log"
-global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
-
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
@@ -155,7 +153,6 @@ global cfg := {
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
-    DiagCosmeticPatchLog: false,
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
@@ -217,6 +214,11 @@ global gMock_RefreshBackdropCount := 0
 GUI_RefreshBackdrop() {
     global gMock_RefreshBackdropCount
     gMock_RefreshBackdropCount++
+}
+
+; Pump probe connect mock (#178: called at ACTIVE→IDLE transitions)
+GUIPump_ProbeConnect() {
+    return false
 }
 
 ; GDI+ icon cache invalidation mock
@@ -390,6 +392,7 @@ global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
 global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_ACTIVATE_RETRY := 33
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41, FR_EV_MON_TOGGLE := 42
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_FG_GUARD := 53
+global FR_EV_DISPLAY_EVICT := 80
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }

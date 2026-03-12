@@ -10,6 +10,18 @@
 ; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
 global gGUI_State := "IDLE"
 
+; TEMP #178 diagnostic — always logs, no config gate. Remove after investigation.
+; Public: called from gui_state, gui_main, gui_pump (all write to same file).
+Log178(msg) {
+    static logPath := A_Temp "\tabby_178_diag.log"
+    static cleared := false
+    if (!cleared) {
+        try FileDelete(logPath)
+        cleared := true
+    }
+    try FileAppend(FormatTime(, "HH:mm:ss") "." Format("{:03}", Mod(A_TickCount, 1000)) " " msg "`n", logPath, "UTF-8")
+}
+
 global gGUI_CurrentWSName := ""       ; Cached from gWS_Meta (updated by workspace flip callback)
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
@@ -188,6 +200,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Alt pressed - enter ALT_PENDING state
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
+        Log178("STATE: IDLE → ALT_PENDING")
         gGUI_State := "ALT_PENDING"
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
@@ -352,8 +365,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 gGUI_DisplayItems := []
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
+            Log178("STATE: ACTIVE → IDLE (ALT_UP dismiss)")
             gGUI_State := "IDLE"
             Stats_AccumulateSession()
+
+            ; #178: Probe for pump connection — retries may have been starved during ACTIVE.
+            ; Non-blocking (timeout=0): single CreateFileW, no cooperative threading risk.
+            GUIPump_ProbeConnect()
 
             ; NOTE: Activation is now async (non-blocking) for cross-workspace switches.
             ; Keyboard events are processed normally between timer fires.
@@ -364,25 +382,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
-        global gStats_Cancellations, gGUI_StealFocus, gGUI_FocusBeforeShow
+        global gStats_Cancellations
         gStats_Cancellations += 1
-        SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
-        if (gGUI_OverlayVisible) {
-            GUI_HideOverlay()
-            ; Restore focus to the window that was active before overlay stole it
-            if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
-                GUI_RobustActivate(gGUI_FocusBeforeShow)
-                gGUI_FocusBeforeShow := 0
-            }
-        }
-        if (gFR_Enabled)
-            FR_Record(FR_EV_STATE, FR_ST_IDLE)
-        gGUI_State := "IDLE"
-        gGUI_DisplayItems := []
-        Stats_AccumulateSession()
-
-        ; Resync — refresh live items after ACTIVE state
-        GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
+        GUI_DismissOverlay()
         Profiler.Leave() ; @profile
         return
     }
@@ -438,6 +440,34 @@ GUI_OnWorkspaceFlips() {
     Profiler.Leave() ; @profile
 }
 
+; ========================= OVERLAY DISMISS =========================
+
+; Dismiss overlay and return to IDLE — shared by ESC, empty-list eviction, etc.
+; Hides overlay, restores focus if StealFocus, clears display items, flushes stats.
+; Caller may hold Critical (RefreshLiveItems manages its own).
+GUI_DismissOverlay() {
+    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems
+    global gGUI_StealFocus, gGUI_FocusBeforeShow
+    global gFR_Enabled, FR_EV_STATE, FR_ST_IDLE
+
+    SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+    if (gGUI_OverlayVisible) {
+        GUI_HideOverlay()
+        if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
+            GUI_RobustActivate(gGUI_FocusBeforeShow)
+            gGUI_FocusBeforeShow := 0
+        }
+    }
+    if (gFR_Enabled)
+        FR_Record(FR_EV_STATE, FR_ST_IDLE)
+    Log178("STATE: ACTIVE → IDLE (dismiss)")
+    gGUI_State := "IDLE"
+    gGUI_DisplayItems := []
+    Stats_AccumulateSession()
+    GUIPump_ProbeConnect()
+    GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
+}
+
 ; ========================= FROZEN STATE HELPERS =========================
 
 ; Handle workspace context switch during ACTIVE state.
@@ -457,26 +487,10 @@ GUI_HandleWorkspaceSwitch() {
     ; refilter changes the item list (hover icons would flash at wrong row).
     GUI_ClearHoverState()
 
-    ; Patch workspace data on frozen items from gWS_Store before re-filtering.
-    ; For SWITCH events: workspaceNames haven't changed, this is a no-op.
-    ; For MOVE events (deferred path): ProcessFullState + post-fix already updated
-    ; the store. Without this patch, the moved window's frozen item still has its
-    ; OLD workspaceName → re-filter excludes it → first paint without it → cosmetic
-    ; patch corrects it → second paint with it = visible jiggle.
-    ; Patching here makes the refilter see correct data: one paint, no jiggle.
-    global gWS_Store
-    wsName := gGUI_CurrentWSName
-    for _, item in gGUI_ToggleBase {
-        hwnd := item.hwnd
-        rec := gWS_Store.Get(hwnd, 0)
-        if (rec) {
-            storeWs := rec.workspaceName
-            if (storeWs != item.workspaceName)
-                item.workspaceName := storeWs
-        }
-        ws := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
-        item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(ws, wsName)
-    }
+    ; #178: Frozen items ARE store record refs — workspace data is already correct.
+    ; WL_SetCurrentWorkspace flipped isOnCurrentWorkspace on the actual records.
+    ; For MOVE events: ProcessFullState + post-fix already updated workspace fields.
+    ; Just re-filter to show the right windows.
 
     ; Re-filter display items and select foreground window
     GUI_RefilterForWorkspaceChange()

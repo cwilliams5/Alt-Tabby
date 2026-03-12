@@ -5,7 +5,7 @@
 #Include test_utils.ahk
 
 RunUnitTests_CoreStore() {
-    global TestPassed, TestErrors, cfg, gWS_DirtyHwnds, DISPLAY_FIELDS
+    global TestPassed, TestErrors, cfg, gWS_DirtyHwnds
 
     ; ============================================================
     ; WindowList Unit Tests
@@ -224,7 +224,7 @@ RunUnitTests_CoreStore() {
     ; Two-Level Dirty Tracking Validation Tests
     ; ============================================================
     Log("`n--- Two-Level Dirty Tracking Tests ---")
-    global gWS_SortOrderDirty, gWS_ContentDirty
+    global gWS_SortOrderDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields
 
     ; Setup: init store with test windows
@@ -241,34 +241,28 @@ RunUnitTests_CoreStore() {
     ; Force a display list to reset dirty flags
     WL_GetDisplayList()
     AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: false after GetDisplayList")
-    AssertEq(gWS_ContentDirty, false, "ContentDirty: false after GetDisplayList")
 
     ; iconHicon change should NOT set sort dirty (icon is cosmetic, doesn't affect order)
-    ; but MUST set content dirty so fresh _WS_ToItem copies are created (regression 514a45f)
     WL_UpdateFields(5001, Map("iconHicon", 9999), "test")
     AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: iconHicon does NOT dirty sort order")
-    AssertEq(gWS_ContentDirty, true, "ContentDirty: iconHicon dirties display list content")
 
     ; Reset via GetDisplayList
     WL_GetDisplayList()
 
-    ; Title change MUST set content dirty (was previously untracked, masked by z=0 churn)
+    ; Title change should NOT set sort dirty (in MRU mode)
     WL_UpdateFields(5001, Map("title", "New Title"), "test")
     AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: title does not dirty sort order")
-    AssertEq(gWS_ContentDirty, true, "ContentDirty: title dirties display list content")
 
     ; Reset via GetDisplayList
     WL_GetDisplayList()
 
-    ; Sort-affecting field (lastActivatedTick) should set both dirty flags
+    ; Sort-affecting field (lastActivatedTick) should set sort dirty
     WL_UpdateFields(5001, Map("lastActivatedTick", 999), "test")
     AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: lastActivatedTick sets true")
-    AssertEq(gWS_ContentDirty, true, "ContentDirty: lastActivatedTick sets true")
 
     ; Reset via GetDisplayList
     WL_GetDisplayList()
     AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: reset after GetDisplayList")
-    AssertEq(gWS_ContentDirty, false, "ContentDirty: reset after GetDisplayList")
 
     ; Filter-affecting field (isCloaked) should set sort dirty
     WL_UpdateFields(5001, Map("isCloaked", true), "test")
@@ -279,27 +273,26 @@ RunUnitTests_CoreStore() {
     WL_UpdateFields(5001, Map("z", 99), "test")
     AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: z change sets true")
 
-    ; isFocused is content-only (not used by any sort comparator) — should set contentDirty, not sortDirty
+    ; isFocused is content-only (not used by any sort comparator) — should NOT set sortDirty
     WL_GetDisplayList()
     WL_UpdateFields(5001, Map("isFocused", true), "test")
     AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: isFocused is content-only, not sort-affecting")
-    AssertEq(gWS_ContentDirty, true, "ContentDirty: isFocused sets true")
 
     ; --- Regression test: icon update MUST produce fresh data in display list (514a45f) ---
     ; Reset isCloaked so window is visible in default display list (includeCloaked=false)
     WL_UpdateFields(5001, Map("isCloaked", false), "test")
     WL_GetDisplayList()  ; Reset — creates cached items with old icon
     WL_UpdateFields(5001, Map("iconHicon", 7777), "test")
-    proj := WL_GetDisplayList()  ; Should use Path 2 — fresh _WS_ToItem
+    proj := WL_GetDisplayList()  ; Should reflect updated icon on live record
     foundIcon := false
     for _, item in proj.items {
         if (item.hwnd = 5001) {
-            AssertEq(item.iconHicon, 7777, "Path 2 returns fresh iconHicon (regression 514a45f)")
+            AssertEq(item.iconHicon, 7777, "Display list returns fresh iconHicon (regression 514a45f)")
             foundIcon := true
             break
         }
     }
-    AssertEq(foundIcon, true, "Path 2 regression: hwnd 5001 found in display list")
+    AssertEq(foundIcon, true, "Icon regression: hwnd 5001 found in display list")
 
     ; --- Regression test: title update MUST produce fresh data in display list ---
     WL_GetDisplayList()
@@ -308,35 +301,27 @@ RunUnitTests_CoreStore() {
     foundTitle := false
     for _, item in proj.items {
         if (item.hwnd = 5001) {
-            AssertEq(item.title, "Updated Title", "Path 2 returns fresh title")
+            AssertEq(item.title, "Updated Title", "Display list returns fresh title")
             foundTitle := true
             break
         }
     }
-    AssertEq(foundTitle, true, "Path 2 title: hwnd 5001 found in display list")
+    AssertEq(foundTitle, true, "Title update: hwnd 5001 found in display list")
 
-    ; --- monitorHandle change triggers Path 2 content refresh ---
+    ; --- monitorHandle change produces fresh data in display list ---
     WL_GetDisplayList()
     WL_UpdateFields(5001, Map("monitorHandle", 12345, "monitorLabel", "Mon 2"), "test")
     proj := WL_GetDisplayList()
     foundMon := false
     for _, item in proj.items {
         if (item.hwnd = 5001) {
-            AssertEq(item.monitorHandle, 12345, "Path 2 returns fresh monitorHandle")
-            AssertEq(item.monitorLabel, "Mon 2", "Path 2 returns fresh monitorLabel")
+            AssertEq(item.monitorHandle, 12345, "Display list returns fresh monitorHandle")
+            AssertEq(item.monitorLabel, "Mon 2", "Display list returns fresh monitorLabel")
             foundMon := true
             break
         }
     }
-    AssertEq(foundMon, true, "Path 2 monitorHandle: hwnd 5001 found in display list")
-
-    ; --- Coverage test: every _WS_ToItem field must be tracked ---
-    ; Prevents future regressions where a new field is added to _WS_ToItem
-    ; but not tracked, silently causing stale cache data
-    for _, field in DISPLAY_FIELDS {
-        covered := gWS_SortAffectingFields.Has(field) || gWS_ContentOnlyFields.Has(field)
-        AssertEq(covered, true, "Field '" field "' must be tracked in SortAffecting or ContentOnly")
-    }
+    AssertEq(foundMon, true, "MonitorHandle update: hwnd 5001 found in display list")
 
     ; Cleanup
     WL_RemoveWindow([5001, 5002], true)
@@ -374,12 +359,12 @@ RunUnitTests_CoreStore() {
     AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path1: count matches items")
     AssertTrue(proj.itemsMap.Has(6002), "itemsMap Path1: contains hwnd 6002")
 
-    ; Path 2 (content-only refresh) — change non-sort field
+    ; Content field change (non-sort field) — display list reflects update via live record refs
     WL_UpdateFields(6001, Map("iconHicon", 8888), "test")
     proj := WL_GetDisplayList({ sort: "MRU" })
-    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap Path2: returned on content refresh")
-    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path2: count matches items")
-    AssertTrue(proj.itemsMap.Has(6001), "itemsMap Path2: contains updated hwnd 6001")
+    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap content: returned after content field change")
+    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap content: count matches items")
+    AssertTrue(proj.itemsMap.Has(6001), "itemsMap content: contains updated hwnd 6001")
 
     ; Path 1.5 (MRU bump) — change MRU-only field
     WL_UpdateFields(6001, Map("lastActivatedTick", 500), "test")
@@ -524,9 +509,8 @@ RunUnitTests_CoreStore() {
     ; Assertions: third window untouched
     AssertEq(gWS_Store[7003].title, "Batch3", "BatchUpdateFields: window 3 title unchanged")
 
-    ; Assertions: dirty flags correct (z is sort-affecting → both dirty)
+    ; Assertions: dirty flags correct (z is sort-affecting → sort dirty)
     AssertEq(gWS_SortOrderDirty, true, "BatchUpdateFields: sort dirty (z changed)")
-    AssertEq(gWS_ContentDirty, true, "BatchUpdateFields: content dirty")
 
     ; Test: content-only batch does NOT set sort dirty
     WL_GetDisplayList()  ; Reset dirty flags
@@ -534,7 +518,6 @@ RunUnitTests_CoreStore() {
     patches2[7001] := Map("iconHicon", 5555)
     WL_BatchUpdateFields(patches2, "test")
     AssertEq(gWS_SortOrderDirty, false, "BatchUpdateFields content-only: sort NOT dirty")
-    AssertEq(gWS_ContentDirty, true, "BatchUpdateFields content-only: content dirty")
 
     ; Test: patching non-existent hwnd is silently skipped
     WL_GetDisplayList()
@@ -670,54 +653,6 @@ RunUnitTests_CoreStore() {
     WL_RemoveWindow([testHwnd], true)
 
     ; ============================================================
-    ; DisplayList Cache Stale-Ref Fallback Tests (Path 2 → Path 3)
-    ; ============================================================
-    ; Path 2 (content-only refresh) checks rec.present on cached sorted refs.
-    ; If a stale ref is found, it falls through to Path 3 (full rebuild).
-    Log("`n--- DisplayList Cache Stale-Ref Fallback Tests ---")
-
-    global gWS_DLCache_SortedRecs
-    WL_Init()
-    WL_BeginScan()
-    staleRecs := []
-    staleRecs.Push(_TestRec(Map("hwnd", 8001, "title", "StaleTest1", "class", "T", "pid", 1,
-                                 "z", 1, "lastActivatedTick", 100)))
-    staleRecs.Push(_TestRec(Map("hwnd", 8002, "title", "StaleTest2", "class", "T", "pid", 2,
-                                 "z", 2, "lastActivatedTick", 200)))
-    WL_UpsertWindow(staleRecs, "test")
-    WL_EndScan()
-
-    ; Prime the cache (Path 3 runs, populates cache)
-    proj1 := WL_GetDisplayList()
-    AssertEq(proj1.items.Length, 2, "StaleRef setup: 2 items in initial display list")
-    AssertEq(gWS_SortOrderDirty, false, "StaleRef setup: sort clean after display list")
-    AssertEq(gWS_ContentDirty, false, "StaleRef setup: content clean after display list")
-
-    ; Simulate stale ref: mark one cached record as not present
-    ; In production, this shouldn't happen (removal sets SortOrderDirty), but the defensive
-    ; check exists in case of edge cases
-    for _, cachedRec in gWS_DLCache_SortedRecs {
-        if (cachedRec.hwnd = 8002) {
-            cachedRec.present := false
-            break
-        }
-    }
-
-    ; Force Path 2 entry: content dirty + sort clean
-    gWS_ContentDirty := true
-    gWS_SortOrderDirty := false
-
-    ; Get display list — Path 2 should detect stale ref, fall through to Path 3
-    proj2 := WL_GetDisplayList()
-
-    ; Path 3 rebuilds from live store — only present window should appear
-    AssertEq(proj2.items.Length, 1, "StaleRef fallback: Path 3 returns only present window")
-    AssertEq(proj2.items[1].hwnd, 8001, "StaleRef fallback: correct window survived")
-
-    ; Cleanup
-    WL_RemoveWindow([8001, 8002], true)
-
-    ; ============================================================
     ; Path 1.5: MRU Bump Optimization Tests
     ; ============================================================
     ; When only MRU fields change (lastActivatedTick/isFocused), Path 1.5 does an
@@ -813,12 +748,12 @@ RunUnitTests_CoreStore() {
     AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path1: no items")
     AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path1: 3 hwnds")
 
-    ; Path 2 (content refresh) — change non-sort field
+    ; Content field change (non-sort field) — live record refs, no sort rebuild needed
     WL_UpdateFields(9001, Map("processName", "updated.exe"), "test")
     proj := WL_GetDisplayList({ sort: "MRU", columns: "hwndsOnly" })
-    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly Path2: has hwnds")
-    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path2: no items")
-    AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path2: 3 hwnds")
+    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly content: has hwnds")
+    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly content: no items")
+    AssertEq(proj.hwnds.Length, 3, "hwndsOnly content: 3 hwnds")
 
     ; Path 1.5 (MRU bump) — change lastActivatedTick only
     WL_UpdateFields(9001, Map("lastActivatedTick", 500), "test")
@@ -890,7 +825,6 @@ RunUnitTests_CoreStore() {
     AssertEq(gWS_TitleSortActive, false, "TitleSort: inactive in MRU mode")
     WL_UpdateFields(9101, Map("title", "Alpha2"), "test")
     AssertEq(gWS_SortOrderDirty, false, "TitleSort: title change is content-only in MRU mode")
-    AssertEq(gWS_ContentDirty, true, "TitleSort: title change sets content dirty in MRU mode")
 
     ; Switch to Title sort: title becomes sort-affecting
     WL_GetDisplayList({ sort: "Title" })

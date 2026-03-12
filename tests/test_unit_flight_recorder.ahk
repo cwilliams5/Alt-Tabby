@@ -81,7 +81,6 @@ global gINT_PendingDecideArmed := false
 global gWS_Rev := 0
 global gWS_Store := Map()
 global gWS_SortOrderDirty := false
-global gWS_ContentDirty := false
 global gWS_MRUBumpOnly := false
 global gWS_DirtyHwnds := Map()
 global gWS_IconQueue := []

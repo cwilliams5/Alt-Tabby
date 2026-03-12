@@ -1085,7 +1085,7 @@ _CL_ComputeDerivedGlobals() {
         global LOG_PATH_EVENTS, LOG_PATH_LAUNCHER, LOG_PATH_STORE, LOG_PATH_ICONPUMP
         global LOG_PATH_KSUB, LOG_PATH_WINEVENT, LOG_PATH_PROCPUMP, LOG_PATH_IPC
         global LOG_PATH_PAINT_TIMING, LOG_PATH_WEBVIEW, LOG_PATH_UPDATE
-        global LOG_PATH_COSMETIC_PATCH, LOG_PATH_PUMP, LOG_PATH_SHADER
+        global LOG_PATH_PUMP, LOG_PATH_SHADER
         LOG_PATH_EVENTS         := A_Temp "\tabby_events_" _pfx ".log"
         LOG_PATH_LAUNCHER       := A_Temp "\tabby_launcher_" _pfx ".log"
         LOG_PATH_STORE          := A_Temp "\tabby_store_error_" _pfx ".log"
@@ -1097,7 +1097,6 @@ _CL_ComputeDerivedGlobals() {
         LOG_PATH_PAINT_TIMING   := A_Temp "\tabby_paint_timing_" _pfx ".log"
         LOG_PATH_WEBVIEW        := A_Temp "\tabby_webview_debug_" _pfx ".log"
         LOG_PATH_UPDATE         := A_Temp "\tabby_update_" _pfx ".log"
-        LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch_" _pfx ".log"
         LOG_PATH_PUMP           := A_Temp "\tabby_pump_" _pfx ".log"
         LOG_PATH_SHADER         := A_Temp "\tabby_shader_" _pfx ".log"
     }
@@ -1186,7 +1185,6 @@ global LOG_PATH_IPC        := A_Temp "\tabby_ipc.log"
 global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
 global LOG_PATH_WEBVIEW    := A_Temp "\tabby_webview_debug.log"
 global LOG_PATH_UPDATE     := A_Temp "\tabby_update.log"
-global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
 global LOG_PATH_PUMP       := A_Temp "\tabby_pump.log"
 global LOG_PATH_SHADER     := A_Temp "\tabby_shader.log" ; lint-ignore: dead-global
 
@@ -1282,6 +1280,7 @@ global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON pa
 global TABBY_CMD_EDITOR_CLOSED := 7   ; Editor -> launcher: editor process closing (dashboard refresh)
 global TABBY_CMD_PUMP_FAILED := 8     ; GUI -> launcher: pump crashed or hung, please restart
 global TABBY_CMD_PUMP_RESTARTED := 9  ; Launcher -> GUI: pump restarted, reconnect
+global TABBY_CMD_PUMP_READY := 10    ; Pump -> launcher: pipe server created, GUI can connect
 
 ; Shared path/delimiter constants
 global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"

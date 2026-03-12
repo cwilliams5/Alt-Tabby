@@ -608,171 +608,6 @@ RunGUITests_Data() {
     GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "KickPreCache ACTIVE: timer not set, no icons cached")
 
     ; ============================================================
-    ; GUI_PatchCosmeticUpdates TESTS
-    ; ============================================================
-
-    ; ----- Test: Cosmetic patch: title update -----
-    GUI_Log("Test: Cosmetic patch updates title in-place")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(3)
-    items[2].title := "Old Title"
-    items[2].iconHicon := 5000
-    items[2].processName := "old.exe"
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    ; Populate store with updated title for item 2 (hwnd=2000)
-    gWS_Store[2000] := {title: "New Title", iconHicon: 5000, processName: "old.exe", workspaceName: "Main"}
-    gWS_DirtyHwnds[2000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(items[2].title, "New Title", "CosmeticPatch title: item.title patched in-place")
-
-    ; ----- Test: Cosmetic patch: icon update -----
-    GUI_Log("Test: Cosmetic patch updates icon in-place")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(3)
-    items[1].iconHicon := 1000
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    gWS_Store[1000] := {title: "Window 1", iconHicon: 9999, processName: "", workspaceName: "Main"}
-    gWS_DirtyHwnds[1000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(items[1].iconHicon, 9999, "CosmeticPatch icon: item.iconHicon patched in-place")
-
-    ; ----- Test: Cosmetic patch: processName update -----
-    GUI_Log("Test: Cosmetic patch updates processName in-place")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(3)
-    items[3].processName := "old.exe"
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    gWS_Store[3000] := {title: "Window 3", iconHicon: 0, processName: "new.exe", workspaceName: "Main"}
-    gWS_DirtyHwnds[3000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(items[3].processName, "new.exe", "CosmeticPatch proc: item.processName patched in-place")
-
-    ; ----- Test: Cosmetic patch: workspace move updates workspaceName + isOnCurrentWorkspace -----
-    GUI_Log("Test: Cosmetic patch updates workspace data")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    gGUI_CurrentWSName := "Main"
-    items := CreateTestItems(2)
-    items[1].workspaceName := "Main"
-    items[1].isOnCurrentWorkspace := true
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    ; Store says window moved to "Other" workspace
-    gWS_Store[1000] := {title: "Window 1", iconHicon: 0, processName: "", workspaceName: "Other"}
-    gWS_DirtyHwnds[1000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(items[1].workspaceName, "Other", "CosmeticPatch WS: workspaceName updated")
-    GUI_AssertEq(items[1].isOnCurrentWorkspace, false, "CosmeticPatch WS: isOnCurrentWorkspace recalculated (Other != Main)")
-
-    ; ----- Test: Cosmetic patch: debounce skips when too recent -----
-    GUI_Log("Test: Cosmetic patch debounce skips")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(2)
-    items[1].title := "Old"
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    gWS_Store[1000] := {title: "New", iconHicon: 0, processName: "", workspaceName: "Main"}
-    gWS_DirtyHwnds[1000] := true
-    ; Set last repaint to NOW — debounce should skip (250ms threshold)
-    _gGUI_LastCosmeticRepaintTick := A_TickCount
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(items[1].title, "Old", "CosmeticPatch debounce: title NOT patched (debounced)")
-    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch debounce: GUI_Repaint not called")
-
-    ; ----- Test: Cosmetic patch: no dirty hwnds = no repaint -----
-    GUI_Log("Test: Cosmetic patch no dirty hwnds is no-op")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(3)
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    ; No dirty hwnds, no store entries needed
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch no-dirty: GUI_Repaint not called")
-
-    ; ----- Test: Cosmetic patch: dirty hwnd not in frozen set is skipped -----
-    GUI_Log("Test: Cosmetic patch skips dirty hwnd not in frozen set")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(2)
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    ; Dirty hwnd 9999 is NOT in the ToggleBase (hwnds 1000, 2000)
-    gWS_Store[9999] := {title: "Ghost", iconHicon: 0, processName: "", workspaceName: "Main"}
-    gWS_DirtyHwnds[9999] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch not-in-frozen: GUI_Repaint not called (patched=0)")
-
-    ; ----- Test: Cosmetic patch: repaint called when patched > 0 -----
-    GUI_Log("Test: Cosmetic patch calls repaint when items patched")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    items := CreateTestItems(2)
-    items[1].title := "Old"
-    gGUI_ToggleBase := items
-    gGUI_DisplayItems := items.Clone()
-    gWS_Store[1000] := {title: "New", iconHicon: 0, processName: "", workspaceName: "Main"}
-    gWS_DirtyHwnds[1000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    GUI_AssertEq(gMock_RepaintCount, 1, "CosmeticPatch repaint: GUI_Repaint called once")
-    GUI_AssertTrue(_gGUI_LastCosmeticRepaintTick > 0, "CosmeticPatch repaint: debounce tick updated")
-
-    ; ============================================================
-    ; COSMETIC PATCH WORKSPACE RE-FILTER TESTS
-    ; ============================================================
-    ; When cosmetic patching detects workspace data changed (wsPatched=true),
-    ; it calls GUI_RefilterForWorkspaceChange() to update the display list.
-    ; This tests the link between "workspace data changed" and "display list re-filtered".
-
-    ; ----- Test: WS cosmetic patch triggers re-filter (item count drops in current mode) -----
-    GUI_Log("Test: CosmeticPatch WS re-filter drops item from display in current mode")
-    ResetGUIState()
-    gGUI_State := "ACTIVE"
-    gGUI_CurrentWSName := "Main"
-    global WS_MODE_CURRENT
-    gGUI_WorkspaceMode := WS_MODE_CURRENT
-
-    ; Create 3 items: 2 on "Main" (current), 1 on "Other"
-    items := CreateTestItems(3, 2)
-    gGUI_ToggleBase := items
-    ; In "current" mode, display should show only 2 items (on Main)
-    gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
-    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "CosmeticPatch WS refilter setup: 2 items in current mode")
-
-    ; Simulate store says item 1 moved to "Other" workspace
-    gWS_Store[1000] := {title: "Window 1", iconHicon: 0, processName: "", workspaceName: "Other"}
-    gWS_DirtyHwnds[1000] := true
-
-    GUI_PatchCosmeticUpdates()
-
-    ; After patch: item 1 now has workspaceName="Other", re-filter should exclude it
-    GUI_AssertEq(items[1].workspaceName, "Other", "CosmeticPatch WS refilter: item 1 workspace patched to Other")
-    GUI_AssertEq(gGUI_DisplayItems.Length, 1, "CosmeticPatch WS refilter: display items reduced to 1 (re-filtered)")
-
-    ; ============================================================
     ; _GUI_ActivateFromFrozen GUARD TESTS
     ; ============================================================
     ; _GUI_ActivateFromFrozen validates sel range and window existence.
@@ -954,40 +789,39 @@ RunGUITests_Data() {
     ; GUI_HandleWorkspaceSwitch WORKSPACE DATA PATCHING TESTS
     ; ============================================================
 
-    ; ----- Test: Frozen items patched from gWS_Store before re-filter -----
-    GUI_Log("Test: HandleWorkspaceSwitch patches frozen items from store")
+    ; ----- Test: Frozen record refs have live workspace data after switch -----
+    ; #178: Frozen items ARE store records. WL_SetCurrentWorkspace already flipped
+    ; isOnCurrentWorkspace on the records before HandleWorkspaceSwitch runs.
+    ; Test verifies re-filter sees correct data and selection resets.
+    GUI_Log("Test: HandleWorkspaceSwitch re-filters with live record data")
     ResetGUIState()
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
     gGUI_CurrentWSName := "New"
 
-    ; Build frozen items with OLD workspace names
+    ; Build frozen items as record refs — workspace data already correct
+    ; (simulates WL_SetCurrentWorkspace having already flipped the fields)
     items := CreateTestItems(3)
-    items[1].workspaceName := "Old"
-    items[1].isOnCurrentWorkspace := false
-    items[2].workspaceName := "Old"
-    items[2].isOnCurrentWorkspace := false
+    items[1].workspaceName := "New"
+    items[1].isOnCurrentWorkspace := true
+    items[2].workspaceName := "New"
+    items[2].isOnCurrentWorkspace := true
     items[3].workspaceName := "Other"
     items[3].isOnCurrentWorkspace := false
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
 
-    ; Populate gWS_Store with updated workspace for items 1 and 2 (hwnd 1000, 2000)
-    gWS_Store[1000] := {workspaceName: "New"}
-    gWS_Store[2000] := {workspaceName: "New"}
-    ; Item 3 (hwnd 3000) NOT in store — should remain unpatched
-
     GUI_HandleWorkspaceSwitch()
 
-    GUI_AssertEq(items[1].workspaceName, "New", "WSPatch: item 1 workspaceName patched to 'New'")
-    GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch: item 1 isOnCurrentWorkspace recalculated (New=New)")
-    GUI_AssertEq(items[2].workspaceName, "New", "WSPatch: item 2 workspaceName patched to 'New'")
-    GUI_AssertEq(items[2].isOnCurrentWorkspace, true, "WSPatch: item 2 isOnCurrentWorkspace recalculated")
-    GUI_AssertEq(items[3].workspaceName, "Other", "WSPatch: item 3 unpatched (not in store)")
+    GUI_AssertEq(items[1].workspaceName, "New", "WSPatch: item 1 workspaceName is 'New'")
+    GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch: item 1 isOnCurrentWorkspace true")
+    GUI_AssertEq(items[2].workspaceName, "New", "WSPatch: item 2 workspaceName is 'New'")
+    GUI_AssertEq(items[2].isOnCurrentWorkspace, true, "WSPatch: item 2 isOnCurrentWorkspace true")
+    GUI_AssertEq(items[3].workspaceName, "Other", "WSPatch: item 3 workspaceName unchanged")
     GUI_AssertEq(items[3].isOnCurrentWorkspace, false, "WSPatch: item 3 isOnCurrentWorkspace false (Other!=New)")
 
-    ; ----- Test: Items with matching store but unchanged WS stay the same -----
-    GUI_Log("Test: HandleWorkspaceSwitch no-op when store matches frozen items")
+    ; ----- Test: Items already on current workspace stay unchanged -----
+    GUI_Log("Test: HandleWorkspaceSwitch no-op when workspace matches")
     ResetGUIState()
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
@@ -998,9 +832,6 @@ RunGUITests_Data() {
     items[1].isOnCurrentWorkspace := true
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
-
-    ; Store has same workspace name
-    gWS_Store[1000] := {workspaceName: "Main"}
 
     GUI_HandleWorkspaceSwitch()
 
@@ -1254,6 +1085,233 @@ RunGUITests_Data() {
 
     ; Restore gWS_Meta to Map for cleanup
     gWS_Meta := Map()
+
+    ; ============================================================
+    ; DISPLAY ITEM EVICTION DURING ACTIVE (#178 followup)
+    ; Tests GUI_EvictDisplayItem hwnd-tracked selection and
+    ; GUI_ReconcileDestroys store-based dead window detection.
+    ; ============================================================
+
+    ; ----- Test: Evict item ABOVE selection — selection tracks same hwnd -----
+    GUI_Log("Test: Evict above selection — sel tracks same hwnd")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; Selected hwnd = 3000
+    gGUI_ScrollTop := 2
+
+    remaining := GUI_EvictDisplayItem(1)  ; Remove item above sel (hwnd=1000)
+
+    GUI_AssertEq(remaining, 4, "EvictAbove: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 2, "EvictAbove: sel adjusted from 3 to 2 (same hwnd 3000)")
+    ; Verify the selected item IS hwnd 3000
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "EvictAbove: selected item hwnd=3000")
+
+    ; ----- Test: Evict the SELECTED item — clamp to next -----
+    GUI_Log("Test: Evict selected item — clamp to next")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; Selected hwnd = 3000
+
+    remaining := GUI_EvictDisplayItem(3)  ; Remove the selected item
+
+    GUI_AssertEq(remaining, 4, "EvictSel: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 3, "EvictSel: sel clamped to 3 (next item slides up)")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 4000, "EvictSel: now pointing at hwnd=4000")
+
+    ; ----- Test: Evict item BELOW selection — no change -----
+    GUI_Log("Test: Evict below selection — sel unchanged")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 2  ; Selected hwnd = 2000
+
+    remaining := GUI_EvictDisplayItem(4)  ; Remove item below sel (hwnd=4000)
+
+    GUI_AssertEq(remaining, 4, "EvictBelow: 4 items remaining")
+    GUI_AssertEq(gGUI_Sel, 2, "EvictBelow: sel unchanged at 2")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 2000, "EvictBelow: still pointing at hwnd=2000")
+
+    ; ----- Test: Evict last item when selected — sel decrements to new last -----
+    GUI_Log("Test: Evict last item when selected — sel decrements")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(4)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 4  ; Last item selected (hwnd=4000)
+
+    remaining := GUI_EvictDisplayItem(4)
+
+    GUI_AssertEq(remaining, 3, "EvictLast: 3 items remaining")
+    GUI_AssertEq(gGUI_Sel, 3, "EvictLast: sel clamped to new last (3)")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "EvictLast: pointing at hwnd=3000")
+
+    ; ----- Test: Evict all items — triggers empty state -----
+    GUI_Log("Test: Evict all items — empty display list")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(1)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    gGUI_LiveItemsMap[items[1].hwnd] := items[1]
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 1
+
+    remaining := GUI_EvictDisplayItem(1)
+
+    GUI_AssertEq(remaining, 0, "EvictAll: 0 items remaining")
+    GUI_AssertEq(gGUI_Sel, 1, "EvictAll: sel reset to 1")
+    GUI_AssertEq(gGUI_ScrollTop, 0, "EvictAll: scrollTop reset to 0")
+
+    ; ----- Test: ToggleBase consistency — evict removes from both arrays -----
+    GUI_Log("Test: ToggleBase consistency after evict")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(5, 3)  ; 3 on current WS, 2 on other
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    ; Simulate WS filtering: display only current-WS items
+    gGUI_DisplayItems := []
+    for _, item in items {
+        if (item.isOnCurrentWorkspace)
+            gGUI_DisplayItems.Push(item)
+    }
+    gGUI_Sel := 1
+
+    ; Evict from display (hwnd=1000) — should also remove from ToggleBase
+    GUI_EvictDisplayItem(1)
+
+    ; Verify ToggleBase doesn't contain hwnd=1000
+    found := false
+    for _, item in gGUI_ToggleBase {
+        if (item.hwnd = 1000) {
+            found := true
+            break
+        }
+    }
+    GUI_AssertTrue(!found, "ToggleBase: hwnd=1000 removed from ToggleBase")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 4, "ToggleBase: length reduced from 5 to 4")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "ToggleBase: display length reduced from 3 to 2")
+
+    ; ----- Test: ReconcileDestroys detects store-removed items -----
+    GUI_Log("Test: ReconcileDestroys removes dead windows")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 2
+
+    ; Simulate store: only hwnds 1000, 2000, 4000 exist (3000 and 5000 destroyed)
+    gWS_Store := Map()
+    gWS_Store[1000] := {present: true}
+    gWS_Store[2000] := {present: true}
+    gWS_Store[4000] := {present: true}
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 2, "Reconcile: 2 items removed")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "Reconcile: 3 items remaining")
+    ; Verify only surviving hwnds remain
+    hwnds := []
+    for _, item in gGUI_DisplayItems
+        hwnds.Push(item.hwnd)
+    GUI_AssertTrue(hwnds[1] = 1000, "Reconcile: first item hwnd=1000")
+    GUI_AssertTrue(hwnds[2] = 2000, "Reconcile: second item hwnd=2000")
+    GUI_AssertTrue(hwnds[3] = 4000, "Reconcile: third item hwnd=4000")
+    ; Selection should track hwnd=2000 (was sel=2, stays sel=2)
+    GUI_AssertEq(gGUI_Sel, 2, "Reconcile: sel=2 tracks hwnd=2000")
+
+    ; ----- Test: ReconcileDestroys all dead — triggers dismiss -----
+    GUI_Log("Test: ReconcileDestroys all dead — dismisses overlay")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(3)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 1
+    ; Mock store to populate for RefreshLiveItems during dismiss
+    MockStore_SetItems([])
+
+    ; Empty store — all 3 items are dead
+    gWS_Store := Map()
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 3, "ReconcileAll: 3 items removed")
+    GUI_AssertEq(gGUI_State, "IDLE", "ReconcileAll: state returned to IDLE")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "ReconcileAll: overlay hidden")
+
+    ; ----- Test: ReconcileDestroys skips during non-ACTIVE state -----
+    GUI_Log("Test: ReconcileDestroys skips during IDLE")
+    ResetGUIState()
+    gGUI_State := "IDLE"
+    gGUI_DisplayItems := CreateTestItems(3)
+    gWS_Store := Map()  ; Empty store
+
+    removed := GUI_ReconcileDestroys()
+
+    GUI_AssertEq(removed, 0, "ReconcileIdle: 0 removed (skipped)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "ReconcileIdle: display list unchanged")
+
+    ; ----- Test: Close button during ACTIVE evicts from display list -----
+    GUI_Log("Test: _GUI_RemoveItemAt during ACTIVE uses eviction path")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    items := CreateTestItems(5)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    gGUI_DisplayItems := items.Clone()
+    gGUI_Sel := 3  ; hwnd=3000
+
+    _GUI_RemoveItemAt(2)  ; Close button on item above selection
+
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "CloseActive: 4 items in display list")
+    GUI_AssertEq(gGUI_Sel, 2, "CloseActive: sel tracked hwnd=3000 at new index 2")
+    GUI_AssertEq(gGUI_DisplayItems[gGUI_Sel].hwnd, 3000, "CloseActive: selected item is hwnd=3000")
+    GUI_AssertEq(gGUI_LiveItems.Length, 4, "CloseActive: live items also reduced")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")

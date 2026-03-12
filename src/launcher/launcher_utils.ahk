@@ -25,7 +25,7 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
                 cmd := exe "--gui-only" launcherArg
                 if (g_TestingMode)
                     cmd .= " --testing-mode"
-            case "pump":   cmd := exe "--pump"
+            case "pump":   cmd := exe "--pump" launcherArg
             default:       return false
         }
     } else {
@@ -34,7 +34,7 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
         srcDir := A_ScriptDir "\"
         switch component {
             case "gui":    cmd := ahk srcDir 'gui\gui_main.ahk"' launcherArg
-            case "pump":   cmd := ahk srcDir 'alt_tabby.ahk" --pump'
+            case "pump":   cmd := ahk srcDir 'alt_tabby.ahk" --pump' launcherArg
             default:       return false
         }
         ; In testing mode, pass --test to child processes so they hide tray icons

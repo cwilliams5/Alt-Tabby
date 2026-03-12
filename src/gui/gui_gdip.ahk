@@ -496,7 +496,7 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
 D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     global gGdip_IconCache, gD2D_RT
 
-    if (!hIcon || !gD2D_RT) {
+    if (!gD2D_RT) {
         wasCacheHit := false
         return false
     }
@@ -504,7 +504,9 @@ D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     ; Check cache — single-lookup via .Get() (avoids Has+[] double hash)
     cached := gGdip_IconCache.Get(hwnd, 0)
     if (cached) {
-        if (cached.hicon = hIcon && cached.bitmap) {
+        ; #178: If hIcon is 0 (window destroyed), serve last-known cached bitmap.
+        ; Frozen display items keep their icon until the overlay is dismissed.
+        if (cached.bitmap && (cached.hicon = hIcon || !hIcon)) {
             static destRect := Buffer(16)
             NumPut("float", Float(x), "float", Float(y),
                    "float", Float(x + size), "float", Float(y + size), destRect)
@@ -512,6 +514,12 @@ D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
             wasCacheHit := true
             return true
         }
+    }
+
+    ; No hIcon and no cache — nothing to draw
+    if (!hIcon) {
+        wasCacheHit := false
+        return false
     }
 
     ; Cache miss — extract and cache

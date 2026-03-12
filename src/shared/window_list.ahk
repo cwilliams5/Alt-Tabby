@@ -9,13 +9,8 @@
 
 global WS_SCAN_ID_MAX := 0x7FFFFFFF
 
-; Canonical list of fields copied from store records into display list items.
-; Used by static analysis (check_batch_patterns) to verify _WS_ToItem stays in sync.
-; hwnd is always included separately as the record key.
-global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
-    "isFocused", "isCloaked", "isMinimized", "workspaceName", "workspaceId",
-    "isOnCurrentWorkspace", "processName", "iconHicon",
-    "monitorHandle", "monitorLabel"]
+; DISPLAY_FIELDS removed (#178): display items are now direct store record references.
+; No field list to maintain — paint reads live fields from records.
 
 global gWS_Store := Map()
 global gWS_Rev := 0
@@ -24,27 +19,25 @@ global gWS_Config := Map()
 global gWS_Meta := Map()
 
 ; Display list cache state (owned exclusively by WL_GetDisplayList)
-global gWS_DLCache_Items := ""         ; Cached transformed items (result of _WS_ToItem)
-global gWS_DLCache_ItemsMap := Map()   ; Persistent hwnd→item Map (avoids O(n) rebuild per push cycle)
+; #178: Items and SortedRecs merged — display items ARE store record references.
+global gWS_DLCache_Items := ""         ; Cached sorted record refs (the display list)
+global gWS_DLCache_ItemsMap := Map()   ; Persistent hwnd→record Map (filtered subset of gWS_Store)
 global gWS_DLCache_OptsKey := ""       ; Opts key used for cache validation
-global gWS_DLCache_SortedRecs := ""    ; Cached sorted record refs for Path 2 (content-only refresh)
 
-; Two-level display list cache dirty tracking:
-;   gWS_SortOrderDirty — set when sort/filter-affecting fields change (needs full rebuild)
-;   gWS_ContentDirty — set when content-only fields change (can skip re-sort)
+; Display list dirty tracking:
+;   gWS_SortOrderDirty — set when sort/filter-affecting fields change (needs rebuild)
 ;   gWS_MRUBumpOnly — when true, sort-dirty was caused ONLY by MRU fields (lastActivatedTick/isFocused)
 ;     This enables Path 1.5: incremental move-to-front instead of full rebuild.
 ;     Reset to false if any non-MRU sort-affecting field changes in the same cycle.
 global gWS_SortOrderDirty := true
-global gWS_ContentDirty := true
 global gWS_MRUBumpOnly := false
 global gWS_MRUBumpedHwnd := 0  ; hwnd that was moved to MRU front (valid when gWS_MRUBumpOnly=true)
 
-; Mark store as needing re-sort and content update.
+; Mark store as needing re-sort.
 ; mruOnly: true if ONLY MRU fields changed (enables incremental move-to-front in display list).
 ; bumpedHwnd: the hwnd whose lastActivatedTick was bumped (lets Path 1.5 skip O(N) scan).
 _WS_MarkDirty(mruOnly := false, bumpedHwnd := 0) {
-    global gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, gWS_MRUBumpedHwnd
+    global gWS_SortOrderDirty, gWS_MRUBumpOnly, gWS_MRUBumpedHwnd
     if (!gWS_SortOrderDirty) {
         gWS_MRUBumpOnly := mruOnly
         gWS_MRUBumpedHwnd := bumpedHwnd
@@ -55,7 +48,6 @@ _WS_MarkDirty(mruOnly := false, bumpedHwnd := 0) {
         gWS_MRUBumpedHwnd := bumpedHwnd
     }
     gWS_SortOrderDirty := true
-    gWS_ContentDirty := true
 }
 
 ; Fields that affect sort order or filter membership — trigger full cache rebuild (Path 3)
@@ -69,8 +61,8 @@ global gWS_SortAffectingFields := Map(
 ; instead of a full Path 3 rebuild.
 global gWS_MRUOnlyFields := Map("lastActivatedTick", true)
 
-; Fields that affect display list content only (not sort/filter) — trigger content refresh (Path 2)
-; Fresh _WS_ToItem copies are created from live records, avoiding stale cache data.
+; Fields that affect display list content only (not sort/filter).
+; #178: Content changes are live via record references — no cache refresh needed.
 ; NOTE: "title" is promoted to sort-affecting when Title sort mode is active (see gWS_TitleSortActive).
 global gWS_ContentOnlyFields := Map(
     "iconHicon", true, "title", true, "class", true,
@@ -104,8 +96,7 @@ gWS_Meta["currentWSName"] := ""
 
 ; Display-list-level dirty tracking: hwnds with any display-visible field change
 ; since the last WL_GetDisplayList call. Persists until display list cache is rebuilt.
-; Used by Path 1.5 and Path 2 for
-; selective _WS_ToItem refresh (only recreate items whose data actually changed).
+; Cleared by Path 1.5 and Path 3. Retained for diagnostics and future use.
 global gWS_DirtyHwnds := Map()
 
 ; --- Producer → MainProcess notification callbacks ---
@@ -168,7 +159,7 @@ WL_BeginScan() {
 
 WL_EndScan(graceMs := "") {
     Profiler.Enter("WL_EndScan") ; @profile
-    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
+    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly
     now := A_TickCount
     ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
 
@@ -256,7 +247,7 @@ WL_EndScan(graceMs := "") {
 
 WL_UpsertWindow(records, source := "") {
     Profiler.Enter("WL_UpsertWindow") ; @profile
-    global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ContentDirty
+    global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD, gFR_Enabled
     global gWS_DirtyHwnds
     if (!IsObject(records) || !(records is Array)) {
@@ -359,8 +350,6 @@ WL_UpsertWindow(records, source := "") {
     }
     if (added || sortDirty) {
         _WS_MarkDirty()  ; Structural change (new windows or sort-affecting fields via upsert)
-    } else if (contentDirty) {
-        gWS_ContentDirty := true
     }
     if (added || updated) {
         _WS_BumpRev("UpsertWindow:" . source)
@@ -448,8 +437,7 @@ _WS_ApplyPatch(row, patch, hwnd) {
 
 WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     Profiler.Enter("WL_UpdateFields") ; @profile
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty
-    global gWS_MRUBumpOnly
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
@@ -466,8 +454,6 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
 
     if (result.sortDirty) {
         _WS_MarkDirty(result.mruOnly, result.mruOnly ? hwnd : 0)
-    } else if (result.contentDirty) {
-        gWS_ContentDirty := true
     }
     if (changed) {
         _WS_BumpRev("UpdateFields:" . source)
@@ -487,8 +473,7 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
 ; Use this for bulk operations like workspace switches to minimize Critical section overhead
 WL_BatchUpdateFields(patches, source := "") {
     Profiler.Enter("WL_BatchUpdateFields") ; @profile
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty
-    global gWS_MRUBumpOnly
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly
 
     Critical "On"
     changedCount := 0
@@ -523,8 +508,6 @@ WL_BatchUpdateFields(patches, source := "") {
 
     if (sortDirty) {
         _WS_MarkDirty(batchMruOnly, batchMruOnly ? batchBumpedHwnd : 0)
-    } else if (contentDirty) {
-        gWS_ContentDirty := true
     }
     if (changedCount > 0)
         _WS_BumpRev("BatchUpdateFields:" . source)
@@ -535,7 +518,7 @@ WL_BatchUpdateFields(patches, source := "") {
 }
 
 WL_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_WINDOW_REMOVE, gFR_Enabled
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly, FR_EV_WINDOW_REMOVE, gFR_Enabled
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -573,7 +556,7 @@ WL_RemoveWindow(hwnds, forceRemove := false) {
 
 WL_ValidateExistence() {
     Profiler.Enter("WL_ValidateExistence") ; @profile
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_GHOST_PURGE, gFR_Enabled
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly, FR_EV_GHOST_PURGE, gFR_Enabled
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := WS_SnapshotMapKeys(gWS_Store)
@@ -664,7 +647,7 @@ WL_ValidateExistence() {
 ; Purge all windows from store that match the current blacklist
 ; Called after blacklist reload to remove newly-blacklisted windows
 WL_PurgeBlacklisted() {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_BLACKLIST_PURGE, gFR_Enabled
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_MRUBumpOnly, FR_EV_BLACKLIST_PURGE, gFR_Enabled
     removed := 0
     toRemove := []
 
@@ -778,7 +761,7 @@ WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
 
 WL_SetCurrentWorkspace(id, name := "") {
     Profiler.Enter("WL_SetCurrentWorkspace") ; @profile
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_MRUBumpOnly
     global gWS_OnWorkspaceChanged
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
@@ -838,6 +821,7 @@ _WS_GetOpt(opts, key, default) {
 _WS_NewRecord(hwnd) {
     return {
         hwnd: hwnd,
+        hwndHex: Format("0x{:X}", hwnd),
         title: "",
         class: "",
         pid: 0,
@@ -867,51 +851,8 @@ _WS_NewRecord(hwnd) {
     }
 }
 
-; PERF: Hardcoded fields avoid dynamic %field% string-to-property-slot resolution per call.
-; Must stay in sync with DISPLAY_FIELDS (top of file).
-; hwndHex is a derived field (not in DISPLAY_FIELDS) — pre-computed to avoid per-frame Format().
-_WS_ToItem(rec) {
-    return {
-        hwnd: rec.hwnd,
-        hwndHex: Format("0x{:X}", rec.hwnd),
-        title: rec.title,
-        class: rec.class,
-        pid: rec.pid,
-        z: rec.z,
-        lastActivatedTick: rec.lastActivatedTick,
-        isFocused: rec.isFocused,
-        isCloaked: rec.isCloaked,
-        isMinimized: rec.isMinimized,
-        workspaceName: rec.workspaceName,
-        workspaceId: rec.workspaceId,
-        isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
-        processName: rec.processName,
-        iconHicon: rec.iconHicon,
-        monitorHandle: rec.monitorHandle,
-        monitorLabel: rec.monitorLabel
-    }
-}
-
-; PERF: In-place mutation of an existing cached display item from a store record.
-; Avoids creating a new 17-field Object for each dirty hwnd in Path 1.5 and Path 2.
-; Callers holding refs to the item see updated values (safe — display items are read-only by consumers).
-_WS_PatchItem(item, rec) {
-    item.title := rec.title
-    item.class := rec.class
-    item.pid := rec.pid
-    item.z := rec.z
-    item.lastActivatedTick := rec.lastActivatedTick
-    item.isFocused := rec.isFocused
-    item.isCloaked := rec.isCloaked
-    item.isMinimized := rec.isMinimized
-    item.workspaceName := rec.workspaceName
-    item.workspaceId := rec.workspaceId
-    item.isOnCurrentWorkspace := rec.isOnCurrentWorkspace
-    item.processName := rec.processName
-    item.iconHicon := rec.iconHicon
-    item.monitorHandle := rec.monitorHandle
-    item.monitorLabel := rec.monitorLabel
-}
+; _WS_ToItem and _WS_PatchItem removed (#178): display items are now direct store
+; record references. hwndHex is pre-computed in _WS_NewRecord.
 
 _WS_TrySort(arr, cmp) {
     QuickSort(arr, cmp)
@@ -1303,16 +1244,18 @@ WL_CleanupAllIcons() {
 }
 
 ; ============================================================
-; DisplayList — Transform store records into sorted item arrays
+; DisplayList — Sorted record reference arrays (#178)
 ; ============================================================
-; Multi-path caching: cache hit (Path 1), MRU move-to-front (Path 1.5),
-; content-only refresh (Path 2), full rebuild (Path 3).
+; Display items ARE store record references. Content is always live.
+; Two-path caching: cache hit (Path 1), MRU move-to-front (Path 1.5),
+; full rebuild (Path 3). Path 2 (content-only refresh) eliminated —
+; content is always live via references.
 
 WL_GetDisplayList(opts := 0) {
     Profiler.Enter("WL_GetDisplayList") ; @profile
-    global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ContentDirty
+    global gWS_Store, gWS_Meta, gWS_SortOrderDirty
     global gWS_MRUBumpOnly, gWS_MRUBumpedHwnd, gWS_DirtyHwnds, gWS_TitleSortActive
-    global gWS_DLCache_Items, gWS_DLCache_ItemsMap, gWS_DLCache_OptsKey, gWS_DLCache_SortedRecs
+    global gWS_DLCache_Items, gWS_DLCache_ItemsMap, gWS_DLCache_OptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
     gWS_TitleSortActive := (sort = "Title")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
@@ -1322,11 +1265,12 @@ WL_GetDisplayList(opts := 0) {
 
     optsKey := sort "|" currentOnly "|" includeMin "|" includeCloaked "|" columns
 
-    ; --- Path 1: Both clean + cache valid → return cached items (fast path) ---
+    ; --- Path 1: Sort clean + cache valid → return cached record refs (fast path) ---
+    ; Content is always live via references — no ContentDirty check needed.
     ; RACE FIX: Wrap cache hit path in Critical to prevent producer from bumping rev + setting
     ; dirty flags between cache validation and return (would return stale rows with new rev)
     Critical "On"
-    if (!gWS_SortOrderDirty && !gWS_ContentDirty
+    if (!gWS_SortOrderDirty
         && IsObject(gWS_DLCache_Items) && gWS_DLCache_OptsKey = optsKey) {
         result := { rev: _WL_GetRev(), items: gWS_DLCache_Items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "cache" }
         if (columns = "hwndsOnly") {
@@ -1344,11 +1288,12 @@ WL_GetDisplayList(opts := 0) {
     Critical "Off"
 
     ; --- Path 1.5: Sort dirty BUT only MRU fields changed → incremental move-to-front ---
+    ; Records are live — just reorder the cached array, no patching needed.
     Critical "On"
     if (gWS_SortOrderDirty && gWS_MRUBumpOnly
         && sort = "MRU"
-        && IsObject(gWS_DLCache_SortedRecs) && gWS_DLCache_OptsKey = optsKey) {
-        sortedRecs := gWS_DLCache_SortedRecs
+        && IsObject(gWS_DLCache_Items) && gWS_DLCache_OptsKey = optsKey) {
+        sortedRecs := gWS_DLCache_Items
         valid := true
         ; Find the bumped hwnd's position in the sorted array.
         ; gWS_MRUBumpOnly guarantees no structural changes (removals, upserts, scans)
@@ -1398,37 +1343,15 @@ WL_GetDisplayList(opts := 0) {
             }
         }
         if (valid) {
-            ; Selective refresh: patch dirty items in-place, create only when no cache entry.
-            rows := []
-            for _, rec in sortedRecs {
-                if (gWS_DirtyHwnds.Has(rec.hwnd)) {
-                    if (gWS_DLCache_ItemsMap.Has(rec.hwnd)) {
-                        existing := gWS_DLCache_ItemsMap[rec.hwnd]
-                        _WS_PatchItem(existing, rec)
-                        rows.Push(existing)
-                    } else {
-                        newItem := _WS_ToItem(rec)
-                        rows.Push(newItem)
-                        gWS_DLCache_ItemsMap[rec.hwnd] := newItem
-                    }
-                } else if (gWS_DLCache_ItemsMap.Has(rec.hwnd))
-                    rows.Push(gWS_DLCache_ItemsMap[rec.hwnd])
-                else {
-                    newItem := _WS_ToItem(rec)
-                    rows.Push(newItem)
-                    gWS_DLCache_ItemsMap[rec.hwnd] := newItem
-                }
-            }
             gWS_SortOrderDirty := false
-            gWS_ContentDirty := false
             gWS_MRUBumpOnly := false
             gWS_MRUBumpedHwnd := 0
             gWS_DirtyHwnds.Clear()
-            gWS_DLCache_Items := rows
-            result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
+            ; gWS_DLCache_Items is sortedRecs (same array, reordered in-place)
+            result := { rev: _WL_GetRev(), items: sortedRecs, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
             if (columns = "hwndsOnly") {
                 hwnds := []
-                for _, row in rows
+                for _, row in sortedRecs
                     hwnds.Push(row.hwnd)
                 Critical "Off"
                 Profiler.Leave() ; @profile
@@ -1442,57 +1365,8 @@ WL_GetDisplayList(opts := 0) {
     }
     Critical "Off"
 
-    ; --- Path 2: Sort order clean + content dirty → selective re-transform ---
-    Critical "On"
-    if (!gWS_SortOrderDirty && gWS_ContentDirty
-        && IsObject(gWS_DLCache_SortedRecs)
-        && IsObject(gWS_DLCache_Items)
-        && gWS_DLCache_OptsKey = optsKey) {
-        rows := []
-        valid := true
-        i := 0
-        for _, rec in gWS_DLCache_SortedRecs {
-            i++
-            if (!rec.present) {
-                valid := false
-                break
-            }
-            if (gWS_DirtyHwnds.Has(rec.hwnd)) {
-                if (gWS_DLCache_ItemsMap.Has(rec.hwnd)) {
-                    existing := gWS_DLCache_ItemsMap[rec.hwnd]
-                    _WS_PatchItem(existing, rec)
-                    rows.Push(existing)
-                } else {
-                    newItem := _WS_ToItem(rec)
-                    rows.Push(newItem)
-                    gWS_DLCache_ItemsMap[rec.hwnd] := newItem
-                }
-            } else
-                rows.Push(gWS_DLCache_Items[i])
-        }
-        if (valid) {
-            gWS_ContentDirty := false
-            gWS_DirtyHwnds.Clear()
-            gWS_DLCache_Items := rows
-            result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "content" }
-            if (columns = "hwndsOnly") {
-                hwnds := []
-                for _, row in rows
-                    hwnds.Push(row.hwnd)
-                Critical "Off"
-                Profiler.Leave() ; @profile
-                return { rev: result.rev, hwnds: hwnds, meta: result.meta, cachePath: "content" }
-            }
-            Critical "Off"
-            Profiler.Leave() ; @profile
-            return result
-        }
-        ; Stale ref detected — fall through to full rebuild
-        gWS_SortOrderDirty := true
-    }
-    Critical "Off"
-
-    ; --- Path 3: Sort order dirty → full rebuild (filter + sort + transform) ---
+    ; --- Path 3: Sort order dirty → full rebuild (filter + sort) ---
+    ; No transform step — display items ARE store record references.
     Critical "On"
     items := []
     for _, rec in gWS_Store {
@@ -1520,38 +1394,32 @@ WL_GetDisplayList(opts := 0) {
         _WS_TrySort(items, _WS_CmpMRU)
     }
 
-    ; Transform records to items ONCE, then cache the result
-    rows := []
+    ; Build filtered subset Map for O(1) membership checks
     itemsMap := Map()
-    for _, rec in items {
-        item := _WS_ToItem(rec)
-        rows.Push(item)
-        itemsMap[rec.hwnd] := item
-    }
+    for _, rec in items
+        itemsMap[rec.hwnd] := rec
 
-    ; RACE FIX: Update cache state atomically (matches Path 1/1.5/2 Critical pattern)
-    ; Sort and transform stay outside Critical — at worst a producer modifies a field
-    ; during sort causing slightly wrong order for one frame, which self-corrects.
+    ; RACE FIX: Update cache state atomically
+    ; Sort stays outside Critical — at worst a producer modifies a field during sort
+    ; causing slightly wrong order for one frame, which self-corrects.
     Critical "On"
-    gWS_DLCache_SortedRecs := items
     gWS_DLCache_ItemsMap := itemsMap
     gWS_SortOrderDirty := false
-    gWS_ContentDirty := false
     gWS_MRUBumpOnly := false
     gWS_MRUBumpedHwnd := 0
     gWS_DirtyHwnds.Clear()
-    gWS_DLCache_Items := rows
+    gWS_DLCache_Items := items
     gWS_DLCache_OptsKey := optsKey
     Critical "Off"
 
     if (columns = "hwndsOnly") {
         hwnds := []
-        for _, row in rows
+        for _, row in items
             hwnds.Push(row.hwnd)
         Profiler.Leave() ; @profile
         return { rev: _WL_GetRev(), hwnds: hwnds, meta: gWS_Meta, cachePath: "full" }
     }
 
     Profiler.Leave() ; @profile
-    return { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "full" }
+    return { rev: _WL_GetRev(), items: items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "full" }
 }

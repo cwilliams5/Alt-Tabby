@@ -114,6 +114,7 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `GHOST_PURGE` | removedCount | Zombie windows purged by ValidateExistence (HWND exists but no longer eligible). |
 | `BLACKLIST_PURGE` | removedCount | Windows purged because they matched updated blacklist rules. |
 | `COSMETIC_PATCH` | patchedCount, baseCount | In-place title/icon/process update during ACTIVE state. |
+| `DISPLAY_EVICT` | hwnd, remaining, wasSel | Window evicted from frozen display list during ACTIVE. wasSel: 1 if the evicted item was selected. |
 | `PRODUCER_INIT` | type, success | Producer startup result. type: 1=KomorebiSub, 2=WinEventHook, 3=Pump. success: 0/1. |
 | `PRODUCER_BACKOFF` | errCount, backoffMs | Producer entering backoff after repeated errors. |
 | `PRODUCER_RECOVER` | errCount, wasBackoffMs | Producer recovered from backoff, resuming normal operation. |

@@ -85,117 +85,122 @@ GUI_RemoveLiveItemAt(idx1) {
     return gGUI_LiveItems.Length
 }
 
-; ========================= COSMETIC PATCH DURING ACTIVE =========================
+; GUI_PatchCosmeticUpdates and _GUI_CosmeticLog removed (#178):
+; Display items are now direct store record references — cosmetic data is always live.
+; Repaint trigger moved to _GUI_OnProducerRevChanged (debounced GUI_Repaint).
 
-; Patch title/icon/processName/workspace in-place for displayed items during ACTIVE state.
-; Does NOT add, remove, or reorder items — selection position is stable.
-; gGUI_ToggleBase and gGUI_DisplayItems share item object references, so patching
-; one patches both.
-;
-; Workspace data (workspaceName, isOnCurrentWorkspace) is also patched here because
-; in the single-process architecture, gWS_OnWorkspaceChanged fires BEFORE producers
-; finish updating the store. GUI_HandleWorkspaceSwitch re-filters with stale workspace
-; data. This patch runs AFTER producers complete, correcting stale frozen items.
-; If workspace data changed, re-filters display items to show the right windows.
-;
-; NOTE: Reads gWS_Store/gWS_DirtyHwnds without Critical. Accepted risk: a producer
-; could modify a record mid-iteration, yielding one frame of mixed old/new cosmetic
-; data. Self-corrects on next cycle; individual AHK property reads are atomic.
-; Map access uses .Get(key, 0) to avoid TOCTOU crash if key is deleted mid-iteration.
-GUI_PatchCosmeticUpdates() {
-    Profiler.Enter("GUI_PatchCosmeticUpdates") ; @profile
-    global gGUI_ToggleBase, gWS_Store, gWS_DirtyHwnds, cfg
-    global gGUI_CurrentWSName, gGUI_OverlayVisible
-    global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH, gFR_Enabled
+; ========================= DISPLAY ITEM EVICTION (ACTIVE STATE) =========================
+; #178 followup: Allow window destroys through frozen display list during ACTIVE.
+; The freeze protects against noise (adds, reorders); a destroy is signal.
+; Display list may shrink but never grow or reorder during ACTIVE.
 
-    ; Early exit: nothing to patch
-    if (gWS_DirtyHwnds.Count = 0) {
-        Profiler.Leave() ; @profile
-        return
-    }
+; Evict item at index from frozen display list.
+; Maintains hwnd-based selection tracking: destroyed above selection → index adjusts
+; down to keep same hwnd selected. Destroyed IS selection → clamp to next.
+; Caller must hold Critical. Returns remaining display item count.
+GUI_EvictDisplayItem(idx1) {
+    global gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems, gGUI_LiveItemsMap
+    global gGUI_Sel, gGUI_ScrollTop
+    global gFR_Enabled, FR_EV_DISPLAY_EVICT
 
-    diagLog := cfg.DiagCosmeticPatchLog
+    if (idx1 < 1 || idx1 > gGUI_DisplayItems.Length)
+        return gGUI_DisplayItems.Length
 
-    ; Debounce: skip if last cosmetic repaint was too recent
-    if (cfg.GUI_ActiveRepaintDebounceMs > 0
-        && A_TickCount - _gGUI_LastCosmeticRepaintTick < cfg.GUI_ActiveRepaintDebounceMs) {
-        if (diagLog)
-            _GUI_CosmeticLog("DEBOUNCE skip (dirty=" gWS_DirtyHwnds.Count " elapsed=" (A_TickCount - _gGUI_LastCosmeticRepaintTick) "ms)")
-        Profiler.Leave() ; @profile
-        return
-    }
+    item := gGUI_DisplayItems[idx1]
+    hwnd := item.hwnd
 
-    if (diagLog)
-        _GUI_CosmeticLog("PATCH start dirty=" gWS_DirtyHwnds.Count " base=" gGUI_ToggleBase.Length)
+    ; Capture selected hwnd before mutation
+    selectedHwnd := 0
+    if (gGUI_Sel >= 1 && gGUI_Sel <= gGUI_DisplayItems.Length)
+        selectedHwnd := gGUI_DisplayItems[gGUI_Sel].hwnd
+    wasSelected := (hwnd = selectedHwnd)
 
-    ; Walk ToggleBase (frozen snapshot). DisplayItems is a subset of the same objects,
-    ; so patching here updates both arrays.
-    patched := 0
-    wsPatched := false
-    currentWS := gGUI_CurrentWSName
-    for _, item in gGUI_ToggleBase {
-        hwnd := item.hwnd
-        if (!gWS_DirtyHwnds.Has(hwnd))
-            continue
-        rec := gWS_Store.Get(hwnd, 0)
-        if (!rec)
-            continue
-        ; Patch cosmetic fields in-place (no position change)
-        titleChanged := (rec.title != item.title)
-        iconChanged := (rec.iconHicon != item.iconHicon)
-        procChanged := (rec.processName != item.processName)
-        if (titleChanged) {
-            if (diagLog)
-                _GUI_CosmeticLog("  TITLE hwnd=" hwnd " '" SubStr(item.title, 1, 25) "' -> '" SubStr(rec.title, 1, 25) "'")
-            item.title := rec.title
-            patched++
-        }
-        if (iconChanged) {
-            if (diagLog)
-                _GUI_CosmeticLog("  ICON hwnd=" hwnd " h=" item.iconHicon " -> h=" rec.iconHicon (rec.iconHicon = 0 ? " *** ZEROED ***" : ""))
-            item.iconHicon := rec.iconHicon
-            patched++
-        }
-        if (procChanged) {
-            if (diagLog)
-                _GUI_CosmeticLog("  PROC hwnd=" hwnd " '" item.processName "' -> '" rec.processName "'")
-            item.processName := rec.processName
-            patched++
-        }
-        ; Patch workspace data (handles window moves during ACTIVE state)
-        if (rec.workspaceName != item.workspaceName) {
-            if (diagLog)
-                _GUI_CosmeticLog("  WS hwnd=" hwnd " '" item.workspaceName "' -> '" rec.workspaceName "'")
-            item.workspaceName := rec.workspaceName
-            item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(rec.workspaceName, currentWS)
-            wsPatched := true
-            patched++
+    ; Remove from display list
+    gGUI_DisplayItems.RemoveAt(idx1)
+
+    ; Remove from ToggleBase (may be same array ref when no filtering active)
+    if (ObjPtr(gGUI_ToggleBase) != ObjPtr(gGUI_DisplayItems)) {
+        i := gGUI_ToggleBase.Length
+        while (i >= 1) {
+            if (gGUI_ToggleBase[i].hwnd = hwnd) {
+                gGUI_ToggleBase.RemoveAt(i)
+                break
+            }
+            i--
         }
     }
 
-    ; Workspace data changed — re-filter display items to show correct windows.
-    ; A window move is a context switch (like a workspace switch): select the
-    ; foreground window (the moved window) instead of keeping stale selection.
-    if (wsPatched) {
-        GUI_RefilterForWorkspaceChange()
+    ; Remove from live items + map
+    for j, liveItem in gGUI_LiveItems {
+        if (liveItem.hwnd = hwnd) {
+            gGUI_LiveItems.RemoveAt(j)
+            break
+        }
+    }
+    if (gGUI_LiveItemsMap.Has(hwnd))
+        gGUI_LiveItemsMap.Delete(hwnd)
+
+    ; Adjust selection — track by hwnd
+    remaining := gGUI_DisplayItems.Length
+    if (remaining = 0) {
+        gGUI_Sel := 1
+        gGUI_ScrollTop := 0
+    } else if (wasSelected) {
+        ; Selected item was destroyed — clamp to next (or last if at end)
+        gGUI_Sel := Min(idx1, remaining)
+        gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
+    } else {
+        ; Find selectedHwnd in updated array — it shifted position
+        newIdx := 0
+        for j, di in gGUI_DisplayItems {
+            if (di.hwnd = selectedHwnd) {
+                newIdx := j
+                break
+            }
+        }
+        gGUI_Sel := newIdx > 0 ? newIdx : Min(gGUI_Sel, remaining)
+        gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
     }
 
-    if (patched > 0) {
-        if (gFR_Enabled)
-            FR_Record(FR_EV_COSMETIC_PATCH, patched, gGUI_ToggleBase.Length)
-        _gGUI_LastCosmeticRepaintTick := A_TickCount
-        GUI_Repaint()
-    } else if (diagLog && gWS_DirtyHwnds.Count > 0) {
-        _GUI_CosmeticLog("PATCH end patched=0 (dirty hwnds not in frozen set)")
-    }
-    Profiler.Leave() ; @profile
+    if (gFR_Enabled)
+        FR_Record(FR_EV_DISPLAY_EVICT, hwnd, remaining, wasSelected ? 1 : 0)
+    Log178("EVICT hwnd=" Format("0x{:X}", hwnd) " remaining=" remaining " wasSelected=" wasSelected)
+
+    return remaining
 }
 
-_GUI_CosmeticLog(msg) {
-    global cfg, LOG_PATH_COSMETIC_PATCH
-    if (!cfg.DiagCosmeticPatchLog)
-        return
-    try LogAppend(LOG_PATH_COSMETIC_PATCH, msg)
+; Scan frozen display list for windows no longer in the store and evict them.
+; Called from _GUI_OnProducerRevChanged when a structural change arrives during ACTIVE.
+; Returns count of items removed.
+GUI_ReconcileDestroys() {
+    global gGUI_State, gGUI_DisplayItems, gWS_Store
+
+    if (gGUI_State != "ACTIVE")
+        return 0
+
+    Critical "On"
+    removed := 0
+    i := gGUI_DisplayItems.Length
+    while (i >= 1) {
+        if (!gWS_Store.Has(gGUI_DisplayItems[i].hwnd + 0)) {
+            GUI_EvictDisplayItem(i)
+            removed++
+        }
+        i--
+    }
+    Critical "Off"
+
+    if (removed > 0) {
+        Log178("RECONCILE removed=" removed " remaining=" gGUI_DisplayItems.Length)
+        if (gGUI_DisplayItems.Length > 0) {
+            GUI_RecalcHover()
+            GUI_Repaint()
+        } else {
+            GUI_DismissOverlay()
+        }
+    }
+
+    return removed
 }
 
 ; ========================= BACKGROUND ICON PRE-CACHE =========================
