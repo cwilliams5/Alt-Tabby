@@ -110,8 +110,6 @@ global DWMWA_CLOAKED := 14
 ; Constants from config_loader.ahk
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 global LOG_PATH_STORE := A_Temp "\tabby_store_error.log"
-global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
-
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
@@ -155,7 +153,6 @@ global cfg := {
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
-    DiagCosmeticPatchLog: false,
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
@@ -217,6 +214,11 @@ global gMock_RefreshBackdropCount := 0
 GUI_RefreshBackdrop() {
     global gMock_RefreshBackdropCount
     gMock_RefreshBackdropCount++
+}
+
+; Pump probe connect mock (#178: called at ACTIVE→IDLE transitions)
+GUIPump_ProbeConnect() {
+    return false
 }
 
 ; GDI+ icon cache invalidation mock

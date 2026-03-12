@@ -40,6 +40,7 @@ global _gPump_ClientTimerOn := false  ; Whether IPC client poll timer is running
 ; PostMessage wake hwnd exchange
 global _gPump_PumpHwnd := 0          ; Pump process hwnd (for GUI→pump wake)
 global _gPump_HelloSent := false     ; Whether first request included guiHwnd
+global _gPump_LastSentHwnds := []    ; Hwnds from last enrich request (for retry reconciliation)
 
 ; Deferred retry state (handles pump not ready at GUI startup)
 global _gPump_RetryTimerFn := 0      ; Bound ref for deferred retry one-shot timer
@@ -52,7 +53,7 @@ global _gPump_EnrichCount := 0       ; Monotonic enrichment response counter
 
 ; ========================= PUBLIC API =========================
 
-GUIPump_Init() {
+GUIPump_Init(connectTimeoutMs := 2000) {
     global cfg, _gPump_Client, _gPump_Connected, _gPump_CollectTimerFn, _gPump_CollectIntervalMs
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_ClientTimerOn
     global _gPump_PumpHwnd, _gPump_HelloSent
@@ -61,6 +62,7 @@ GUIPump_Init() {
 
     ; Cancel any pending retry timer (handles re-entrant calls from Reconnect or retry)
     if (_gPump_RetryTimerFn) {
+        Log178("INIT: cancelling pending retry timer")
         SetTimer(_gPump_RetryTimerFn, 0)
         _gPump_RetryTimerFn := 0
     }
@@ -70,22 +72,34 @@ GUIPump_Init() {
         return false
 
     ; Connect to pump pipe
-    _gPump_Client := IPC_PipeClient_Connect(cfg.PumpPipeName, _GUIPump_OnMessage, 2000)
+    global gGUI_State
+    Log178("INIT: connecting timeout=" connectTimeoutMs "ms retryCount=" _gPump_RetryCount " state=" gGUI_State)
+    _gPump_Client := IPC_PipeClient_Connect(cfg.PumpPipeName, _GUIPump_OnMessage, connectTimeoutMs)
 
     if (!IsObject(_gPump_Client) || _gPump_Client.hPipe = 0) {
         _gPump_Connected := false
-        if (_gPump_RetryCount < _GPUMP_MAX_RETRIES) {
-            _gPump_RetryCount += 1
-            retryMs := 250 * (2 ** _gPump_RetryCount)  ; 500, 1000, 2000ms
-            _gPump_RetryTimerFn := _GUIPump_DeferredRetry.Bind()
-            SetTimer(_gPump_RetryTimerFn, -retryMs)
-            if (cfg.DiagPumpLog)
-                _GUIPump_Log("INIT: Pump not ready, retry " _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " in " retryMs "ms")
-        } else if (cfg.DiagPumpLog) {
-            _GUIPump_Log("INIT: Failed to connect after " _GPUMP_MAX_RETRIES " retries. Using inline fallback.")
+        ; Only schedule retries for blocking connects (probes are one-shot, no retry)
+        if (connectTimeoutMs > 0) {
+            if (_gPump_RetryCount < _GPUMP_MAX_RETRIES) {
+                _gPump_RetryCount += 1
+                retryMs := 250 * (2 ** _gPump_RetryCount)  ; 500, 1000, 2000ms
+                _gPump_RetryTimerFn := _GUIPump_DeferredRetry.Bind()
+                SetTimer(_gPump_RetryTimerFn, -retryMs)
+                Log178("INIT: FAILED retryCount=" _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " next=" retryMs "ms")
+                if (cfg.DiagPumpLog)
+                    _GUIPump_Log("INIT: Pump not ready, retry " _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " in " retryMs "ms")
+            } else {
+                Log178("INIT: EXHAUSTED all " _GPUMP_MAX_RETRIES " retries — giving up")
+                if (cfg.DiagPumpLog)
+                    _GUIPump_Log("INIT: Failed to connect after " _GPUMP_MAX_RETRIES " retries. Using inline fallback.")
+            }
+        } else {
+            Log178("INIT: probe FAILED (non-blocking, no retry)")
         }
         return false
     }
+
+    Log178("INIT: SUCCESS connected state=" gGUI_State)
 
     _gPump_Connected := true
     _gPump_RetryCount := 0
@@ -186,6 +200,20 @@ GUIPump_EnsureRunning() {
     if (!_gPump_CollectTimerFn)  ; Not initialized or pump not connected
         return
     Pump_EnsureRunning(&_gPump_TimerOn, &_gPump_IdleTicks, _gPump_CollectIntervalMs, _gPump_CollectTimerFn)
+}
+
+; Non-blocking connect probe — called at ACTIVE→IDLE transitions.
+; If the pump became available while we were in ACTIVE state (retries starved
+; by cooperative threading), this catches it immediately on dismiss.
+; Does NOT schedule retries (timeout=0 → single CreateFileW attempt).
+GUIPump_ProbeConnect() {
+    global _gPump_Connected, _gPump_RetryTimerFn
+    if (_gPump_Connected)
+        return true  ; Already connected, nothing to do
+    if (_gPump_RetryTimerFn)
+        return false  ; Retry timer still pending, let it handle connection
+    Log178("PROBE: attempting non-blocking connect at ACTIVE→IDLE")
+    return GUIPump_Init(0)
 }
 
 ; ========================= COLLECTION TIMER =========================
@@ -298,6 +326,10 @@ _GUIPump_CollectTick() {
         }
 
         requestJson := JSON.Dump(request)
+
+        ; Track sent hwnds for retry reconciliation in OnMessage
+        global _gPump_LastSentHwnds
+        _gPump_LastSentHwnds := hwnds
 
         if (cfg.DiagPumpLog)
             _GUIPump_Log("CollectTick sending " hwnds.Length " hwnds, jsonLen=" StrLen(requestJson))
@@ -429,9 +461,39 @@ _GUIPump_OnMessage(msg, hPipe) {
     if (gFR_Enabled)
         FR_Record(FR_EV_ENRICH_RESP, applied)
 
+    ; Re-enqueue hwnds the pump returned nothing for (silently dropped).
+    ; Without this, windows that failed enrichment (e.g., cloaked windows where
+    ; WinGetPID fails transiently) are permanently lost from the icon queue.
+    global _gPump_LastSentHwnds, gWS_IconQueue, gWS_IconQueueDedup
+    if (_gPump_LastSentHwnds.Length > 0) {
+        requeueCount := 0
+        Critical "On"
+        for _, h in _gPump_LastSentHwnds {
+            h := h + 0
+            if (!h)
+                continue
+            ; Only re-enqueue if: pump returned no icon AND store still has no icon
+            if (results.Has(String(h)))
+                continue  ; Pump returned data (icon or otherwise) — handled above
+            row := WL_GetByHwnd(h)
+            if (!row || row.iconHicon || !row.present)
+                continue  ; Already has icon, or window gone
+            if (gWS_IconQueueDedup.Has(h))
+                continue  ; Already queued
+            gWS_IconQueue.Push(h)
+            gWS_IconQueueDedup[h] := true
+            requeueCount++
+        }
+        Critical "Off"
+        _gPump_LastSentHwnds := []
+        if (requeueCount > 0 && cfg.DiagPumpLog)
+            _GUIPump_Log("RETRY: re-enqueued " requeueCount " hwnds that pump returned nothing for")
+    }
+
     ; Trigger a cosmetic rev bump so GUI sees new icons/titles
     if (applied > 0) {
-        global gWS_OnStoreChanged
+        global gWS_OnStoreChanged, gGUI_State  ; TEMP #178 diag
+        Log178("ENRICH applied=" applied " icons=" iconCount " state=" gGUI_State)
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(false)  ; cosmetic only (icons/titles, not structural)
 
@@ -528,13 +590,20 @@ _GUIPump_HandleFailure(reason) {
 ; One-shot callback: retry pump connection after startup delay.
 ; GUIPump_Init() schedules the next retry if this attempt also fails.
 _GUIPump_DeferredRetry() {
-    global _gPump_RetryTimerFn, cfg
+    global _gPump_RetryTimerFn, _gPump_RetryCount, cfg, gGUI_State
+    Log178("DEFERRED_RETRY: fired retryCount=" _gPump_RetryCount " state=" gGUI_State)
     _gPump_RetryTimerFn := 0  ; One-shot already fired, clear ref
     try {
         result := GUIPump_Init()
-        if (result && cfg.DiagPumpLog)
-            _GUIPump_Log("RETRY: Deferred connect succeeded")
+        if (result) {
+            Log178("DEFERRED_RETRY: SUCCESS")
+            if (cfg.DiagPumpLog)
+                _GUIPump_Log("RETRY: Deferred connect succeeded")
+        } else {
+            Log178("DEFERRED_RETRY: FAILED")
+        }
     } catch as e {
+        Log178("DEFERRED_RETRY: EXCEPTION " e.Message)
         global LOG_PATH_PUMP
         try LogAppend(LOG_PATH_PUMP, "RETRY error: " e.Message)
     }
@@ -542,6 +611,9 @@ _GUIPump_DeferredRetry() {
 
 ; Called by gui_main.ahk when launcher sends TABBY_CMD_PUMP_RESTARTED.
 ; Attempts to reconnect to the freshly-restarted pump subprocess.
+; Uses non-blocking connect (timeout=0) first since WM_COPYDATA runs in the
+; GUI message pump — a blocking connect would freeze keyboard hooks.
+; Falls back to normal retries if first attempt fails.
 GUIPump_Reconnect() {
     global _gPump_LastRequestTick, _gPump_LastResponseTick, _gPump_FailureNotified, cfg
     global _gPump_RetryCount
@@ -552,10 +624,15 @@ GUIPump_Reconnect() {
     _gPump_FailureNotified := false
     _gPump_RetryCount := 0  ; Fresh retry budget for launcher-initiated reconnect
 
-    ; GUIPump_Init handles pipe connect, stops local pumps if successful
-    result := GUIPump_Init()
+    ; Try non-blocking first — pump just told us it's ready, pipe should exist.
+    ; If the pipe isn't quite ready yet, fall back to normal retries.
+    result := GUIPump_Init(0)
+    if (!result) {
+        Log178("RECONNECT: non-blocking probe failed, scheduling retry")
+        result := GUIPump_Init()
+    }
     if (cfg.DiagPumpLog)
-        _GUIPump_Log("RECONNECT: " (result ? "Success — pump connection restored" : "Failed — staying on local pumps"))
+        _GUIPump_Log("RECONNECT: " (result ? "Success — pump connection restored" : "Failed — retrying"))
     return result
 }
 

@@ -274,13 +274,32 @@ _GUI_OnProducerRevChanged(isStructural := true) {
         ; During ACTIVE: structural changes skip (selection stability),
         ;   cosmetic changes patch in-place and repaint.
         if (gGUI_State = "IDLE") {
+            if (!isStructural)
+                Log178("IDLE cosmetic rev (precache kick)")
             GUI_KickPreCache()
         } else if (gGUI_State = "ALT_PENDING") {
             GUI_RefreshLiveItems()
         } else if (gGUI_State = "ACTIVE") {
-            ; Cosmetic changes: patch title/icon/processName in-place
-            if (!isStructural)
-                GUI_PatchCosmeticUpdates()
+            ; #178: Display items are live record refs — cosmetic data is always current.
+            ; Debounced repaint: leading edge fires immediately, trailing edge ensures
+            ; the final state is always painted after a burst of updates.
+            if (!isStructural) {
+                global _gGUI_LastCosmeticRepaintTick, cfg
+                elapsed := A_TickCount - _gGUI_LastCosmeticRepaintTick
+                if (elapsed >= cfg.GUI_ActiveRepaintDebounceMs) {
+                    _gGUI_LastCosmeticRepaintTick := A_TickCount
+                    SetTimer(_GUI_CosmeticTrailingRepaint, 0)  ; cancel pending trailing
+                    Log178("REPAINT leading elapsed=" elapsed " debounce=" cfg.GUI_ActiveRepaintDebounceMs)
+                    GUI_Repaint()
+                } else {
+                    ; Schedule trailing-edge repaint for remaining debounce window
+                    remaining := cfg.GUI_ActiveRepaintDebounceMs - elapsed
+                    Log178("REPAINT trailing scheduled remaining=" remaining)
+                    SetTimer(_GUI_CosmeticTrailingRepaint, -remaining)
+                }
+            } else {
+                Log178("SKIP structural during ACTIVE")
+            }
         }
 
         ; Check bypass mode on foreground hwnd change regardless of state.
@@ -305,6 +324,24 @@ _GUI_OnProducerRevChanged(isStructural := true) {
         try LogAppend(LOG_PATH_STORE, "producer_rev_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
     Profiler.Leave() ; @profile
+}
+
+; Trailing-edge cosmetic repaint — fires after debounce window expires to ensure
+; the final state of a burst of updates is always painted.
+_GUI_CosmeticTrailingRepaint() {
+    global gGUI_State, _gGUI_LastCosmeticRepaintTick
+    try {
+        if (gGUI_State != "ACTIVE") {
+            Log178("TRAILING skipped state=" gGUI_State)
+            return
+        }
+        Log178("TRAILING repaint fired")
+        _gGUI_LastCosmeticRepaintTick := A_TickCount
+        GUI_Repaint()
+    } catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "cosmetic_trailing_repaint err=" e.Message)
+    }
 }
 
 ; GUI_OnWorkspaceFlips() moved to gui_state.ahk (workspace state owner)
@@ -532,7 +569,7 @@ _GUI_RotateDiagLogs() {
     global cfg
     global LOG_PATH_EVENTS, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP
-    global LOG_PATH_IPC, LOG_PATH_PUMP, LOG_PATH_COSMETIC_PATCH
+    global LOG_PATH_IPC, LOG_PATH_PUMP
     if (cfg.DiagEventLog)
         LogTrim(LOG_PATH_EVENTS)
     if (cfg.DiagKomorebiLog)
@@ -547,8 +584,6 @@ _GUI_RotateDiagLogs() {
         LogTrim(LOG_PATH_IPC)
     if (cfg.DiagPumpLog)
         LogTrim(LOG_PATH_PUMP)
-    if (cfg.DiagCosmeticPatchLog)
-        LogTrim(LOG_PATH_COSMETIC_PATCH)
 }
 
 ; ========================= STATS LOGGING CALLBACKS =========================

@@ -32,11 +32,13 @@ global _Pump_IconPruneIntervalMs := 300000  ; Default 5min, overridden from conf
 global _Pump_DiagEnabled := false
 global _Pump_GuiHwnd := 0             ; GUI process hwnd (for PostMessage wake on response)
 global _Pump_HelloAcked := false       ; Whether we've sent our pumpHwnd back to GUI
+global _Pump_LauncherHwnd := 0         ; Launcher process hwnd (for PUMP_READY self-announce)
 
 ; ========================= INIT =========================
 
 _Pump_Init() {
     global cfg, _Pump_Server, _Pump_IconPruneIntervalMs, _Pump_DiagEnabled, _Pump_FailedPidCacheTTL
+    global _Pump_LauncherHwnd
 
     ; Cloaked windows (other komorebi workspaces) are hidden from AHK by default.
     ; Without this, WinGetPID/WinGetTitle fail for cloaked windows → no processName/icon.
@@ -50,11 +52,20 @@ _Pump_Init() {
     _Pump_FailedPidCacheTTL := cfg.ProcPumpFailedPidRetryMs
     _Pump_DiagEnabled := cfg.DiagPumpLog
 
+    ; Parse --launcher-hwnd from command line (for PUMP_READY self-announce)
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
+    for _, arg in A_Args {
+        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND) {
+            _Pump_LauncherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+            break
+        }
+    }
+
     ; Initialize blacklist (for title-based re-check on enrichment)
     Blacklist_Init()
 
     if (_Pump_DiagEnabled)
-        _Pump_Log("INIT: Starting EnrichmentPump, pipe=" cfg.PumpPipeName)
+        _Pump_Log("INIT: Starting EnrichmentPump, pipe=" cfg.PumpPipeName " launcherHwnd=" _Pump_LauncherHwnd)
 
     ; Start pipe server (single client — MainProcess)
     _Pump_Server := IPC_PipeServer_Start(cfg.PumpPipeName, _Pump_OnMessage, _Pump_OnDisconnect)
@@ -69,6 +80,25 @@ _Pump_Init() {
 
     ; Start HICON prune timer
     SetTimer(_Pump_PruneAllCaches, _Pump_IconPruneIntervalMs)
+
+    ; Self-announce to launcher: pipe server is ready, GUI can connect now.
+    ; This eliminates the race where GUI retries exhaust before pipe exists.
+    if (_Pump_LauncherHwnd) {
+        global TABBY_CMD_PUMP_READY, WM_COPYDATA
+        cds := Buffer(A_PtrSize * 3, 0)
+        NumPut("uptr", TABBY_CMD_PUMP_READY, cds, 0)
+        DllCall("user32\SendMessageTimeoutW"
+            , "ptr", _Pump_LauncherHwnd
+            , "uint", WM_COPYDATA
+            , "ptr", A_ScriptHwnd
+            , "ptr", cds.Ptr
+            , "uint", 0x0002   ; SMTO_ABORTIFHUNG
+            , "uint", 3000
+            , "ptr*", &_ := 0
+            , "ptr")
+        if (_Pump_DiagEnabled)
+            _Pump_Log("INIT: Sent PUMP_READY to launcher hwnd=" _Pump_LauncherHwnd)
+    }
 
     _Pump_Log("INIT: EnrichmentPump ready")
 }

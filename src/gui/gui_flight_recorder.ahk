@@ -144,7 +144,7 @@ _FR_Dump() {
     global gINT_SessionActive, gINT_BypassMode, gINT_AltIsDown, gINT_TabPending
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_PressCount, gINT_TabHeld
     global gGUI_OverlayVisible, gGUI_ScrollTop
-    global gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
+    global gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_MRUBumpOnly
     global gWS_DirtyHwnds, gWS_IconQueue, gWS_PidQueue, gWS_ZQueue
 
     if (!gFR_Enabled || gFR_Count = 0)
@@ -183,7 +183,6 @@ _FR_Dump() {
     snap.wsRev := gWS_Rev
     snap.wsStoreCount := gWS_Store.Count
     snap.wsSortDirty := gWS_SortOrderDirty
-    snap.wsContentDirty := gWS_ContentDirty
     snap.wsMRUBumpOnly := gWS_MRUBumpOnly
     snap.wsDirtyCount := gWS_DirtyHwnds.Count
     snap.wsIconQueueLen := gWS_IconQueue.Length
@@ -301,7 +300,6 @@ _FR_DumpPhase2() {
     out .= "gWS_Rev                 = " snap.wsRev "`n"
     out .= "gWS_Store.Count         = " snap.wsStoreCount "`n"
     out .= "SortOrderDirty          = " snap.wsSortDirty "`n"
-    out .= "ContentDirty            = " snap.wsContentDirty "`n"
     out .= "MRUBumpOnly             = " snap.wsMRUBumpOnly "`n"
     out .= "DirtyHwnds.Count        = " snap.wsDirtyCount "`n"
     out .= "IconQueue.Length         = " snap.wsIconQueueLen "`n"

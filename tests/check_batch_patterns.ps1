@@ -512,14 +512,6 @@ $CHECKS = @(
         Desc     = "ProcPump_SetCallbacks() called before ProcPump_Start() (callbacks wired before timer)"
         Regex    = $true
         Patterns = @("ProcPump_SetCallbacks\([\s\S]*?ProcPump_Start\(\)")
-    },
-    # --- Display list mutation safety: cosmetic patching must not touch structural fields ---
-    @{
-        Id          = "cosmetic_patch_safety"
-        File        = "gui\gui_data.ahk"
-        Function    = "GUI_PatchCosmeticUpdates"
-        Desc        = "GUI_PatchCosmeticUpdates only patches cosmetic fields, never structural"
-        NotPresent  = @(".z :=", ".isVisible :=", ".class :=", "item.hwnd :=", "WL_BeginScan", "WL_EndScan")
     }
 )
 
@@ -903,125 +895,32 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_send_patterns"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
-# Sub-check 5: display_fields
-# Verify DISPLAY_FIELDS and _WS_ToItem stay in sync
+# Sub-check 5: display_fields (REMOVED - #178)
+# DISPLAY_FIELDS and _WS_ToItem removed; display items are now
+# direct store record references. No sync check needed.
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-
 $storeRelPath = "shared\window_list.ahk"
 $storeFullPath = if ($relToFull.ContainsKey($storeRelPath)) { $relToFull[$storeRelPath] } else { $null }
-
-if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
-    $wsLines = $fileCache[$storeFullPath]
-    $wsContent = $fileCacheText[$storeFullPath]
-
-    # Extract DISPLAY_FIELDS
-    $projFieldNames = [System.Collections.ArrayList]::new()
-    if ($wsContent -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
-        $arrayContent = $Matches[1]
-        $fieldMatches = [regex]::Matches($arrayContent, '"(\w+)"')
-        foreach ($m in $fieldMatches) {
-            [void]$projFieldNames.Add($m.Groups[1].Value)
-        }
-    }
-
-    # Extract _WS_ToItem return object keys
-    $toItemKeys = [System.Collections.ArrayList]::new()
-    $funcStartIdx = -1
-    for ($wi = 0; $wi -lt $wsLines.Count; $wi++) {
-        if ($wsLines[$wi] -match '^\s*_WS_ToItem\s*\(') {
-            $funcStartIdx = $wi
-            break
-        }
-    }
-
-    if ($funcStartIdx -ge 0) {
-        $funcBody = [System.Text.StringBuilder]::new()
-        $pfDepth = 0; $pfStarted = $false
-        for ($wi = $funcStartIdx; $wi -lt $wsLines.Count; $wi++) {
-            $wLine = $wsLines[$wi]
-            [void]$funcBody.AppendLine($wLine)
-            foreach ($c in $wLine.ToCharArray()) {
-                if ($c -eq '{') { $pfDepth++; $pfStarted = $true }
-                elseif ($c -eq '}') { $pfDepth-- }
-            }
-            if ($pfStarted -and $pfDepth -le 0) { break }
-        }
-        $funcText = $funcBody.ToString()
-
-        $keyMatches = [regex]::Matches($funcText, '(?m)^\s*(\w+)\s*:\s*rec\.')
-        foreach ($m in $keyMatches) {
-            [void]$toItemKeys.Add($m.Groups[1].Value)
-        }
-        $returnLineMatch = [regex]::Match($funcText, 'return\s*\{\s*(\w+)\s*:')
-        if ($returnLineMatch.Success) {
-            $firstKey = $returnLineMatch.Groups[1].Value
-            if ($firstKey -notin $toItemKeys) {
-                [void]$toItemKeys.Add($firstKey)
-            }
-        }
-    }
-
-    # Compare (excluding 'hwnd')
-    if ($projFieldNames.Count -eq 0) {
-        $anyFailed = $true
-        [void]$failOutput.AppendLine("")
-        [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS array not found or empty in window_list.ahk")
-    } elseif ($toItemKeys.Count -eq 0) {
-        $anyFailed = $true
-        [void]$failOutput.AppendLine("")
-        [void]$failOutput.AppendLine("  FAIL: Could not extract keys from _WS_ToItem return object")
-    } else {
-        $projSet = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($f in $projFieldNames) { [void]$projSet.Add($f) }
-
-        $toItemSet = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($k in $toItemKeys) {
-            if ($k -ne 'hwnd') { [void]$toItemSet.Add($k) }
-        }
-
-        $inProjNotToItem = [System.Collections.ArrayList]::new()
-        foreach ($f in $projFieldNames) {
-            if (-not $toItemSet.Contains($f)) { [void]$inProjNotToItem.Add($f) }
-        }
-
-        $inToItemNotProj = [System.Collections.ArrayList]::new()
-        foreach ($k in $toItemKeys) {
-            if ($k -ne 'hwnd' -and -not $projSet.Contains($k)) { [void]$inToItemNotProj.Add($k) }
-        }
-
-        if ($inProjNotToItem.Count -gt 0 -or $inToItemNotProj.Count -gt 0) {
-            $anyFailed = $true
-            [void]$failOutput.AppendLine("")
-            [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS/_WS_ToItem mismatch:")
-            if ($inProjNotToItem.Count -gt 0) {
-                [void]$failOutput.AppendLine("    In DISPLAY_FIELDS but not _WS_ToItem: $($inProjNotToItem -join ', ')")
-            }
-            if ($inToItemNotProj.Count -gt 0) {
-                [void]$failOutput.AppendLine("    In _WS_ToItem but not DISPLAY_FIELDS: $($inToItemNotProj -join ', ')")
-            }
-        }
-    }
-}
 $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_display_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 5b: viewer_columns
 # Verify viewer columns (gViewer_ColFields, gViewer_Columns, _Viewer_BuildRowArgs)
-# stay in sync with DISPLAY_FIELDS from window_list.ahk
+# stay internally consistent.
+# Note: DISPLAY_FIELDS cross-check removed (#178) — display items are now
+# direct store record references, no separate field list to sync against.
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $viewerRelPath = "viewer\viewer.ahk"
 $viewerFullPath = if ($relToFull.ContainsKey($viewerRelPath)) { $relToFull[$viewerRelPath] } else { $null }
 
-if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath) -and
-    $null -ne $storeFullPath -and $fileCacheText.ContainsKey($storeFullPath)) {
+if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath)) {
 
     $viewerContent = $fileCacheText[$viewerFullPath]
     $viewerLines = $fileCache[$viewerFullPath]
-    $wsContentVC = $fileCacheText[$storeFullPath]
 
     # --- Parse gViewer_Columns ---
     $viewerHeaders = [System.Collections.ArrayList]::new()
@@ -1036,14 +935,6 @@ if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath) -and
     if ($viewerContent -match 'global\s+gViewer_ColFields\s*:=\s*\[(.*?)\]') {
         foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
             [void]$viewerColFields.Add($m.Groups[1].Value)
-        }
-    }
-
-    # --- Parse DISPLAY_FIELDS from store ---
-    $displayFields = [System.Collections.ArrayList]::new()
-    if ($wsContentVC -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
-        foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
-            [void]$displayFields.Add($m.Groups[1].Value)
         }
     }
 
@@ -1073,13 +964,6 @@ if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath) -and
         }
     }
 
-    # --- Fields the viewer intentionally does not display ---
-    # workspaceId: internal komorebi ID (viewer shows workspaceName)
-    # monitorHandle: raw HMONITOR (viewer shows monitorLabel)
-    $viewerExcludedFields = [System.Collections.Generic.HashSet[string]]::new()
-    [void]$viewerExcludedFields.Add("workspaceId")
-    [void]$viewerExcludedFields.Add("monitorHandle")
-
     # --- Validate ---
     $vcFailed = $false
 
@@ -1090,26 +974,7 @@ if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath) -and
         [void]$failOutput.AppendLine("  FAIL: gViewer_Columns ($($viewerHeaders.Count) headers) and gViewer_ColFields ($($viewerColFields.Count) fields) have different lengths")
     }
 
-    # 2. Every DISPLAY_FIELDS entry (minus excluded) must appear in gViewer_ColFields
-    if ($displayFields.Count -gt 0 -and $viewerColFields.Count -gt 0) {
-        $colFieldSet = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($f in $viewerColFields) { [void]$colFieldSet.Add($f) }
-
-        $missingInViewer = [System.Collections.ArrayList]::new()
-        foreach ($f in $displayFields) {
-            if (-not $viewerExcludedFields.Contains($f) -and -not $colFieldSet.Contains($f)) {
-                [void]$missingInViewer.Add($f)
-            }
-        }
-        if ($missingInViewer.Count -gt 0) {
-            $vcFailed = $true
-            [void]$failOutput.AppendLine("")
-            [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS has fields not shown in viewer gViewer_ColFields: $($missingInViewer -join ', ')")
-            [void]$failOutput.AppendLine("        Add column to viewer or add to `$viewerExcludedFields in check_batch_patterns.ps1")
-        }
-    }
-
-    # 3. Every gViewer_ColFields entry (minus hwnd) must be rendered in _Viewer_BuildRowArgs
+    # 2. Every gViewer_ColFields entry (minus hwnd) must be rendered in _Viewer_BuildRowArgs
     if ($viewerColFields.Count -gt 0 -and $buildRowFields.Count -gt 0) {
         $missingInBuildRow = [System.Collections.ArrayList]::new()
         foreach ($f in $viewerColFields) {
@@ -1298,12 +1163,14 @@ $dtFullPath = if ($relToFull.ContainsKey($dtRelPath)) { $relToFull[$dtRelPath] }
 if ($null -ne $dtFullPath -and $fileCacheText.ContainsKey($dtFullPath)) {
     $dtContent = $fileCacheText[$dtFullPath]
 
-    # Extract DISPLAY_FIELDS for field matching
+    # Extract display-visible fields from gWS_SortAffectingFields + gWS_ContentOnlyFields
+    # (DISPLAY_FIELDS removed in #178 — display items are now direct store record references)
     $dtDisplayFields = [System.Collections.Generic.HashSet[string]]::new()
-    if ($dtContent -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
-        $dfArrayContent = $Matches[1]
-        foreach ($m in [regex]::Matches($dfArrayContent, '"(\w+)"')) {
-            [void]$dtDisplayFields.Add($m.Groups[1].Value)
+    foreach ($mapName in @("gWS_SortAffectingFields", "gWS_ContentOnlyFields")) {
+        if ($dtContent -match "(?s)global\s+${mapName}\s*:=\s*Map\((.*?)\)") {
+            foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
+                [void]$dtDisplayFields.Add($m.Groups[1].Value)
+            }
         }
     }
 
@@ -1314,7 +1181,7 @@ if ($null -ne $dtFullPath -and $fileCacheText.ContainsKey($dtFullPath)) {
     foreach ($name in @("_WS_ApplyPatch", "_WS_MarkDirty", "WL_Init", "WL_BeginScan",
                          "WL_EndScan", "WL_GetDisplayList", "_WS_BumpRev",
                          "WL_SetCurrentWorkspace", "WL_BatchUpdateFields",
-                         "_WS_ToItem", "_WS_NewRecord", "WS_SnapshotMapKeys",
+                         "_WS_NewRecord", "WS_SnapshotMapKeys",
                          "WL_EnqueueForZ", "WL_ClearZQueue", "_WL_GetRev",
                          "_WS_InsertionSort", "_WS_CmpMRU", "_WS_CmpZ",
                          "_WS_CmpTitle", "_WS_CmpProcessName", "_WS_GetOpt")) {
@@ -1808,7 +1675,8 @@ if ($null -ne $cpiFullPath -and $fileCacheText.ContainsKey($cpiFullPath)) {
 
     if ($null -ne $cpiBody) {
         # Dirty flags that must be managed by the cache system
-        $dirtyFlags = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly")
+        # gWS_ContentDirty removed (#178) — display items are direct store record refs
+        $dirtyFlags = @("gWS_SortOrderDirty", "gWS_MRUBumpOnly")
 
         # Split into lines for line-number reporting
         $cpiLines = $cpiBody.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
@@ -1828,10 +1696,10 @@ if ($null -ne $cpiFullPath -and $fileCacheText.ContainsKey($cpiFullPath)) {
 
         # --- Invariant 3: Each cache path that rebuilds data must clear flags AFTER the rebuild ---
         # Detect path markers via cachePath string literals
+        # Path 2 (content-only) removed (#178) — display items are direct store record refs
         $pathMarkers = @(
-            @{ Name = "Path 1.5 (MRU)";    Marker = 'cachePath: "mru"';     RequiredClears = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly") }
-            @{ Name = "Path 2 (content)";   Marker = 'cachePath: "content"'; RequiredClears = @("gWS_ContentDirty") }
-            @{ Name = "Path 3 (full)";      Marker = 'cachePath: "full"';    RequiredClears = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly") }
+            @{ Name = "Path 1.5 (MRU)";    Marker = 'cachePath: "mru"';     RequiredClears = @("gWS_SortOrderDirty", "gWS_MRUBumpOnly") }
+            @{ Name = "Path 3 (full)";      Marker = 'cachePath: "full"';    RequiredClears = @("gWS_SortOrderDirty", "gWS_MRUBumpOnly") }
         )
 
         foreach ($path in $pathMarkers) {

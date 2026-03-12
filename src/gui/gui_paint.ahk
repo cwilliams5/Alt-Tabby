@@ -12,6 +12,7 @@
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
+global _gPaint_SubCache := Map()      ; Paint-owned subtitle cache (hwnd → "Class: ..." string)
 
 ; ========================= EFFECT STYLE SYSTEM =========================
 ; Toggled at runtime via B key (gui_interceptor.ahk).
@@ -54,7 +55,7 @@ Paint_LogStartSession() {
 GUI_Repaint() {
     ; Reentrancy guard: Win32 calls (SetWindowPos, DwmFlush) pump the
     ; message queue, which dispatches queued WinEvent callbacks mid-paint. Those
-    ; callbacks update the store and trigger GUI_PatchCosmeticUpdates → GUI_Repaint,
+    ; callbacks update the store and trigger debounced GUI_Repaint,
     ; creating nested repaints that paint intermediate state immediately overwritten.
     ; Guard skips nested calls; the outer paint finishes with correct final state. (#90)
     global gPaint_RepaintInProgress
@@ -356,7 +357,7 @@ _GUI_RevealBoth() {
 _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     Profiler.Enter("_GUI_PaintOverlay") ; @profile
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gD2D_Res, gGdip_IconCache
-    global gPaint_SessionPaintCount, gPaint_LastPaintTick
+    global gPaint_SessionPaintCount, gPaint_LastPaintTick, _gPaint_SubCache
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
     global gFX_GPUReady
@@ -628,10 +629,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 tIcon := QPC()
             iconDrawn := false
             iconWasCacheHit := false
-            ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
-            if (cur.iconHicon) {
-                ; wasCacheHit is returned via ByRef parameter (avoids double cache lookup)
-                iconDrawn := D2D_DrawCachedIcon(cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
+            ; #178: cur is a live store ref — iconHicon may be zeroed after window
+            ; destruction.  Try the bitmap cache regardless so frozen display items
+            ; keep their last-known icon.
+            iconDrawn := D2D_DrawCachedIcon(cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
+            if (iconDrawn) {
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else
@@ -654,10 +656,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             title := cur.title
             sub := cur.processName
             if (sub = "") {
-                ; Lazy-cache: concat "Class: " only once per frozen item, not per-frame
-                if (!cur.HasOwnProp("_sub"))
-                    cur._sub := "Class: " cur.class
-                sub := cur._sub
+                ; Lazy-cache: concat "Class: " only once per display cycle, not per-frame
+                if (_gPaint_SubCache.Has(cur.hwnd))
+                    sub := _gPaint_SubCache[cur.hwnd]
+                else {
+                    sub := "Class: " cur.class
+                    _gPaint_SubCache[cur.hwnd] := sub
+                }
             }
 
             if (shadowP.enabled) {

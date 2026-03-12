@@ -396,13 +396,8 @@ _GUI_AsyncActivationTick() {
             Critical "On"
             gGUI_CurrentWSName := gGUI_Pending.wsName
 
-            ; Update isOnCurrentWorkspace flags in gGUI_LiveItems to match new workspace
-            ; This ensures display lists have correct workspace data
-            for item in gGUI_LiveItems {
-                if (item.HasOwnProp("workspaceName")) {
-                    item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(item.workspaceName, gGUI_CurrentWSName)
-                }
-            }
+            ; isOnCurrentWorkspace flags are already correct on store records —
+            ; WL_SetCurrentWorkspace (called by komorebi producer) flips them.
             Critical "Off"
         }
 
@@ -587,10 +582,9 @@ _GUI_UpdateLocalMRU(hwnd) {
         return false
     }
 
-    ; Get item directly from Map (O(1)) and update tick
+    ; Get item directly from Map (O(1))
     item := gGUI_LiveItemsMap[hwnd]
     tick := A_TickCount
-    item.lastActivatedTick := tick
 
     ; Find index for move-to-front (still O(n) but with direct object identity check)
     idx := 0

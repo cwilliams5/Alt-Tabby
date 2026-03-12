@@ -318,7 +318,7 @@ Launcher_ReacquireMutexes() {
 ; Handle WM_COPYDATA control signals from child processes
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     global cfg
-    global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED
+    global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED, TABBY_CMD_PUMP_READY
     global g_StatsCache
     try {
         dwData := NumGet(lParam, 0, "uptr")
@@ -349,6 +349,15 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
                 Launcher_Log("IPC: Received PUMP_FAILED from GUI, restarting pump")
             ; Kill hung pump if still alive, restart, then notify GUI to reconnect
             SetTimer(_Launcher_RestartPumpAndNotify, -50)
+            return 1
+        }
+
+        if (dwData = TABBY_CMD_PUMP_READY) {
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("IPC: Received PUMP_READY from pump, relaying to GUI")
+            ; Pump's pipe server is ready — tell GUI to connect
+            global TABBY_CMD_PUMP_RESTARTED
+            Launcher_RelayToGui(TABBY_CMD_PUMP_RESTARTED)
             return 1
         }
 
