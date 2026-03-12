@@ -10,18 +10,6 @@
 ; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
 global gGUI_State := "IDLE"
 
-; TEMP #178 diagnostic — always logs, no config gate. Remove after investigation.
-; Public: called from gui_state, gui_main, gui_pump (all write to same file).
-Log178(msg) {
-    static logPath := A_Temp "\tabby_178_diag.log"
-    static cleared := false
-    if (!cleared) {
-        try FileDelete(logPath)
-        cleared := true
-    }
-    try FileAppend(FormatTime(, "HH:mm:ss") "." Format("{:03}", Mod(A_TickCount, 1000)) " " msg "`n", logPath, "UTF-8")
-}
-
 global gGUI_CurrentWSName := ""       ; Cached from gWS_Meta (updated by workspace flip callback)
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
@@ -200,7 +188,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Alt pressed - enter ALT_PENDING state
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
-        Log178("STATE: IDLE → ALT_PENDING")
         gGUI_State := "ALT_PENDING"
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
@@ -365,7 +352,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 gGUI_DisplayItems := []
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
-            Log178("STATE: ACTIVE → IDLE (ALT_UP dismiss)")
             gGUI_State := "IDLE"
             Stats_AccumulateSession()
 
@@ -460,7 +446,6 @@ GUI_DismissOverlay() {
     }
     if (gFR_Enabled)
         FR_Record(FR_EV_STATE, FR_ST_IDLE)
-    Log178("STATE: ACTIVE → IDLE (dismiss)")
     gGUI_State := "IDLE"
     gGUI_DisplayItems := []
     Stats_AccumulateSession()

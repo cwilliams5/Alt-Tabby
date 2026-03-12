@@ -62,7 +62,6 @@ GUIPump_Init(connectTimeoutMs := 2000) {
 
     ; Cancel any pending retry timer (handles re-entrant calls from Reconnect or retry)
     if (_gPump_RetryTimerFn) {
-        Log178("INIT: cancelling pending retry timer")
         SetTimer(_gPump_RetryTimerFn, 0)
         _gPump_RetryTimerFn := 0
     }
@@ -72,8 +71,6 @@ GUIPump_Init(connectTimeoutMs := 2000) {
         return false
 
     ; Connect to pump pipe
-    global gGUI_State
-    Log178("INIT: connecting timeout=" connectTimeoutMs "ms retryCount=" _gPump_RetryCount " state=" gGUI_State)
     _gPump_Client := IPC_PipeClient_Connect(cfg.PumpPipeName, _GUIPump_OnMessage, connectTimeoutMs)
 
     if (!IsObject(_gPump_Client) || _gPump_Client.hPipe = 0) {
@@ -85,21 +82,16 @@ GUIPump_Init(connectTimeoutMs := 2000) {
                 retryMs := 250 * (2 ** _gPump_RetryCount)  ; 500, 1000, 2000ms
                 _gPump_RetryTimerFn := _GUIPump_DeferredRetry.Bind()
                 SetTimer(_gPump_RetryTimerFn, -retryMs)
-                Log178("INIT: FAILED retryCount=" _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " next=" retryMs "ms")
                 if (cfg.DiagPumpLog)
                     _GUIPump_Log("INIT: Pump not ready, retry " _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " in " retryMs "ms")
             } else {
-                Log178("INIT: EXHAUSTED all " _GPUMP_MAX_RETRIES " retries — giving up")
                 if (cfg.DiagPumpLog)
                     _GUIPump_Log("INIT: Failed to connect after " _GPUMP_MAX_RETRIES " retries. Using inline fallback.")
             }
         } else {
-            Log178("INIT: probe FAILED (non-blocking, no retry)")
         }
         return false
     }
-
-    Log178("INIT: SUCCESS connected state=" gGUI_State)
 
     _gPump_Connected := true
     _gPump_RetryCount := 0
@@ -212,7 +204,6 @@ GUIPump_ProbeConnect() {
         return true  ; Already connected, nothing to do
     if (_gPump_RetryTimerFn)
         return false  ; Retry timer still pending, let it handle connection
-    Log178("PROBE: attempting non-blocking connect at ACTIVE→IDLE")
     return GUIPump_Init(0)
 }
 
@@ -492,8 +483,7 @@ _GUIPump_OnMessage(msg, hPipe) {
 
     ; Trigger a cosmetic rev bump so GUI sees new icons/titles
     if (applied > 0) {
-        global gWS_OnStoreChanged, gGUI_State  ; TEMP #178 diag
-        Log178("ENRICH applied=" applied " icons=" iconCount " state=" gGUI_State)
+        global gWS_OnStoreChanged
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(false)  ; cosmetic only (icons/titles, not structural)
 
@@ -590,20 +580,16 @@ _GUIPump_HandleFailure(reason) {
 ; One-shot callback: retry pump connection after startup delay.
 ; GUIPump_Init() schedules the next retry if this attempt also fails.
 _GUIPump_DeferredRetry() {
-    global _gPump_RetryTimerFn, _gPump_RetryCount, cfg, gGUI_State
-    Log178("DEFERRED_RETRY: fired retryCount=" _gPump_RetryCount " state=" gGUI_State)
+    global _gPump_RetryTimerFn, _gPump_RetryCount, cfg
     _gPump_RetryTimerFn := 0  ; One-shot already fired, clear ref
     try {
         result := GUIPump_Init()
         if (result) {
-            Log178("DEFERRED_RETRY: SUCCESS")
             if (cfg.DiagPumpLog)
                 _GUIPump_Log("RETRY: Deferred connect succeeded")
         } else {
-            Log178("DEFERRED_RETRY: FAILED")
         }
     } catch as e {
-        Log178("DEFERRED_RETRY: EXCEPTION " e.Message)
         global LOG_PATH_PUMP
         try LogAppend(LOG_PATH_PUMP, "RETRY error: " e.Message)
     }
@@ -628,7 +614,6 @@ GUIPump_Reconnect() {
     ; If the pipe isn't quite ready yet, fall back to normal retries.
     result := GUIPump_Init(0)
     if (!result) {
-        Log178("RECONNECT: non-blocking probe failed, scheduling retry")
         result := GUIPump_Init()
     }
     if (cfg.DiagPumpLog)

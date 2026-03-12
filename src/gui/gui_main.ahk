@@ -274,8 +274,6 @@ _GUI_OnProducerRevChanged(isStructural := true) {
         ; During ACTIVE: structural changes skip (selection stability),
         ;   cosmetic changes patch in-place and repaint.
         if (gGUI_State = "IDLE") {
-            if (!isStructural)
-                Log178("IDLE cosmetic rev (precache kick)")
             GUI_KickPreCache()
         } else if (gGUI_State = "ALT_PENDING") {
             GUI_RefreshLiveItems()
@@ -289,12 +287,10 @@ _GUI_OnProducerRevChanged(isStructural := true) {
                 if (elapsed >= cfg.GUI_ActiveRepaintDebounceMs) {
                     _gGUI_LastCosmeticRepaintTick := A_TickCount
                     SetTimer(_GUI_CosmeticTrailingRepaint, 0)  ; cancel pending trailing
-                    Log178("REPAINT leading elapsed=" elapsed " debounce=" cfg.GUI_ActiveRepaintDebounceMs)
                     GUI_Repaint()
                 } else {
                     ; Schedule trailing-edge repaint for remaining debounce window
                     remaining := cfg.GUI_ActiveRepaintDebounceMs - elapsed
-                    Log178("REPAINT trailing scheduled remaining=" remaining)
                     SetTimer(_GUI_CosmeticTrailingRepaint, -remaining)
                 }
             } else {
@@ -334,11 +330,8 @@ _GUI_OnProducerRevChanged(isStructural := true) {
 _GUI_CosmeticTrailingRepaint() {
     global gGUI_State, _gGUI_LastCosmeticRepaintTick
     try {
-        if (gGUI_State != "ACTIVE") {
-            Log178("TRAILING skipped state=" gGUI_State)
+        if (gGUI_State != "ACTIVE")
             return
-        }
-        Log178("TRAILING repaint fired")
         _gGUI_LastCosmeticRepaintTick := A_TickCount
         GUI_Repaint()
     } catch as e {

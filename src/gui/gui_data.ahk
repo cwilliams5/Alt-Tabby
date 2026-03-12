@@ -164,8 +164,6 @@ GUI_EvictDisplayItem(idx1) {
 
     if (gFR_Enabled)
         FR_Record(FR_EV_DISPLAY_EVICT, hwnd, remaining, wasSelected ? 1 : 0)
-    Log178("EVICT hwnd=" Format("0x{:X}", hwnd) " remaining=" remaining " wasSelected=" wasSelected)
-
     return remaining
 }
 
@@ -191,7 +189,6 @@ GUI_ReconcileDestroys() {
     Critical "Off"
 
     if (removed > 0) {
-        Log178("RECONCILE removed=" removed " remaining=" gGUI_DisplayItems.Length)
         if (gGUI_DisplayItems.Length > 0) {
             GUI_RecalcHover()
             GUI_Repaint()
