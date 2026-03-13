@@ -330,7 +330,7 @@ _WEH_ProcessBatch() {
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
-    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, FR_EV_PRODUCER_RECOVER, gFR_Enabled
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, FR_EV_FOCUS_PROBE_FAIL, FR_EV_PRODUCER_RECOVER, gFR_Enabled
     global LOG_PATH_STORE
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
@@ -482,8 +482,21 @@ _WEH_ProcessBatch() {
                     _WEH_DiagLog("  PROBE SUPERSEDED: newer focus " _WEH_PendingFocusHwnd " arrived during probe")
             }
         } else {
+            ; Probe failed — likely UWP app with empty title during initialization.
+            ; Fix #302 cascade: update LastFocusHwnd so the NEXT focus event isn't
+            ; skipped as "same hwnd" (line ~440). Without this, both the failed
+            ; window AND the window the user returns to miss their MRU ticks.
+            Critical "On"
+            gWEH_LastFocusHwnd := pendingProbeHwnd
+            Critical "Off"
+            if (gFR_Enabled)
+                FR_Record(FR_EV_FOCUS_PROBE_FAIL, pendingProbeHwnd)
+            ; Schedule escalating retries: UWP apps (ApplicationFrameHost) can take
+            ; 2-3 seconds to populate their title. Retries check if WinEnum's scan
+            ; already discovered the window (fast path) before re-probing.
+            SetTimer(_WEH_RetryFocusProbe.Bind(pendingProbeHwnd, A_TickCount, 1), -300)
             if (logEnabled)
-                _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
+                _WEH_DiagLog("  NOT ELIGIBLE or probe failed: LastFocusHwnd=" pendingProbeHwnd ", retry scheduled")
         }
     }
 
@@ -722,6 +735,67 @@ _WEH_ProbeWindow(hwnd) {
     result := WinUtils_ProbeWindow(hwnd, 0, true, true)  ; checkExists=true, checkEligible=true
     Profiler.Leave() ; @profile
     return result
+}
+
+; Deferred retry for focus probes that failed during UWP app initialization.
+; UWP apps (ApplicationFrameHost.exe) can take 2-3 seconds to populate their title,
+; causing WinUtils_ProbeWindow to return "" — the window gets no MRU tick and sorts
+; to the bottom of the Alt-Tab list. Escalating retries at 300ms/1000ms/2500ms
+; cover the observed initialization range. See #302.
+;
+; No superseded check: the MRU tick records a historical fact ("this window had focus
+; at time T"). Even if focus has since moved, the tick is still correct. Only a 10s
+; expiry prevents stale stamps. System UI windows (Search, Start) are filtered by
+; the eligibility probe — they never pass, and retries stop after 3 attempts.
+_WEH_RetryFocusProbe(hwnd, originalTick, attempt) {
+    global gWS_Store, gWS_OnStoreChanged, cfg
+    global gFR_Enabled, FR_EV_FOCUS_RETRY
+
+    ; Expire: don't stamp stale MRU ticks from long-delayed timers
+    if (A_TickCount - originalTick > 10000)
+        return
+
+    ; Fast path: window already in store (WinEnum scan discovered it) — stamp MRU
+    if (gWS_Store.Has(hwnd + 0)) {
+        WL_BatchUpdateFields(Map(hwnd, {lastActivatedTick: originalTick}), "weh_focus_retry")
+        if (gFR_Enabled)
+            FR_Record(FR_EV_FOCUS_RETRY, hwnd, 1)
+        if (gWS_OnStoreChanged)
+            gWS_OnStoreChanged(false)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("  RETRY OK (in store): hwnd=" hwnd " MRU=" originalTick " attempt=" attempt)
+        return
+    }
+
+    ; Not in store — try full probe
+    probe := WinUtils_ProbeWindow(hwnd, 0, true, true)
+    if (probe && probe.Has("title") && probe["title"] != "") {
+        probe["lastActivatedTick"] := originalTick
+        probe["present"] := true
+        probe["presentNow"] := true
+        WL_UpsertWindow([probe], "winevent_focus_retry")
+        if (gFR_Enabled)
+            FR_Record(FR_EV_FOCUS_RETRY, hwnd, 1)
+        if (gWS_OnStoreChanged)
+            gWS_OnStoreChanged(false)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("  RETRY OK (probed): hwnd=" hwnd " '" SubStr(probe["title"], 1, 30) "' attempt=" attempt)
+        return
+    }
+
+    ; Probe still fails — schedule next attempt with escalating delay
+    if (attempt < 3) {
+        nextDelay := (attempt = 1) ? 700 : 1500
+        SetTimer(_WEH_RetryFocusProbe.Bind(hwnd, originalTick, attempt + 1), -nextDelay)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("  RETRY " attempt "/3 FAILED: hwnd=" hwnd ", next in " nextDelay "ms")
+    } else {
+        ; All attempts exhausted
+        if (gFR_Enabled)
+            FR_Record(FR_EV_FOCUS_RETRY, hwnd, 0)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("  RETRY EXHAUSTED: hwnd=" hwnd " after 3 attempts")
+    }
 }
 
 ; Lightweight update for windows already in the store.
