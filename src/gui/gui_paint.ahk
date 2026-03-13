@@ -100,9 +100,15 @@ GUI_Repaint() {
     global gAnim_HidePending
     items := (gGUI_State = "ACTIVE" || gAnim_HidePending) ? gGUI_DisplayItems : gGUI_LiveItems
 
+    ; Snapshot selection for this paint frame. STA message pump reentrancy
+    ; during COM calls (BeginDraw, EndDraw, DwmFlush) can dispatch hotkey
+    ; callbacks that mutate gGUI_Sel mid-frame. Capturing here ensures the
+    ; ENFORCE logic and _GUI_PaintOverlay see the same value. (#307)
+    paintSel := gGUI_Sel
+
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
     if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
-        gGUI_ScrollTop := gGUI_Sel - 1
+        gGUI_ScrollTop := paintSel - 1
     }
 
     count := items.Length
@@ -217,7 +223,7 @@ GUI_Repaint() {
             if (diagTiming)
                 t1 := QPC()
 
-            _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+            _GUI_PaintOverlay(items, paintSel, phW, phH, scale, diagTiming)
 
             if (diagTiming)
                 tPaintOverlay := QPC() - t1
