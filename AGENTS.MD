@@ -193,6 +193,27 @@ for _, hPipe in handles
 
 Use tick-based timing instead of static counters that can leak state if timer is cancelled.
 
+## One-Shot Timer Callback Corruption (CRITICAL)
+
+Running complex nested call chains (state machine transitions, `GUI_OnInterceptorEvent`, activation) inside a one-shot `SetTimer(func, -period)` callback permanently corrupts AHK v2's timer dispatch for that function. Future `SetTimer(func, -period)` calls silently fail. Discovered in #303.
+
+**Fix:** Defer heavy work to a fresh timer thread:
+```ahk
+; WRONG â€” corrupts timer dispatch for MyTimer permanently
+MyTimer() {
+    if (needsRecovery)
+        DoComplexRecovery()  ; Nested state machine + activation
+}
+
+; CORRECT â€” timer callback returns cleanly, work runs in isolated thread
+MyTimer() {
+    if (needsRecovery) {
+        SetTimer(DoComplexRecovery.Bind(args), -1)
+        return
+    }
+}
+```
+
 ## Hot Path Resource Rules
 
 In frequently-called functions (paint, input, per-window loops):
@@ -486,27 +507,24 @@ Disables Tab hooks when fullscreen game or blacklisted process is focused. WinEv
 
 **Critical fix:** Filter windows with empty titles in WinEventHook callback â€” prevents Task Switching UI from poisoning focus tracking.
 
-## CRITICAL: Do NOT Release Critical Before Rendering
+## CRITICAL: Critical Sections During Rendering (Context-Dependent)
 
-**This is an optimization trap.** A previous attempt released `Critical "Off"` before GDI+ rendering (~16ms) and caused:
-1. **Partial glass background** â€” timer callbacks interrupted mid-render
-2. **Window mapping corruption** â€” gGUI_LiveItems modified during render
-3. **Stale projection data** â€” producer callbacks accepted during async activation
+**`GUI_OnInterceptorEvent` (hotkey handler):** Keep `Critical "On"` for the entire handler. Releasing before render caused partial glass, mapping corruption, and stale projection data. No internal abort points â€” unsafe to interrupt.
 
-Keep `Critical "On"` for the entire `GUI_OnInterceptorEvent` handler. The ~16ms delay is acceptable â€” users won't notice keyboard lag but WILL notice corrupted GUI.
+**`_GUI_GraceTimerFired` (deferred timer):** Release Critical BEFORE `_GUI_ShowOverlayWithFrozen()`. This is safe because the show path has 3 RACE FIX abort points that detect `gGUI_State != "ACTIVE"`. Keeping Critical during the 1-2s first paint exceeds Windows' `LowLevelHooksTimeout` (~300ms), causing silent hook removal â€” the original #303 bug.
 
-**Only safe to release before rendering when:**
-1. Rendering uses `gGUI_DisplayItems` (already populated inside Critical)
-2. Display items are independent of producer callbacks
+**Rule of thumb:** Release Critical before heavy COM work (D2D paint, ShowWindow, DwmFlush) only when the rendering path has internal state-change abort points. Otherwise keep it held.
 
 ## Defense Stack
 
 1. `SendMode("Event")` â€” keeps hook active
 2. `Critical "On"` â€” prevents callback interruption
-3. Keep Critical during render â€” prevents data corruption
+3. Context-dependent Critical during render (see above)
 4. Async activation â€” non-blocking
 5. Event buffering â€” queue during async
 6. Lost Tab detection â€” synthesize if needed
+7. `GetAsyncKeyState(VK_MENU)` â€” physical Alt polling detects lost hooks (#303)
+8. Active-state watchdog â€” 500ms safety net catches any stuck ACTIVE (#303)
 
 ---
 
