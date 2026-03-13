@@ -23,6 +23,12 @@ global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 ; Event buffering during async activation (queue events, don't cancel)
 global gGUI_EventBuffer := []            ; Queued events during async activation
 
+; Guard flag: true while _GUI_GraceTimerFired is executing.
+; Prevents SetTimer(_GUI_GraceTimerFired, 0) from being called during the callback,
+; which corrupts AHK v2's internal timer state and permanently breaks future scheduling.
+; The one-shot timer auto-deletes after firing, so cancellation is redundant inside.
+global gGUI_InGraceCallback := false
+
 ; State machine timing
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
@@ -43,6 +49,7 @@ GUI_ForceReset() {
     global gGUI_State, gGUI_DisplayItems
     gGUI_DisplayItems := []
     gGUI_State := "IDLE"
+    _GUI_StopActiveWatchdog()  ; #303
 }
 
 ; ========================= DEBUG LOGGING =========================
@@ -117,7 +124,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
-    global gGUI_Pending, gGUI_EventBuffer, gAnim_HidePending
+    global gGUI_Pending, gGUI_EventBuffer, gAnim_HidePending, gGUI_InGraceCallback
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
@@ -162,6 +169,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (diagLog)
                 GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
             GUI_CancelPendingActivation()
+            _GUI_StopActiveWatchdog()  ; #303
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
@@ -264,6 +272,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; Start grace timer - show GUI after delay
             SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
+            ; #303: Start watchdog to detect stuck ACTIVE state
+            _GUI_StartActiveWatchdog()
             Profiler.Leave() ; @profile
             return
         }
@@ -293,7 +303,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
-                SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+                if (!gGUI_InGraceCallback)  ; Skip if inside grace callback (one-shot auto-deleted)
+                    SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
                 _GUI_ShowOverlayWithFrozen()
             } else if (gGUI_OverlayVisible) {
                 ; When animation frame loop is running, it will paint the next frame
@@ -325,7 +336,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         }
 
         if (gGUI_State = "ACTIVE") {
-            SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+            if (!gGUI_InGraceCallback)  ; Skip if inside grace callback (one-shot auto-deleted)
+                SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+            _GUI_StopActiveWatchdog()  ; #303
 
             timeSinceTab := A_TickCount - gGUI_FirstTabTick
 
@@ -381,19 +394,74 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
 _GUI_GraceTimerFired() {
     Profiler.Enter("_GUI_GraceTimerFired") ; @profile
-    ; RACE FIX: Prevent race with Alt_Up hotkey - timer can fire while
-    ; GUI_OnInterceptorEvent is processing ALT_UP, causing inconsistent state
+    ; Hold Critical only for the atomic state check — NOT for the heavy D2D paint.
+    ; Previous: Critical covered the entire show+paint sequence. D2D COM calls pump
+    ; the STA message loop; if that exceeds Windows' LowLevelHooksTimeout (~300ms),
+    ; Windows silently drops ALT_UP from the keyboard hook. (#303)
+    ; Now: release Critical before _GUI_ShowOverlayWithFrozen, which has its own
+    ; RACE FIX abort points (lines 676, 696, 725) that detect state changes.
     Critical "On"
-    global gGUI_State, gGUI_OverlayVisible, FR_EV_GRACE_FIRE, FR_ST_ACTIVE, gFR_Enabled
+    global gGUI_State, gGUI_OverlayVisible, gINT_AltIsDown
+    global FR_EV_GRACE_FIRE, FR_ST_ACTIVE, gFR_Enabled
     if (gFR_Enabled)
         FR_Record(FR_EV_GRACE_FIRE, (gGUI_State = "ACTIVE" ? FR_ST_ACTIVE : 0), gGUI_OverlayVisible)
 
-    ; Double-check state - may have changed between scheduling and firing
+    ; Double-check state — may have changed between scheduling and firing
     if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
+        ; Layer 2 (#303): Check physical Alt state before committing to expensive
+        ; first paint. If Alt is already physically up but gINT_AltIsDown is still
+        ; true, the ALT_UP callback was lost — skip paint and recover immediately.
+        ; CRITICAL: Defer recovery to a fresh timer thread. Running the full recovery
+        ; chain (INT_RecoverLostAltUp → GUI_OnInterceptorEvent → activation) inside
+        ; a one-shot timer callback corrupts AHK v2's timer dispatch for this function,
+        ; permanently preventing future SetTimer(_GUI_GraceTimerFired) from working.
+        if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
+            Critical "Off"
+            SetTimer(INT_RecoverLostAltUp.Bind(1), -1)  ; Deferred to fresh thread
+            Profiler.Leave() ; @profile
+            return
+        }
+        ; Layer 1 (#303): Release Critical before heavy D2D work so AHK's keyboard
+        ; hook handler can return to Windows within LowLevelHooksTimeout, preventing
+        ; hook removal. ALT_UP fires as a new AHK thread; race fix checks detect it.
+        Critical "Off"
         _GUI_ShowOverlayWithFrozen()
+        Profiler.Leave() ; @profile
+        return
     }
     Critical "Off"
     Profiler.Leave() ; @profile
+}
+
+; ========================= ACTIVE-STATE WATCHDOG (#303) =========================
+; Safety net: polls physical Alt key state every 500ms while in ACTIVE state.
+; If Alt is physically up but gINT_AltIsDown is stuck true (hook was dropped by
+; Windows LowLevelHooksTimeout), synthesizes the missing ALT_UP event.
+; Catches ANY cause of stuck ACTIVE state, not just the grace timer path.
+
+_GUI_StartActiveWatchdog() {
+    SetTimer(_GUI_ActiveWatchdog, 500)
+}
+
+_GUI_StopActiveWatchdog() {
+    SetTimer(_GUI_ActiveWatchdog, 0)
+}
+
+_GUI_ActiveWatchdog() {
+    Critical "On"
+    global gGUI_State, gINT_AltIsDown
+    if (gGUI_State != "ACTIVE") {
+        _GUI_StopActiveWatchdog()
+        Critical "Off"
+        return
+    }
+    if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
+        _GUI_StopActiveWatchdog()
+        Critical "Off"
+        INT_RecoverLostAltUp(4)  ; layer=4 (watchdog)
+        return
+    }
+    Critical "Off"
 }
 
 ; ========================= WORKSPACE FLIP CALLBACK =========================
@@ -437,6 +505,7 @@ GUI_DismissOverlay() {
     global gFR_Enabled, FR_EV_STATE, FR_ST_IDLE
 
     SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+    _GUI_StopActiveWatchdog()  ; #303
     if (gGUI_OverlayVisible) {
         GUI_HideOverlay()
         if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
@@ -606,6 +675,7 @@ _GUI_ShowOverlayWithFrozen() {
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
     global gGUI_State, gGUI_StealFocus, gGUI_FocusBeforeShow
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
+    global gINT_AltIsDown  ; #303: Layer 3 physical Alt checks at STA pump points
 
     ; If a hide-fade is still running from a previous click-activate,
     ; complete it now so gGUI_OverlayVisible becomes false and we can
@@ -680,6 +750,15 @@ _GUI_ShowOverlayWithFrozen() {
         Profiler.Leave() ; @profile
         return
     }
+    ; Layer 3 (#303): detect lost ALT_UP via physical key state after resize
+    if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT: Alt physically up (post-resize)")
+        _GUI_AbortShowSequence()
+        SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
+        Profiler.Leave() ; @profile
+        return
+    }
 
     try {
         if (gGUI_StealFocus) {
@@ -698,6 +777,16 @@ _GUI_ShowOverlayWithFrozen() {
         if (cfg.DiagPaintTimingLog)
             Paint_Log("ShowOverlay ABORT after Show (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+    ; Layer 3 (#303): detect lost ALT_UP via physical key state after Show
+    if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
+        try gGUI_Base.Hide()
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT: Alt physically up (post-Show)")
+        _GUI_AbortShowSequence()
+        SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
         Profiler.Leave() ; @profile
         return
     }
@@ -727,6 +816,16 @@ _GUI_ShowOverlayWithFrozen() {
         if (cfg.DiagPaintTimingLog)
             Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+    ; Layer 3 (#303): detect lost ALT_UP via physical key state after Repaint
+    if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
+        try gGUI_Base.Hide()
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT: Alt physically up (post-Repaint)")
+        _GUI_AbortShowSequence()
+        SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
         Profiler.Leave() ; @profile
         return
     }

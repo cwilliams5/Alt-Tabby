@@ -438,6 +438,33 @@ INT_SetBypassMode(shouldBypass) {
     Critical "Off"
 }
 
+; ========================= PHYSICAL KEY STATE =========================
+
+; Poll hardware Alt state via Win32 — independent of AHK's keyboard hook.
+; Returns nonzero if either Alt key is physically held down right now.
+; Used by #303 defense-in-depth: detects lost ALT_UP when hook is uninstalled
+; by Windows due to LowLevelHooksTimeout during long Critical+D2D sections.
+INT_IsAltPhysicallyDown() {
+    return DllCall("user32\GetAsyncKeyState", "int", 0x12, "short") & 0x8000
+}
+
+; Recover from a lost ALT_UP event by resetting interceptor state and
+; synthesizing the missing ALT_UP into the state machine.
+; Called from multiple defense layers (#303): grace timer, STA pump checks, watchdog.
+INT_RecoverLostAltUp(layer := 0) {
+    global gINT_AltIsDown, gINT_SessionActive, gINT_PressCount, gINT_TabHeld
+    global TABBY_EV_ALT_UP, gFR_Enabled, FR_EV_ALT_RECOVERED, cfg
+    if (cfg.DiagEventLog)
+        GUI_LogEvent("INT: RecoverLostAltUp layer=" layer " (alt was stuck)")
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ALT_RECOVERED, layer)
+    gINT_AltIsDown := false
+    gINT_SessionActive := false
+    gINT_PressCount := 0
+    gINT_TabHeld := false
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+}
+
 ; Re-assert Tab hotkey is enabled when bypass is off.
 ; No-op when hooks are healthy (Hotkey("On") on an already-On hotkey just returns).
 ; Recovers from silent desync where Tab was left Off after a bypass toggle.

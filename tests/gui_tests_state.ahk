@@ -25,6 +25,7 @@ RunGUITests_State() {
     global gFR_DumpInProgress
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps, gStats_Cancellations
     global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, gStats_MonitorToggles
+    global gINT_AltIsDown, gMock_AltPhysicallyDown, gMock_RecoverLostAltUpCalls  ; #303
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -656,6 +657,89 @@ RunGUITests_State() {
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)  ; FREEZE point
 
     GUI_AssertEq(gMock_ForceCompleteHideCalled, 0, "ForceCompleteHide: NOT called when gAnim_HidePending was false")
+
+    ; ========================================================================
+    ; #303: Lost ALT_UP Defense-in-Depth Tests
+    ; ========================================================================
+
+    ; ----- Test: Layer 2 - Grace timer detects Alt physically up -----
+    GUI_Log("Test: #303 Layer 2 - Grace timer detects Alt physically up before paint")
+    ResetGUIState()
+    SetupTestItems(5)
+    gINT_AltIsDown := true
+    gMock_AltPhysicallyDown := false  ; Alt released but hook missed it
+
+    ; Get to ACTIVE state
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "#303 L2: state is ACTIVE before grace timer")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "#303 L2: overlay not yet visible")
+
+    ; Simulate grace timer firing — should detect Alt physically up and defer recovery
+    ; Recovery is deferred to a fresh timer thread to avoid corrupting AHK's timer state.
+    _GUI_GraceTimerFired()
+    GUI_AssertEq(gGUI_OverlayVisible, false, "#303 L2: overlay never shown")
+    ; Recovery is deferred (-1ms timer) — wait for it to fire
+    Sleep(50)
+    GUI_AssertEq(gGUI_State, "IDLE", "#303 L2: state recovered to IDLE")
+    GUI_AssertTrue(gMock_RecoverLostAltUpCalls.Length > 0, "#303 L2: INT_RecoverLostAltUp was called")
+    GUI_AssertEq(gMock_RecoverLostAltUpCalls[1], 1, "#303 L2: recovery layer=1 (grace timer)")
+
+    ; ----- Test: Grace timer proceeds normally when Alt is physically down -----
+    GUI_Log("Test: #303 Grace timer proceeds when Alt physically held")
+    ResetGUIState()
+    SetupTestItems(5)
+    gINT_AltIsDown := true
+    gMock_AltPhysicallyDown := true  ; Alt still held — normal case
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "#303 normal: state is ACTIVE")
+
+    _GUI_GraceTimerFired()
+    GUI_AssertEq(gGUI_State, "ACTIVE", "#303 normal: state stays ACTIVE (Alt held)")
+    GUI_AssertEq(gGUI_OverlayVisible, true, "#303 normal: overlay shown")
+    GUI_AssertTrue(gMock_RecoverLostAltUpCalls.Length = 0, "#303 normal: no recovery called")
+
+    ; ----- Test: Watchdog stops when leaving ACTIVE via ALT_UP -----
+    GUI_Log("Test: #303 Watchdog stops on normal ALT_UP")
+    ResetGUIState()
+    SetupTestItems(5)
+    gINT_AltIsDown := true
+    gMock_AltPhysicallyDown := true
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "#303 watchdog: state is ACTIVE")
+
+    ; Normal ALT_UP
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    GUI_AssertEq(gGUI_State, "IDLE", "#303 watchdog: state back to IDLE")
+
+    ; Watchdog should be stopped — simulate alt physically up, watchdog should NOT fire recovery
+    gINT_AltIsDown := true  ; Fake stuck state
+    gMock_AltPhysicallyDown := false
+    _GUI_ActiveWatchdog()
+    ; Since state is IDLE, watchdog should self-stop and NOT call recovery
+    GUI_AssertTrue(gMock_RecoverLostAltUpCalls.Length = 0, "#303 watchdog: no recovery when state is IDLE")
+
+    ; ----- Test: Watchdog fires recovery when stuck in ACTIVE -----
+    GUI_Log("Test: #303 Watchdog detects stuck ACTIVE state")
+    ResetGUIState()
+    SetupTestItems(5)
+    gINT_AltIsDown := true
+    gMock_AltPhysicallyDown := true
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "#303 watchdog stuck: state is ACTIVE")
+
+    ; Simulate: Alt physically released but callback never arrived
+    gMock_AltPhysicallyDown := false
+    _GUI_ActiveWatchdog()
+    GUI_AssertEq(gGUI_State, "IDLE", "#303 watchdog stuck: recovered to IDLE")
+    GUI_AssertTrue(gMock_RecoverLostAltUpCalls.Length > 0, "#303 watchdog stuck: INT_RecoverLostAltUp called")
+    GUI_AssertEq(gMock_RecoverLostAltUpCalls[1], 4, "#303 watchdog stuck: recovery layer=4 (watchdog)")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI State Tests Summary ===")

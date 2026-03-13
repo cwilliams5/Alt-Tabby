@@ -73,6 +73,27 @@ for _, hPipe in handles
 
 Use tick-based timing instead of static counters that can leak state if timer is cancelled.
 
+## One-Shot Timer Callback Corruption (CRITICAL)
+
+Running complex nested call chains (state machine transitions, `GUI_OnInterceptorEvent`, activation) inside a one-shot `SetTimer(func, -period)` callback permanently corrupts AHK v2's timer dispatch for that function. Future `SetTimer(func, -period)` calls silently fail. Discovered in #303.
+
+**Fix:** Defer heavy work to a fresh timer thread:
+```ahk
+; WRONG — corrupts timer dispatch for MyTimer permanently
+MyTimer() {
+    if (needsRecovery)
+        DoComplexRecovery()  ; Nested state machine + activation
+}
+
+; CORRECT — timer callback returns cleanly, work runs in isolated thread
+MyTimer() {
+    if (needsRecovery) {
+        SetTimer(DoComplexRecovery.Bind(args), -1)
+        return
+    }
+}
+```
+
 ## Hot Path Resource Rules
 
 In frequently-called functions (paint, input, per-window loops):

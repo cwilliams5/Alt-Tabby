@@ -18,24 +18,21 @@ Disables Tab hooks when fullscreen game or blacklisted process is focused. WinEv
 
 **Critical fix:** Filter windows with empty titles in WinEventHook callback — prevents Task Switching UI from poisoning focus tracking.
 
-## CRITICAL: Do NOT Release Critical Before Rendering
+## CRITICAL: Critical Sections During Rendering (Context-Dependent)
 
-**This is an optimization trap.** A previous attempt released `Critical "Off"` before GDI+ rendering (~16ms) and caused:
-1. **Partial glass background** — timer callbacks interrupted mid-render
-2. **Window mapping corruption** — gGUI_LiveItems modified during render
-3. **Stale projection data** — producer callbacks accepted during async activation
+**`GUI_OnInterceptorEvent` (hotkey handler):** Keep `Critical "On"` for the entire handler. Releasing before render caused partial glass, mapping corruption, and stale projection data. No internal abort points — unsafe to interrupt.
 
-Keep `Critical "On"` for the entire `GUI_OnInterceptorEvent` handler. The ~16ms delay is acceptable — users won't notice keyboard lag but WILL notice corrupted GUI.
+**`_GUI_GraceTimerFired` (deferred timer):** Release Critical BEFORE `_GUI_ShowOverlayWithFrozen()`. This is safe because the show path has 3 RACE FIX abort points that detect `gGUI_State != "ACTIVE"`. Keeping Critical during the 1-2s first paint exceeds Windows' `LowLevelHooksTimeout` (~300ms), causing silent hook removal — the original #303 bug.
 
-**Only safe to release before rendering when:**
-1. Rendering uses `gGUI_DisplayItems` (already populated inside Critical)
-2. Display items are independent of producer callbacks
+**Rule of thumb:** Release Critical before heavy COM work (D2D paint, ShowWindow, DwmFlush) only when the rendering path has internal state-change abort points. Otherwise keep it held.
 
 ## Defense Stack
 
 1. `SendMode("Event")` — keeps hook active
 2. `Critical "On"` — prevents callback interruption
-3. Keep Critical during render — prevents data corruption
+3. Context-dependent Critical during render (see above)
 4. Async activation — non-blocking
 5. Event buffering — queue during async
 6. Lost Tab detection — synthesize if needed
+7. `GetAsyncKeyState(VK_MENU)` — physical Alt polling detects lost hooks (#303)
+8. Active-state watchdog — 500ms safety net catches any stuck ACTIVE (#303)

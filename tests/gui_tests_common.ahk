@@ -119,6 +119,10 @@ global gGUI_LauncherHwnd := 0  ; Not used in GUI tests, needed for production in
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false
 global gINT_TabPending := false
+global gINT_AltIsDown := false       ; #303: read by Layer 2/3 checks in gui_state.ahk
+global gINT_SessionActive := false   ; #303: reset by INT_RecoverLostAltUp mock
+global gINT_PressCount := 0          ; #303: reset by INT_RecoverLostAltUp mock
+global gINT_TabHeld := false         ; #303: reset by INT_RecoverLostAltUp mock
 global gMock_BypassResult := false  ; Controls INT_ShouldBypassWindow mock return value
 
 ; Config object mock (production code uses cfg.PropertyName)
@@ -393,6 +397,7 @@ global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41, FR_EV_MON_TOGGLE := 42
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_FG_GUARD := 53
 global FR_EV_DISPLAY_EVICT := 80
+global FR_EV_ALT_RECOVERED := 90
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }
@@ -406,6 +411,27 @@ INT_ShouldBypassWindow(hwnd := 0) {
 INT_SetBypassMode(shouldBypass) {
     global gINT_BypassMode
     gINT_BypassMode := shouldBypass
+}
+
+; #303: Physical key state mock — tests control via gMock_AltPhysicallyDown
+global gMock_AltPhysicallyDown := true
+INT_IsAltPhysicallyDown() {
+    global gMock_AltPhysicallyDown
+    return gMock_AltPhysicallyDown
+}
+
+; #303: Recovery mock — tracks calls for assertion
+global gMock_RecoverLostAltUpCalls := []
+INT_RecoverLostAltUp(layer := 0) {
+    global gMock_RecoverLostAltUpCalls, gINT_AltIsDown
+    global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
+    global TABBY_EV_ALT_UP
+    gMock_RecoverLostAltUpCalls.Push(layer)
+    gINT_AltIsDown := false
+    gINT_SessionActive := false
+    gINT_PressCount := 0
+    gINT_TabHeld := false
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
 }
 
 ; Monitor Win32 dependency mocks (gui_monitor.ahk is included for real logic)
@@ -582,6 +608,17 @@ ResetGUIState() {
     gGUI_HoverBtn := ""
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
+    ; #303: Reset physical key state mocks and recovery tracking
+    global gMock_AltPhysicallyDown, gMock_RecoverLostAltUpCalls
+    global gINT_AltIsDown, gINT_SessionActive, gINT_PressCount, gINT_TabHeld
+    global gGUI_InGraceCallback
+    gMock_AltPhysicallyDown := true
+    gMock_RecoverLostAltUpCalls := []
+    gINT_AltIsDown := false
+    gINT_SessionActive := false
+    gINT_PressCount := 0
+    gINT_TabHeld := false
+    gGUI_InGraceCallback := false
     ; Cancel any pending pre-cache timer from previous test
     try GUI_StopPreCache()
 }

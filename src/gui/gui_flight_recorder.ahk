@@ -66,6 +66,9 @@ global FR_EV_PAINT_BLOCKED      := 73  ; d1=reason(1=reentrant,2=noRT,3=acquireF
 ; Display list events (80-89)
 global FR_EV_DISPLAY_EVICT     := 80  ; d1=hwnd d2=remainingCount d3=wasSelected(0/1) — item evicted from frozen display list
 
+; Recovery events (90-99)
+global FR_EV_ALT_RECOVERED     := 90  ; d1=layer(1=grace,2=prePaint,3=midPaint,4=watchdog) — #303 lost ALT_UP recovered via GetAsyncKeyState
+
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
 global FR_ST_ALT_PENDING := 1
@@ -452,6 +455,7 @@ _FR_GetEventName(ev) {
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
     global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
     global FR_EV_DISPLAY_EVICT
+    global FR_EV_ALT_RECOVERED
 
     switch ev {
         case FR_EV_ALT_DN:            return "ALT_DN"
@@ -495,6 +499,7 @@ _FR_GetEventName(ev) {
         case FR_EV_PAINT_RESIZE:      return "PAINT_RESIZE"
         case FR_EV_PAINT_BLOCKED:     return "PAINT_BLOCKED"
         case FR_EV_DISPLAY_EVICT:    return "DISPLAY_EVICT"
+        case FR_EV_ALT_RECOVERED:    return "ALT_RECOVERED"
         default:                      return "UNKNOWN(" ev ")"
     }
 }
@@ -528,6 +533,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
     global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
     global FR_EV_DISPLAY_EVICT
+    global FR_EV_ALT_RECOVERED
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -618,6 +624,9 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "reason=" reasonStr
         case FR_EV_DISPLAY_EVICT:
             return _FR_HwndStr(d1, hwndMap) "  remaining=" d2 "  wasSel=" d3
+        case FR_EV_ALT_RECOVERED:
+            layerStr := (d1 = 1) ? "grace" : (d1 = 2) ? "prePaint" : (d1 = 3) ? "midPaint" : (d1 = 4) ? "watchdog" : "?(" d1 ")"
+            return "layer=" layerStr
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
     }
