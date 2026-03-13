@@ -389,6 +389,9 @@ _WS_ApplyPatch(row, patch, hwnd) {
     ; Direct iteration avoids allocating a temporary Object copy for Map patches.
     if (patch is Map) {
         for k, v in patch {
+            ; Monotonic MRU: reject stale lastActivatedTick writes (#179)
+            if (k = "lastActivatedTick" && row.HasOwnProp(k) && v < row.lastActivatedTick)
+                continue
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
                 if (!gWS_InternalFields.Has(k)) {
@@ -410,6 +413,9 @@ _WS_ApplyPatch(row, patch, hwnd) {
     } else if (IsObject(patch)) {
         for k in patch.OwnProps() {
             v := patch.%k%
+            ; Monotonic MRU: reject stale lastActivatedTick writes (#179)
+            if (k = "lastActivatedTick" && row.HasOwnProp(k) && v < row.lastActivatedTick)
+                continue
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
                 if (!gWS_InternalFields.Has(k)) {
