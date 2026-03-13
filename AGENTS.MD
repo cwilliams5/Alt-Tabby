@@ -290,7 +290,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `src/shared/blacklist.ahk` - Window eligibility logic
 - `src/shared/stats.ahk` - Lifetime & session usage statistics
 - `src/gui/gui_main.ahk` - MainProcess init, producers, heartbeat, cleanup
-- `src/gui/gui_data.ahk` - Snapshot + pre-cache functions (replaces gui_store.ahk)
+- `src/gui/gui_data.ahk` - Live data layer (refresh, pre-cache, display eviction during ACTIVE)
 - `src/gui/gui_activation.ahk` - Window activation engine (sync, async cross-workspace, COM uncloaking, robust Win32 activation)
 - `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
 - `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
@@ -351,7 +351,7 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 
 ## Critical Design Decisions
 
-1. **Lock-in on first Tab** - Display list frozen when Tab pressed (not Alt)
+1. **Lock-in on first Tab** - Display list frozen when Tab pressed (not Alt). Freeze is reference-based: `gGUI_DisplayItems` holds refs to live store records. Structural stability (ordering, membership) is frozen; cosmetic fields (title, icon, processName) flow live. The list may shrink during ACTIVE (window destroys are signal, not noise) but never grows or reorders.
 2. **Pre-warm on Alt** - Refresh live items early for fresh data
 3. **GUI always running** - Show/hide, don't create/destroy
 4. **Single-process data** - Producers + window data + GUI all in MainProcess (no IPC latency for window list)
