@@ -497,7 +497,7 @@ ToggleAdminMode() {
             try {
                 ; Create lock file before elevation (will be deleted by elevated instance)
                 try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
-                FileAppend(A_TickCount, TEMP_ADMIN_TOGGLE_LOCK)  ; lint-ignore: fileappend-encoding
+                FileAppend(A_TickCount, TEMP_ADMIN_TOGGLE_LOCK, "UTF-8")
                 g_AdminToggleInProgress := true  ; lint-ignore: guard-try-finally — async: polling timer resets on completion
                 g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 

@@ -174,39 +174,6 @@ D2D_FillEllipse(x, y, w, h, brush) {
     gD2D_RT.FillEllipse(eBuf, brush)
 }
 
-; Draw ellipse stroke. D2D ellipse uses center point + radii (not bounding box).
-_D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function (general D2D utility)
-    global gD2D_RT
-    if (!gD2D_RT)
-        return
-    static eBuf := Buffer(16)
-    NumPut("float", Float(cx), "float", Float(cy),
-           "float", Float(rx), "float", Float(ry), eBuf)
-    gD2D_RT.DrawEllipse(eBuf, brush, strokeWidth)
-}
-
-; Fill rectangle.
-_D2D_FillRect(x, y, w, h, brush) { ; lint-ignore: dead-function
-    global gD2D_RT
-    if (!gD2D_RT)
-        return
-    static rect := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
-    gD2D_RT.FillRectangle(rect, brush)
-}
-
-; Stroke a rectangle outline.
-_D2D_StrokeRect(x, y, w, h, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function
-    global gD2D_RT
-    if (w <= 0 || h <= 0 || !gD2D_RT)
-        return
-    static rect := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
-    gD2D_RT.DrawRectangle(rect, brush, strokeWidth, 0)
-}
-
 ; ========================= BRUSH CACHE =========================
 
 ; Get or create a cached D2D solid color brush for the given ARGB color.
