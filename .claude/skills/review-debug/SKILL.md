@@ -16,13 +16,13 @@ Enter planning mode. Systematically audit all debug logging, tooltips, and diagn
 
 **Ungated outputs (problem):**
 - `FileAppend` / `FileOpen` for log files without a config guard
-- `Tooltip` calls outside of `cfg.AltTabTooltips` guard
+- `Tooltip` calls outside of `cfg.DiagAltTabTooltips` guard
 - `OutputDebug` calls left in production paths (acceptable in dev-only or rarely-hit error paths)
 - String concatenation for log messages evaluated before the config guard (see `ahk-patterns.md` caller-side log guards rule)
 
 **Correctly gated (not a problem):**
 - `if (cfg.DiagChurnLog)` → `FileAppend ...`
-- `if (cfg.AltTabTooltips)` → `Tooltip ...`
+- `if (cfg.DiagAltTabTooltips)` → `Tooltip ...`
 - `_GUI_LogError()` — always-on by design, only for actual errors
 - Flight recorder `FR_Record()` — near-zero cost by design (pre-allocated ring buffer)
 

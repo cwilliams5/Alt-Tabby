@@ -38,3 +38,5 @@ If the test **set up the condition itself** (launched the exe, connected the pum
 
 5. If any silent failures are found, fix them: change `SKIP` to `FAIL` and add `TestErrors++`
 6. Run `.\tests\test.ps1 --live` to confirm all tests still pass after changes
+
+Ignore any existing plans — create a fresh one.
