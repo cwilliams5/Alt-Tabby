@@ -198,9 +198,11 @@ _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
 ; Single entry point for all Alt-Tabby process killing.
 ;
 ; Behavior:
-;   1. Hard-kill editors (if provided)
-;   2. Graceful shutdown known PIDs in order: GUI→Pump (if pids provided)
-;   3. Force sweep by process name (if force=true)
+;   1. Hard-kill editors (if provided by PID)
+;   2. Graceful editor close by title discovery (if force=true — catches editors
+;      whose PIDs are unknown, e.g., elevated update modes)
+;   3. Graceful shutdown known PIDs in order: GUI→Pump (if pids provided)
+;   4. Force sweep by process name (if force=true)
 ;
 ; Graceful always happens when PIDs are available — no caller with PIDs
 ; should ever skip it. Force is the orthogonal axis: update/conflict flows
@@ -229,6 +231,13 @@ ProcessUtils_KillAltTabby(opts := "") {
         if (ed.HasOwnProp("blacklist") && ed.blacklist && ProcessExist(ed.blacklist))
             try ProcessClose(ed.blacklist)
     }
+
+    ; Editor save-prompt phase: discover editor windows by title and send WM_CLOSE.
+    ; This works in elevated update modes where editor PIDs are unknown (the non-elevated
+    ; launcher that knew the PIDs has already exited). Without this, the force sweep
+    ; below silently kills editors via taskkill /F — discarding unsaved changes.
+    if (force)
+        _PU_GracefulCloseEditorsByTitle()
 
     ; Graceful phase: ordered WM_CLOSE to known PIDs
     if (opts.HasOwnProp("pids"))
@@ -270,6 +279,60 @@ _PU_GracefulShutdownByPid(pids) {
             HiSleep(10)
         if (ProcessExist(pids.pump))
             ProcessClose(pids.pump)
+    }
+
+    DetectHiddenWindows(prevDHW)
+}
+
+; Internal: Discover Alt-Tabby editor windows by title and send WM_CLOSE.
+; Gives editors a chance to show "save changes?" prompts before the force-kill sweep.
+; Used by ProcessUtils_KillAltTabby when force=true — catches editors whose PIDs are
+; unknown (e.g., elevated --apply-update / --update-installed / --install-to-pf modes).
+_PU_GracefulCloseEditorsByTitle() {
+    static editorTitlePrefixes := ["Alt-Tabby Configuration", "Alt-Tabby Blacklist"]
+
+    prevDHW := A_DetectHiddenWindows
+    DetectHiddenWindows(true)
+
+    ; Collect all editor window HWNDs
+    editorHwnds := []
+    myPID := ProcessExist()
+    for prefix in editorTitlePrefixes {
+        try {
+            hwnds := WinGetList(prefix)
+            for hwnd in hwnds {
+                ; Skip windows belonging to our own process (e.g., config editor
+                ; launched in-process would be handled by its own cleanup)
+                try {
+                    if (WinGetPID("ahk_id " hwnd) != myPID)
+                        editorHwnds.Push(hwnd)
+                }
+            }
+        }
+    }
+
+    if (editorHwnds.Length = 0) {
+        DetectHiddenWindows(prevDHW)
+        return
+    }
+
+    ; Send WM_CLOSE to all discovered editors
+    for hwnd in editorHwnds
+        try PostMessage(0x0010, 0, 0, , "ahk_id " hwnd)  ; WM_CLOSE
+
+    ; Wait up to 3s for editors to close (user may be responding to save prompt)
+    deadline := A_TickCount + 3000
+    while (A_TickCount < deadline) {
+        allGone := true
+        for hwnd in editorHwnds {
+            if (DllCall("user32\IsWindow", "ptr", hwnd)) {
+                allGone := false
+                break
+            }
+        }
+        if (allGone)
+            break
+        Sleep(200)
     }
 
     DetectHiddenWindows(prevDHW)

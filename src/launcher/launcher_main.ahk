@@ -57,7 +57,7 @@ Launcher_LogStartup() {
 ; Main launcher initialization
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
-    global g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+    global g_GuiPID, g_MismatchDialogShown, g_TestingMode, g_SkipActiveMutex, cfg, gConfigIniPath
     global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
@@ -105,6 +105,31 @@ Launcher_Init() {
                 ExitApp()
             }
             ; Continue with normal startup below
+        } else {
+            ExitApp()
+        }
+    }
+
+    ; Early active mutex check: prevent two installations from showing overlapping
+    ; dialogs (mismatch, wizard, admin repair) before subprocess launch.
+    ; The same check runs again in Launcher_StartSubprocesses() (idempotent).
+    if (!g_TestingMode && !g_SkipActiveMutex && !_Launcher_AcquireActiveMutex()) {
+        result := ThemeMsgBox(
+            "Another Alt-Tabby installation is already running.`n`n"
+            "Only one installation can be active at a time.`n"
+            "Close the other installation and try again?",
+            APP_NAME,
+            "YesNo Iconx"
+        )
+        if (result = "Yes") {
+            _Launcher_KillAllAltTabbyProcesses()
+            Sleep(TIMING_MUTEX_RELEASE_WAIT)
+            if (!_Launcher_AcquireActiveMutex()) {
+                ThemeMsgBox("Another Alt-Tabby instance is already running.`n`n"
+                    "Close all Alt-Tabby windows and try again.`n"
+                    "If the problem persists, end 'AltTabby.exe' in Task Manager.", APP_NAME, "Iconx")
+                ExitApp()
+            }
         } else {
             ExitApp()
         }
@@ -700,12 +725,14 @@ Launcher_AcquireMutex() {
 }
 
 ; Try to acquire the system-wide active mutex
-; Returns true if acquired, false if another installation is running
+; Returns true if acquired (or already held), false if another installation is running.
+; Idempotent: safe to call multiple times (early check in Launcher_Init + Launcher_StartSubprocesses).
 ; This is separate from the launcher mutex (which uses InstallationId) to prevent
 ; multiple installations from running simultaneously regardless of their ID.
 _Launcher_AcquireActiveMutex() {
     global g_ActiveMutex
-
+    if (g_ActiveMutex)
+        return true  ; Already acquired by us
     return _Launcher_TryAcquireMutex(&g_ActiveMutex, "AltTabby_Active", "ACTIVE_MUTEX")
 }
 
