@@ -6,6 +6,7 @@
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
 global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
+global PRECACHE_TICK_MS := 50              ; Background icon pre-cache batch interval
 
 ; ========================= LIVE ITEMS REFRESH =========================
 
@@ -206,11 +207,11 @@ GUI_ReconcileDestroys() {
 ; Reads directly from gWS_Store (always current) — no dependency on display list freshness.
 ; Safe to call repeatedly: one-shot timer replacement deduplicates naturally.
 GUI_KickPreCache() {
-    global gGUI_State
+    global gGUI_State, PRECACHE_TICK_MS
     ; During ACTIVE, the visible-row path (A1 above) handles it
     if (gGUI_State = "ACTIVE")
         return
-    SetTimer(_GUI_PreCacheTick, -50)
+    SetTimer(_GUI_PreCacheTick, -PRECACHE_TICK_MS)
 }
 
 ; Stop the background pre-cache timer (called from gui_main shutdown).
@@ -248,6 +249,8 @@ _GUI_PreCacheTick() {
         Gdip_PreCacheIcon(job.hwnd, job.hicon)
 
     ; Re-arm if we hit the batch cap (more may remain)
-    if (hasMore)
-        SetTimer(_GUI_PreCacheTick, -50)
+    if (hasMore) {
+        global PRECACHE_TICK_MS
+        SetTimer(_GUI_PreCacheTick, -PRECACHE_TICK_MS)
+    }
 }

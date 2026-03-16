@@ -102,6 +102,7 @@ global HOUSEKEEPING_INTERVAL_MS  ; Set from cfg.HousekeepingIntervalMs at init
 global STAGGER_ZPUMP_MS := 17
 global STAGGER_VALIDATE_MS := 37
 global STAGGER_HOUSEKEEPING_MS := 53
+global WORKING_SET_LOCK_DELAY_MS := 5000  ; Warm-up delay before locking working set (lets caches populate)
 ; _gGUI_LastCosmeticRepaintTick declared in gui_data.ahk (sole writer)
 
 ; gGUI_LauncherHwnd declared+defaulted before arg parsing (line 14), assigned there if --launcher-hwnd= present
@@ -252,9 +253,11 @@ _GUI_Main_Init() {
     ; Start housekeeping timer for cache pruning, log rotation, stats flush (staggered)
     SetTimer(_GUI_StartHousekeeping, -STAGGER_HOUSEKEEPING_MS)
 
-    ; Lock working set after warm-up (5s delay lets caches populate)
-    if (cfg.PerfKeepInMemory)
-        SetTimer(_GUI_LockWorkingSet, -5000)
+    ; Lock working set after warm-up (delay lets caches populate)
+    if (cfg.PerfKeepInMemory) {
+        global WORKING_SET_LOCK_DELAY_MS
+        SetTimer(_GUI_LockWorkingSet, -WORKING_SET_LOCK_DELAY_MS)
+    }
 
 }
 

@@ -1040,6 +1040,10 @@ global gConfigRegistry := [
      min: 500, max: 10000,
      d: "Delay (ms) before first komorebi state poll at startup. Allows komorebi pipe to initialize. Increase on slow systems where komorebi takes longer to start."},
 
+    {s: "Komorebi", k: "LitePollMs", g: "KomorebiLitePollMs", t: "int", default: 1000,
+     min: 200, max: 5000,
+     d: "Polling interval (ms) for komorebi state when using Polling mode. Lower = more responsive workspace tracking, higher = less CPU. Only active when KomorebiIntegration=Polling."},
+
     ; ============================================================
     ; Setup & Installation
     ; ============================================================
@@ -1117,6 +1121,14 @@ global gConfigRegistry := [
     {s: "Store", k: "PumpHangTimeoutMs", g: "PumpHangTimeoutMs", t: "int", default: 15000,
      min: 5000, max: 60000,
      d: "Time (ms) without a pump response before declaring it hung and restarting"},
+
+    {s: "Store", k: "PumpCollectIntervalMs", g: "PumpCollectIntervalMs", t: "int", default: 50,
+     min: 10, max: 500,
+     d: "How often the pump batches pending hwnds into enrich requests (ms). Lower = faster icon/process resolution, higher = fewer IPC roundtrips."},
+
+    {s: "Store", k: "PumpIdleThreshold", g: "PumpIdleThreshold", t: "int", default: 5,
+     min: 1, max: 30,
+     d: "Empty queue ticks before pausing collection timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     {type: "subsection", section: "Store", name: "Window Filtering",
      desc: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist"},

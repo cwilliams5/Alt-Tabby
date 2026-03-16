@@ -21,6 +21,7 @@ global gGUI_DisplayItems := []   ; Items being rendered (may be filtered by work
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 
 ; Event buffering during async activation (queue events, don't cancel)
+global ACTIVE_WATCHDOG_MS := 500           ; Must be < Windows LowLevelHooksTimeout (~600ms). Safety net for #303.
 global gGUI_EventBuffer := []            ; Queued events during async activation
 
 ; Guard flag: true while _GUI_GraceTimerFired is executing.
@@ -440,7 +441,8 @@ _GUI_GraceTimerFired() {
 ; Catches ANY cause of stuck ACTIVE state, not just the grace timer path.
 
 _GUI_StartActiveWatchdog() {
-    SetTimer(_GUI_ActiveWatchdog, 500)
+    global ACTIVE_WATCHDOG_MS
+    SetTimer(_GUI_ActiveWatchdog, ACTIVE_WATCHDOG_MS)
 }
 
 _GUI_StopActiveWatchdog() {

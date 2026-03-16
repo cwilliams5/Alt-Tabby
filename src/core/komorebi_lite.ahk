@@ -17,10 +17,11 @@ global _KLite_PendingStart := 0    ; A_TickCount when query started
 global _KLite_PendingTimeout := 2000  ; Max wait time (ms)
 
 KomorebiLite_Init() {
+    global cfg
     ; Check if komorebi is available before starting timer
     if (!_KomorebiLite_IsAvailable())
         return false
-    SetTimer(_KomorebiLite_Tick, 1000)
+    SetTimer(_KomorebiLite_Tick, cfg.KomorebiLitePollMs)
     return true
 }
 

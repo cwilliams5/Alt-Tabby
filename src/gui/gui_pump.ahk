@@ -23,7 +23,7 @@
 global _gPump_Client := ""           ; IPC pipe client object
 global _gPump_Connected := false     ; Pump connection state
 global _gPump_CollectTimerFn := 0    ; Bound timer callback ref
-global _gPump_CollectIntervalMs := 50  ; Batch collection interval (ms)
+global _gPump_CollectIntervalMs := 50  ; Batch collection interval (ms) — overridden from cfg.PumpCollectIntervalMs at init
 global _gPump_LastRequestTick := 0   ; Tick when last enrich request was sent
 global _gPump_LastResponseTick := 0  ; Tick when last response was received
 global _gPump_FailureNotified := false ; Prevent duplicate PUMP_FAILED notifications
@@ -31,7 +31,7 @@ global _gPump_FailureNotified := false ; Prevent duplicate PUMP_FAILED notificat
 ; Event-driven collection timer state
 global _gPump_TimerOn := false       ; Whether collection timer is running
 global _gPump_IdleTicks := 0         ; Consecutive empty ticks
-global _gPump_IdleThreshold := 5     ; Empty ticks before switching to heartbeat
+global _gPump_IdleThreshold := 5     ; Empty ticks before switching to heartbeat — overridden from cfg.PumpIdleThreshold at init
 global _GPUMP_HEARTBEAT_MS := 2000   ; Slow-poll interval for pump health check when idle
 
 ; IPC client timer management
@@ -55,10 +55,14 @@ global _gPump_EnrichCount := 0       ; Monotonic enrichment response counter
 
 GUIPump_Init(connectTimeoutMs := 2000) {
     global cfg, _gPump_Client, _gPump_Connected, _gPump_CollectTimerFn, _gPump_CollectIntervalMs
-    global _gPump_TimerOn, _gPump_IdleTicks, _gPump_ClientTimerOn
+    global _gPump_TimerOn, _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_ClientTimerOn
     global _gPump_PumpHwnd, _gPump_HelloSent
     global _gPump_RetryTimerFn, _gPump_RetryCount, _GPUMP_MAX_RETRIES
     global _gPump_ConnectCount, g_TestingMode
+
+    ; Apply config-driven pump tuning
+    _gPump_CollectIntervalMs := cfg.PumpCollectIntervalMs
+    _gPump_IdleThreshold := cfg.PumpIdleThreshold
 
     ; Cancel any pending retry timer (handles re-entrant calls from Reconnect or retry)
     if (_gPump_RetryTimerFn) {
