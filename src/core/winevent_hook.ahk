@@ -740,7 +740,7 @@ _WEH_ProbeWindow(hwnd) {
 ; Deferred retry for focus probes that failed during UWP app initialization.
 ; UWP apps (ApplicationFrameHost.exe) can take 2-3 seconds to populate their title,
 ; causing WinUtils_ProbeWindow to return "" — the window gets no MRU tick and sorts
-; to the bottom of the Alt-Tab list. Escalating retries at 300ms/1000ms/2500ms
+; to the bottom of the Alt-Tab list. Escalating retries at 300ms/700ms/1500ms
 ; cover the observed initialization range. See #302.
 ;
 ; No superseded check: the MRU tick records a historical fact ("this window had focus
