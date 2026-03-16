@@ -551,11 +551,18 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     }
 
     ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
-    ; Single Map lookup (avoids Has + [] double lookup)
-    if (!gFX_SelectionEffect.isBGShader && gShader_Registry.Has(gFX_SelectionEffect.key)) {
-        entry := gShader_Registry[gFX_SelectionEffect.key]
-        entry.selGlow := cfg.GUI_SelectionGlow
-        entry.selIntensity := cfg.GUI_SelectionIntensity
+    ; Single .Get() lookup + guarded mutation (config-stable values)
+    if (!gFX_SelectionEffect.isBGShader) {
+        entry := gShader_Registry.Get(gFX_SelectionEffect.key, 0)
+        if (entry) {
+            static _selLastGlow := -1, _selLastInt := -1.0
+            if (cfg.GUI_SelectionGlow != _selLastGlow || cfg.GUI_SelectionIntensity != _selLastInt) {
+                entry.selGlow := cfg.GUI_SelectionGlow
+                entry.selIntensity := cfg.GUI_SelectionIntensity
+                _selLastGlow := cfg.GUI_SelectionGlow
+                _selLastInt := cfg.GUI_SelectionIntensity
+            }
+        }
     }
 
     ambientSec := gFX_AmbientTime / 1000.0
@@ -1144,12 +1151,17 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     }
 
     ; Set selGlow/selIntensity right before render (shared-entry fix)
-    ; Single Map lookup (avoids Has + [] double lookup)
+    ; Single .Get() lookup + guarded mutation (config-stable values)
     hovIntensity := cfg.GUI_HoverSelectionIntensity
-    if (gShader_Registry.Has(gFX_HoverEffect.key)) {
-        entry := gShader_Registry[gFX_HoverEffect.key]
-        entry.selGlow := cfg.GUI_HoverSelectionGlow
-        entry.selIntensity := hovIntensity
+    entry := gShader_Registry.Get(gFX_HoverEffect.key, 0)
+    if (entry) {
+        static _hovLastGlow := -1, _hovLastInt := -1.0
+        if (cfg.GUI_HoverSelectionGlow != _hovLastGlow || hovIntensity != _hovLastInt) {
+            entry.selGlow := cfg.GUI_HoverSelectionGlow
+            entry.selIntensity := hovIntensity
+            _hovLastGlow := cfg.GUI_HoverSelectionGlow
+            _hovLastInt := hovIntensity
+        }
     }
 
     ambientSec := gFX_AmbientTime / 1000.0

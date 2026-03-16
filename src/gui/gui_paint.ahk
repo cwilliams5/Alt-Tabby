@@ -410,9 +410,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
     ; Cache column metrics - only rebuild when scale, width, margin, or gap changes
     ; (avoids rebuilding cols array + Round() calls per column per frame)
-    static cachedCols := [], cachedColsKey := "", cachedColsRightX := 0
-    colsKey := scale "_" wPhys "_" Mx "_" gapCols
-    if (colsKey != cachedColsKey) {
+    static cachedCols := [], cachedColsRightX := 0
+    static _ccScale := -1, _ccW := -1, _ccMx := -1, _ccGap := -1
+    if (scale != _ccScale || wPhys != _ccW || Mx != _ccMx || gapCols != _ccGap) {
         cachedCols := []
         cachedColsRightX := wPhys - Mx
         for _, def in colDefs {
@@ -423,7 +423,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 cachedColsRightX := cx - gapCols
             }
         }
-        cachedColsKey := colsKey
+        _ccScale := scale, _ccW := wPhys, _ccMx := Mx, _ccGap := gapCols
     }
     cols := cachedCols
     rightX := cachedColsRightX
