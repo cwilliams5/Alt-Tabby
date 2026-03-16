@@ -42,6 +42,29 @@ function Clean-Line {
     return $cleaned
 }
 
+# Batch version of Clean-Line: eliminates per-line function call overhead (~30k calls -> 1 call)
+# Returns string[] identical to calling Clean-Line on each element individually.
+function Bulk-CleanLines {
+    param([string[]]$Lines)
+    $count = $Lines.Count
+    $result = [string[]]::new($count)
+    for ($i = 0; $i -lt $count; $i++) {
+        $trimmed = $Lines[$i].TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') {
+            $result[$i] = ''
+            continue
+        }
+        if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+            $result[$i] = $trimmed
+            continue
+        }
+        $cleaned = $script:_rxDblQuote.Replace($trimmed, '""')
+        $cleaned = $script:_rxSglQuote.Replace($cleaned, "''")
+        $result[$i] = $script:_rxComment.Replace($cleaned, '')
+    }
+    return ,$result
+}
+
 function Strip-Nested {
     param([string]$s)
     $result = [System.Text.StringBuilder]::new($s.Length)

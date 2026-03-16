@@ -71,6 +71,16 @@ if ($funcStart -eq -1) {
 }
 if ($funcEnd -eq -1) { $funcEnd = $lines.Count - 1 }
 
+# Pre-clean function lines once (avoids 3x duplicate string cleaning in brace-tracking loops)
+$cleanedLines = [string[]]::new($lines.Count)
+for ($i = $funcStart; $i -le $funcEnd; $i++) {
+    $cl = $lines[$i] -replace '"[^"]*"', '""'
+    $cl = $cl -replace "'[^']*'", "''"
+    $cl = $cl -replace '\s;.*$', ''
+    if ($cl -match '^\s*;') { $cl = '' }
+    $cleanedLines[$i] = $cl
+}
+
 # === Parse event branches ===
 # The function uses top-level `if (evCode = TABBY_EV_*)` blocks.
 # Inside those, `if (gGUI_State = "STATE")` blocks handle per-state logic.
@@ -99,10 +109,7 @@ for ($i = $funcStart + 1; $i -lt $funcEnd; $i++) {
         $evDepth = 0
         $evBlockEnd = $i
         for ($j = $i; $j -le $funcEnd; $j++) {
-            $cl = $lines[$j] -replace '"[^"]*"', '""'
-            $cl = $cl -replace "'[^']*'", "''"
-            $cl = $cl -replace '\s;.*$', ''
-            if ($cl -match '^\s*;') { $cl = '' }
+            $cl = $cleanedLines[$j]
             foreach ($c in $cl.ToCharArray()) {
                 if ($c -eq '{') { $evDepth++ }
                 elseif ($c -eq '}') { $evDepth-- }
@@ -128,10 +135,7 @@ for ($i = $funcStart + 1; $i -lt $funcEnd; $i++) {
                 $stDepth = 0
                 $stBlockEnd = $k
                 for ($m = $k; $m -lt $evBlockEnd; $m++) {
-                    $scl = $lines[$m] -replace '"[^"]*"', '""'
-                    $scl = $scl -replace "'[^']*'", "''"
-                    $scl = $scl -replace '\s;.*$', ''
-                    if ($scl -match '^\s*;') { $scl = '' }
+                    $scl = $cleanedLines[$m]
                     foreach ($c in $scl.ToCharArray()) {
                         if ($c -eq '{') { $stDepth++ }
                         elseif ($c -eq '}') { $stDepth-- }

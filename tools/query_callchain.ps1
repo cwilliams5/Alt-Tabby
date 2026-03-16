@@ -62,6 +62,8 @@ $funcRegistry = @{}
 $fileCache = @{}
 # cleanedCache: filePath -> string[] (cleaned lines, parallel to fileCache)
 $cleanedCache = @{}
+# braceDeltaCache: filePath -> int[] (brace open-close delta per line, reused in Pass 2)
+$braceDeltaCache = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -71,13 +73,11 @@ foreach ($file in $srcFiles) {
 
     # Pre-clean all lines and cache for Pass 2 reuse
     $lineCount = $lines.Count
-    $cleaned_arr = [string[]]::new($lineCount)
-    for ($i = 0; $i -lt $lineCount; $i++) {
-        $cleaned_arr[$i] = Clean-Line $lines[$i]
-    }
+    $cleaned_arr = Bulk-CleanLines $lines
     $cleanedCache[$file.FullName] = $cleaned_arr
 
     $depth = 0
+    $brace_arr = [int[]]::new($lineCount)
 
     for ($i = 0; $i -lt $lineCount; $i++) {
         $cleaned = $cleaned_arr[$i]
@@ -113,9 +113,12 @@ foreach ($file in $srcFiles) {
         }
 
         if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
-        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+        $delta = ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+        $brace_arr[$i] = $delta
+        $depth += $delta
         if ($depth -lt 0) { $depth = 0 }
     }
+    $braceDeltaCache[$file.FullName] = $brace_arr
 }
 
 # Build lookup set for fast matching
@@ -165,6 +168,7 @@ $hasCallbackKeyword = $false
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
     $cleaned_arr = $cleanedCache[$file.FullName]
+    $brace_arr = $braceDeltaCache[$file.FullName]
 
     $depth = 0
     $inFunc = $false
@@ -207,7 +211,7 @@ foreach ($file in $srcFiles) {
         }
 
         if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
-        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+        $depth += $brace_arr[$i]
         if ($depth -lt 0) { $depth = 0 }
 
         if ($inFunc -and $depth -le $funcDepth) {

@@ -1,69 +1,163 @@
-# bench_query.ps1 - Benchmark query tools
+# bench_query.ps1 - Benchmark all query tools
 #
-# Runs each of the slowest query tools 3 times, captures "Completed in Xms"
-# from output, and reports min/avg/max.
+# Runs each query tool with representative arguments, captures both
+# external (wall clock) and internal (tool-reported) timing.
+# Used by /review-tool-speed to establish baselines and measure impact.
 #
 # Usage:
-#   powershell -File tools/bench_query.ps1
+#   powershell -File tools/bench_query.ps1              (3 iterations, all tools)
+#   powershell -File tools/bench_query.ps1 -Iterations 5
+#   powershell -File tools/bench_query.ps1 -InternalOnly
 
 param(
-    [int]$Iterations = 3
+    [int]$Iterations = 3,
+    [switch]$InternalOnly
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Define the benchmark targets with representative arguments
+# === Curated test table: representative args that exercise main code paths ===
+# Add new query tools here when created
 $benchmarks = @(
-    @{ Name = "query_visibility";           Cmd = "powershell -File `"$PSScriptRoot\query_visibility.ps1`"" }
-    @{ Name = "query_callchain";            Cmd = "powershell -File `"$PSScriptRoot\query_callchain.ps1`" GUI_Repaint" }
-    @{ Name = "query_impact";               Cmd = "powershell -File `"$PSScriptRoot\query_impact.ps1`" GUI_Repaint" }
-    @{ Name = "query_function_visibility";  Cmd = "powershell -File `"$PSScriptRoot\query_function_visibility.ps1`" -Discover" }
-    @{ Name = "query_timers";               Cmd = "powershell -File `"$PSScriptRoot\query_timers.ps1`"" }
-    @{ Name = "query_messages";             Cmd = "powershell -File `"$PSScriptRoot\query_messages.ps1`"" }
+    @{ Tool = 'query_config.ps1';               Args = @() },
+    @{ Tool = 'query_state.ps1';                Args = @('ACTIVE', 'TAB_STEP') },
+    @{ Tool = 'query_events.ps1';               Args = @('focus') },
+    @{ Tool = 'query_function.ps1';             Args = @('GUI_Repaint') },
+    @{ Tool = 'query_callchain.ps1';            Args = @('GUI_Repaint') },
+    @{ Tool = 'query_function_visibility.ps1';  Args = @('GUI_Repaint') },
+    @{ Tool = 'query_global_ownership.ps1';     Args = @('gGUI_State') },
+    @{ Tool = 'query_impact.ps1';               Args = @('GUI_Repaint') },
+    @{ Tool = 'query_mutations.ps1';            Args = @('gGUI_State') },
+    @{ Tool = 'query_visibility.ps1';           Args = @() },
+    @{ Tool = 'query_interface.ps1';            Args = @('gui_state.ahk') },
+    @{ Tool = 'query_timers.ps1';               Args = @() },
+    @{ Tool = 'query_includes.ps1';             Args = @('gui_state.ahk') },
+    @{ Tool = 'query_ipc.ps1';                  Args = @('IPC_MSG_SNAPSHOT') },
+    @{ Tool = 'query_messages.ps1';             Args = @('0x0312') },
+    @{ Tool = 'query_instrumentation.ps1';      Args = @() },
+    @{ Tool = 'query_shader.ps1';               Args = @() }
 )
 
-# Extract milliseconds from "Completed in Xms" output
 $rxCompleted = [regex]::new('Completed in (\d+)ms')
+$rxPass = [regex]::new('pass1:\s*(\d+)ms.*pass2:\s*(\d+)ms')
+
+# === Coverage check: detect stale table vs actual query_*.ps1 files ===
+$knownTools = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($b in $benchmarks) { [void]$knownTools.Add($b.Tool) }
+
+$actualFiles = Get-ChildItem $PSScriptRoot -Filter "query_*.ps1" | ForEach-Object { $_.Name }
+$coverageWarnings = $false
+
+foreach ($f in $actualFiles) {
+    if (-not $knownTools.Contains($f)) {
+        if (-not $coverageWarnings) { Write-Host ""; $coverageWarnings = $true }
+        Write-Host "  NOTE: Uncovered query tool '$f' - add to benchmark table?" -ForegroundColor Yellow
+    }
+}
+foreach ($b in $benchmarks) {
+    if (-not (Test-Path (Join-Path $PSScriptRoot $b.Tool))) {
+        if (-not $coverageWarnings) { Write-Host ""; $coverageWarnings = $true }
+        Write-Host "  NOTE: Expected query tool '$($b.Tool)' missing - remove from benchmark table?" -ForegroundColor Yellow
+    }
+}
 
 Write-Host ""
 Write-Host "  === Query Tool Benchmark ($Iterations iterations) ===" -ForegroundColor Cyan
 Write-Host ""
 
-$results = @()
+$results = [System.Collections.ArrayList]::new()
 
 foreach ($bench in $benchmarks) {
-    $times = @()
-    Write-Host "  $($bench.Name)..." -NoNewline -ForegroundColor White
+    $script = Join-Path $PSScriptRoot $bench.Tool
+    if (-not (Test-Path $script)) {
+        Write-Host "  SKIP $($bench.Tool) - not found" -ForegroundColor Red
+        continue
+    }
 
-    for ($i = 0; $i -lt $Iterations; $i++) {
-        $output = & cmd /c $bench.Cmd 2>&1 | Out-String
+    $argLabel = if ($bench.Args.Count -gt 0) { " " + ($bench.Args -join ' ') } else { "" }
+    $label = "$($bench.Tool)$argLabel"
+    Write-Host "  $label..." -NoNewline -ForegroundColor White
+
+    $externalTimes = @()
+    $internalTimes = @()
+    $passDetails = ""
+
+    for ($r = 0; $r -lt $Iterations; $r++) {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        if ($bench.Args.Count -gt 0) {
+            $output = & powershell -NoProfile -File $script @($bench.Args) 2>&1 | Out-String
+        } else {
+            $output = & powershell -NoProfile -File $script 2>&1 | Out-String
+        }
+        $sw.Stop()
+        $externalTimes += $sw.ElapsedMilliseconds
+
         $m = $rxCompleted.Match($output)
         if ($m.Success) {
-            $times += [int]$m.Groups[1].Value
-        } else {
-            Write-Host " ERROR (no timing in output)" -ForegroundColor Red
-            Write-Host $output -ForegroundColor DarkGray
-            break
+            $internalTimes += [int]$m.Groups[1].Value
+        }
+
+        # Capture pass details from last run
+        if ($r -eq $Iterations - 1) {
+            $pm = $rxPass.Match($output)
+            if ($pm.Success) {
+                $passDetails = " (p1: $($pm.Groups[1].Value)ms, p2: $($pm.Groups[2].Value)ms)"
+            }
         }
     }
 
-    if ($times.Count -eq $Iterations) {
-        $min = ($times | Measure-Object -Minimum).Minimum
-        $max = ($times | Measure-Object -Maximum).Maximum
-        $avg = [math]::Round(($times | Measure-Object -Average).Average)
-        Write-Host " min=$($min)ms  avg=$($avg)ms  max=$($max)ms" -ForegroundColor Green
-        $results += @{ Name = $bench.Name; Min = $min; Avg = $avg; Max = $max; Times = $times }
+    # Report median (middle value of sorted array)
+    $sortedExt = $externalTimes | Sort-Object
+    $medianIdx = [math]::Floor($Iterations / 2)
+    $extMedian = $sortedExt[$medianIdx]
+
+    if ($InternalOnly) {
+        if ($internalTimes.Count -eq $Iterations) {
+            $sortedInt = $internalTimes | Sort-Object
+            $intMedian = $sortedInt[$medianIdx]
+            Write-Host " ${intMedian}ms${passDetails}" -ForegroundColor Green
+        } else {
+            Write-Host " (no internal timing)" -ForegroundColor DarkGray
+        }
+    } else {
+        $intStr = ""
+        if ($internalTimes.Count -eq $Iterations) {
+            $sortedInt = $internalTimes | Sort-Object
+            $intMedian = $sortedInt[$medianIdx]
+            $intStr = "  internal: ${intMedian}ms${passDetails}"
+        }
+        Write-Host " ${extMedian}ms${intStr}" -ForegroundColor Green
     }
+
+    [void]$results.Add(@{
+        Label = $label
+        ExtMedian = $extMedian
+        IntMedian = if ($internalTimes.Count -eq $Iterations) { ($internalTimes | Sort-Object)[$medianIdx] } else { -1 }
+        PassDetails = $passDetails
+    })
 }
 
 # Summary table
 Write-Host ""
-Write-Host "  === Summary ===" -ForegroundColor Cyan
-Write-Host "  $("Tool".PadRight(32)) $("Min".PadLeft(6))  $("Avg".PadLeft(6))  $("Max".PadLeft(6))" -ForegroundColor White
-Write-Host "  $("-" * 58)" -ForegroundColor DarkGray
+Write-Host "  === Summary (median of $Iterations runs) ===" -ForegroundColor Cyan
 
-foreach ($r in $results) {
-    $color = if ($r.Avg -gt 1000) { "Yellow" } elseif ($r.Avg -gt 500) { "White" } else { "Green" }
-    Write-Host "  $($r.Name.PadRight(32)) $("$($r.Min)ms".PadLeft(6))  $("$($r.Avg)ms".PadLeft(6))  $("$($r.Max)ms".PadLeft(6))" -ForegroundColor $color
+if ($InternalOnly) {
+    Write-Host "  $("Tool".PadRight(50)) $("Internal".PadLeft(10))" -ForegroundColor White
+    Write-Host "  $("-" * 62)" -ForegroundColor DarkGray
+    foreach ($r in $results) {
+        $intStr = if ($r.IntMedian -ge 0) { "$($r.IntMedian)ms" } else { "n/a" }
+        $color = if ($r.IntMedian -gt 800) { "Yellow" } elseif ($r.IntMedian -gt 400) { "White" } else { "Green" }
+        Write-Host "  $($r.Label.PadRight(50)) $($intStr.PadLeft(10))" -ForegroundColor $color
+    }
+} else {
+    Write-Host "  $("Tool".PadRight(50)) $("External".PadLeft(10))  $("Internal".PadLeft(10))" -ForegroundColor White
+    Write-Host "  $("-" * 74)" -ForegroundColor DarkGray
+    foreach ($r in $results) {
+        $intStr = if ($r.IntMedian -ge 0) { "$($r.IntMedian)ms" } else { "n/a" }
+        $color = if ($r.IntMedian -gt 800) { "Yellow" } elseif ($r.IntMedian -gt 400) { "White" } else { "Green" }
+        Write-Host "  $($r.Label.PadRight(50)) $("$($r.ExtMedian)ms".PadLeft(10))  $($intStr.PadLeft(10))" -ForegroundColor $color
+    }
 }
+
 Write-Host ""
