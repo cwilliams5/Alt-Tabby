@@ -981,6 +981,20 @@ _WS_EnqueueIfNeeded(row) {
     Critical "Off"
 }
 
+; Enqueue hwnd for icon enrichment without row-level checks.
+; Used by pump re-enqueue path where the caller has already validated eligibility.
+; Safe to call when already inside Critical (AHK's Critical is re-entrant).
+WL_EnqueueIconDirect(hwnd) {
+    global gWS_IconQueue, gWS_IconQueueDedup
+    hwnd := hwnd + 0
+    Critical "On"
+    if (!gWS_IconQueueDedup.Has(hwnd)) {
+        gWS_IconQueue.Push(hwnd)
+        gWS_IconQueueDedup[hwnd] := true
+    }
+    Critical "Off"
+}
+
 ; Enqueue window for icon refresh (called when window gains focus)
 ; This allows upgrading fallback icons or refreshing WM_GETICON icons that may have changed
 WL_EnqueueIconRefresh(hwnd) {

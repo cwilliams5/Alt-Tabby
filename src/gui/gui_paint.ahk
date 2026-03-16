@@ -51,6 +51,35 @@ Paint_LogStartSession() {
     }
 }
 
+; ========================= CLEAR SURFACE =========================
+; Clear D2D swap chain to transparent and present.
+; Used by hide paths to ensure a clean buffer for the next Show.
+; Preserves both guard layers:
+;   1. Outer check — prevents nested D2D corruption (nested AcquireBackBuffer
+;      overwrites gD2D_BackBuffer, nested BeginDraw fails D2DERR_WRONG_STATE)
+;   2. Inner try/finally — prevents guard from getting stuck if any D2D call throws
+
+Paint_ClearSurface() {
+    global gD2D_RT, gPaint_RepaintInProgress
+    if (!gD2D_RT || gPaint_RepaintInProgress)
+        return
+    gPaint_RepaintInProgress := true
+    try {
+        if (D2D_AcquireBackBuffer()) {
+            gD2D_RT.BeginDraw()
+            gD2D_RT.Clear(D2D_ColorF(0x00000000))
+            gD2D_RT.EndDraw()
+            D2D_ReleaseBackBuffer()
+            D2D_Present(0)  ; Immediate — about to hide
+        }
+    } catch {
+        try gD2D_RT.EndDraw()   ; Best-effort: don't leave D2D in BeginDraw state
+        D2D_ReleaseBackBuffer()
+    } finally {
+        gPaint_RepaintInProgress := false
+    }
+}
+
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {

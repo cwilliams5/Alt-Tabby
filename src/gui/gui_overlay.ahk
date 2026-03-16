@@ -107,8 +107,8 @@ _GUI_ApplyCornerStyle(hWnd) {
 GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed
-    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
-    global gAnim_HidePending, gPaint_RepaintInProgress, gGUI_CachedVisibleRows
+    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
+    global gAnim_HidePending, gGUI_CachedVisibleRows
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -144,31 +144,9 @@ GUI_HideOverlay() {
     ; Stop hover polling and clear hover state
     GUI_ClearHoverState()
 
-    ; Clear D2D surface BEFORE hiding — ensures a clean swap chain buffer
-    ; for the next Show().  SwapChain.Present() works for hidden windows
-    ; (unlike HwndRenderTarget), so the clear actually commits.
-    ; Skip when a paint is in progress: nested AcquireBackBuffer overwrites
-    ; gD2D_BackBuffer and nested BeginDraw fails (D2DERR_WRONG_STATE),
-    ; corrupting the outer paint's D2D state.  The next show's first paint
-    ; will clear the surface.  When NOT in a paint, the guard blocks nested
-    ; GUI_Repaint from timer callbacks dispatched during this block's STA pump.
-    if (gD2D_RT && !gPaint_RepaintInProgress) {
-        gPaint_RepaintInProgress := true
-        try {
-            if (D2D_AcquireBackBuffer()) {
-                gD2D_RT.BeginDraw()
-                gD2D_RT.Clear(D2D_ColorF(0x00000000))
-                gD2D_RT.EndDraw()
-                D2D_ReleaseBackBuffer()
-                D2D_Present(0)  ; Immediate — about to hide
-            }
-        } catch {
-            try gD2D_RT.EndDraw()   ; Best-effort: don't leave D2D in BeginDraw state
-            D2D_ReleaseBackBuffer()
-        } finally {
-            gPaint_RepaintInProgress := false
-        }
-    }
+    ; Clear D2D swap chain for clean buffer on next Show.
+    ; Paint_ClearSurface handles the repaint guard + D2D error recovery.
+    Paint_ClearSurface()
 
     try {
         gGUI_Base.Hide()

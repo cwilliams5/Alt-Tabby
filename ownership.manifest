@@ -23,8 +23,7 @@
 cfg: launcher_tray, config_loader, setup_utils
 gAnim_DeferredTimerStart: gui_animation, gui_paint
 gAnim_HidePending: gui_animation, gui_overlay
-gBGImg_EffectsReady: gui_bgimage, gui_effects
-gD2D_RT: gui_animation, gui_bgimage, gui_overlay, gui_paint
+gD2D_RT: gui_bgimage, gui_overlay, gui_paint
 gFX_AmbientTime: gui_animation, gui_effects
 gGUI_CurrentWSName: gui_activation, gui_state
 gGUI_DisplayItems: gui_animation, gui_data, gui_state
@@ -37,6 +36,3 @@ gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_data, gui_input, gui_paint, gui_state
 gGUI_Sel: gui_data, gui_input, gui_state
 gGUI_ToggleBase: gui_data, gui_state
-gPaint_RepaintInProgress: gui_animation, gui_overlay, gui_paint
-gWS_IconQueue: gui_pump, window_list
-gWS_IconQueueDedup: gui_pump, window_list

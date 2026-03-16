@@ -102,6 +102,13 @@ BGImg_Dispose() {
     ; GDI+ token intentionally kept alive — no need to shut down/restart for reload
 }
 
+; Signal that GPU effects for background image processing are available.
+; Called by FX_GPU_Init after creating bgimage-specific D2D effect chains.
+BGImg_NotifyEffectsReady() {
+    global gBGImg_EffectsReady
+    gBGImg_EffectsReady := true
+}
+
 ; ============================================================
 ; PRIVATE — Cache Management
 ; ============================================================
