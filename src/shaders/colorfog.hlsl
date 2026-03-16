@@ -73,7 +73,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col.r += 5.0 * focus; col.g += 3.5 * focus;
     col.b += 7.0 * focus2; col.r -= 3.5 * focus2;
-    col /= 25.0;
+    col *= 0.04;
 
     return AT_PostProcess(col);
 }

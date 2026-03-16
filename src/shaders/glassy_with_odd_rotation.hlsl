@@ -1,6 +1,8 @@
 // Glassy with odd rotation by etrujillo — https://www.shadertoy.com/view/3XdXWX
 // A shiny reflective variation of a raymarched fractal accident (CC0)
 
+static const float3 lightDir = float3(0.2591958, 0.4319929, 0.8639858);  // normalize(0.3,0.5,1.0)
+
 // tanh not available in SM 5.0
 float3 tanhSafe(float3 x) {
     float3 e2x = exp(2.0 * clamp(x, -10.0, 10.0));
@@ -53,7 +55,6 @@ float4 PSMain(PSInput input) : SV_Target {
 
         // Estimate lighting
         float3 pos = p.xyz;
-        float3 lightDir = normalize(float3(0.3, 0.5, 1.0));
         float3 viewDir = normalize(float3(uv, 1.0));
         float3 n = estimateNormal(pos);
         float3 reflectDir = reflect(viewDir, n);

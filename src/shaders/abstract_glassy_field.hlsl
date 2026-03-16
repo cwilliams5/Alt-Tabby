@@ -72,7 +72,7 @@ float sha(in float3 ro, in float3 rd, in float start, in float end, in float k) 
         dist += clamp(h, .01, .2);
         if (abs(h) < .001 || dist > end) break;
     }
-    return min(max(shade, 0.) + .4, 1.);
+    return saturate(shade + 0.4);
 }
 
 // 3D value noise (IQ)

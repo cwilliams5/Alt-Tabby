@@ -118,7 +118,8 @@ float4 worleyFbm(float2 uv, float freq, float t, bool useCurl)
 
 float clouds(float2 uv, float t)
 {
-    float coverage = hash12(float2(uv.x * resolution.y / resolution.x, uv.y)) *
+    float aspect = resolution.x / resolution.y;
+    float coverage = hash12(float2(uv.x / aspect, uv.y)) *
         .1 + ((SAT(CLOUD_COVERAGE) * 1.6) * .5 + .5);
     float pfbm = perlinFbm(uv, 2., t);
     float4 wfbmLowFreq = worleyFbm(uv, 1.6, t * CLOUD_SPEED, false);

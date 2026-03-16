@@ -154,6 +154,7 @@ float3 Oilnoise(float2 pos, float3 RGB, float sinTime, float oilBase) {
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
+    float aspect = resolution.x / resolution.y;
 
     float2 base_uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
     float2 uv = base_uv;
@@ -169,10 +170,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float oilBase = 0.25 + 0.05 * sinT01;
     uv2.x += 0.1 * ct_time;
     uv2.y += 0.1 * st_time;
-    uv.y *= resolution.y / resolution.x;
+    uv.y /= aspect;
     float3 dir = float3(uv * ZOOM, 1.0);
     float2 uPos = (fragCoord.xy / resolution.y);
-    uPos -= float2((resolution.x / resolution.y) * 0.5, 0.5);
+    uPos -= float2(aspect * 0.5, 0.5);
 
     float multiplier = 0.0005;
     static const float step2 = 0.006;
@@ -198,7 +199,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 uv0 = uv;
     float3 col2 = (float3)0.0;
     float2 st = (fragCoord / resolution.xy);
-    st.x = ((st.x - 0.5) * (resolution.x / resolution.y)) + 0.5;
+    st.x = ((st.x - 0.5) * aspect) + 0.5;
 
     float t2 = time * 0.1 + (oilBase / (length(uv3.xy) + 0.57)) * 25.2;
     float si, co;

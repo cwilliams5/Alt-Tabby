@@ -173,7 +173,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 p = (fragCoord.xy - 0.5 * resolution.xy) / resolution.y;
     float d = length(p);
-    p = float2(atan2(p.x, p.y) / PI, 2.5 / d);
+    p = float2(atan2(p.x, p.y) * 0.31830989, 2.5 / d);
     float t = -time * 0.04;
     float drop = vDrop(p, t);
     drop += vDrop(p, t + 0.5);

@@ -12,7 +12,7 @@ float getPerimeter(float2 px, float4 rect) {
     float2 center = rect.xy + rect.zw * 0.5;
     float2 delta = px - center;
     float angle = atan2(delta.y, delta.x); // -pi to pi
-    return frac(angle / 6.28318 + 0.5); // 0-1
+    return frac(angle * 0.15915494 + 0.5); // 0-1
 }
 
 float4 PSMain(PSInput input) : SV_Target {
