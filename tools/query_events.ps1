@@ -89,9 +89,13 @@ if ($events.Count -eq 0) {
     exit 1
 }
 
-# === Find emitters if requested ===
+# === Emitter scan helper (deferred for queries that won't display emitters) ===
 $emitterMap = @{}
-if ($Emitters.IsPresent -or $Query) {
+$emitterScanned = $false
+
+function Scan-Emitters {
+    if ($script:emitterScanned) { return }
+    $script:emitterScanned = $true
     $allFiles = Get-AhkSourceFiles $srcDir
     foreach ($file in $allFiles) {
         $fileText = [System.IO.File]::ReadAllText($file.FullName)
@@ -109,14 +113,17 @@ if ($Emitters.IsPresent -or $Query) {
                 $evName = $Matches[1]
                 $funcName = Find-EnclosingFunction $funcBounds $i
                 $lineNum = $i + 1
-                if (-not $emitterMap.ContainsKey($evName)) {
-                    $emitterMap[$evName] = [System.Collections.ArrayList]::new()
+                if (-not $script:emitterMap.ContainsKey($evName)) {
+                    $script:emitterMap[$evName] = [System.Collections.ArrayList]::new()
                 }
-                [void]$emitterMap[$evName].Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
+                [void]$script:emitterMap[$evName].Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
             }
         }
     }
 }
+
+# Eager scan when -Emitters flag is set
+if ($Emitters.IsPresent) { Scan-Emitters }
 
 # === Apply query filter ===
 $filtered = $events
@@ -145,6 +152,11 @@ if ($filtered.Count -eq 0 -and $Query) {
     Write-Host "`n  No events matching '$Query'" -ForegroundColor Red
     Write-Host "  Total: $($events.Count) event types"
     Write-Host ""; exit 1
+}
+
+# Deferred emitter scan: only when detail mode will display them
+if (-not $emitterScanned -and $Query -and $filtered.Count -le 5 -and $filtered.Count -gt 0) {
+    Scan-Emitters
 }
 
 # === Output ===

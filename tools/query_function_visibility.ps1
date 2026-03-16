@@ -95,10 +95,7 @@ foreach ($file in $srcFiles) {
 
     # Pre-clean all lines and cache for Pass 2 reuse
     $lineCount = $lines.Count
-    $cleaned_arr = [string[]]::new($lineCount)
-    for ($ci = 0; $ci -lt $lineCount; $ci++) {
-        $cleaned_arr[$ci] = Clean-Line $lines[$ci]
-    }
+    $cleaned_arr = Bulk-CleanLines $lines
     $cleanedCache[$file.FullName] = $cleaned_arr
 
     $depth = 0
@@ -321,11 +318,7 @@ if ($Query) {
             $qSplitLines = Split-Lines $fileCacheText[$file.FullName]
             $fileCache[$file.FullName] = $qSplitLines
             # Also build cleaned cache for lazily-split files
-            $qLineCount = $qSplitLines.Count
-            $qCleanedArr = [string[]]::new($qLineCount)
-            for ($qci = 0; $qci -lt $qLineCount; $qci++) {
-                $qCleanedArr[$qci] = Clean-Line $qSplitLines[$qci]
-            }
+            $qCleanedArr = Bulk-CleanLines $qSplitLines
             $cleanedCache[$file.FullName] = $qCleanedArr
         }
         $qLines = $fileCache[$file.FullName]
