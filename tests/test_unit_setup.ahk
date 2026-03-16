@@ -397,7 +397,8 @@ RunUnitTests_Setup() {
             TestErrors++
         }
     } catch as e {
-        Log("SKIP: Could not create test file: " e.Message)
+        Log("FAIL: Could not create test file: " e.Message)
+        TestErrors++
     }
     try FileDelete(smallFile)
 
@@ -418,7 +419,8 @@ RunUnitTests_Setup() {
             TestErrors++
         }
     } catch as e {
-        Log("SKIP: Could not create test file: " e.Message)
+        Log("FAIL: Could not create test file: " e.Message)
+        TestErrors++
     }
     try FileDelete(invalidMZ)
 

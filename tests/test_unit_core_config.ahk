@@ -577,7 +577,8 @@ RunUnitTests_CoreConfig() {
     errFiles := []
     for idx, ep in entryPoints {
         if (!FileExist(ep.path)) {
-            Log("SKIP: " ep.name " not found")
+            Log("FAIL: " ep.name " not found at " ep.path)
+            TestErrors++
             pids.Push(0)
             errFiles.Push("")
             continue
