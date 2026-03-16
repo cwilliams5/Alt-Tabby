@@ -171,9 +171,9 @@ FX_GPU_Init() {
         } catch as shaderErr {
             ; Shader pipeline unavailable — shader layer won't render,
             ; but all D2D-based effects (selection + backdrop styles 1-6) still work.
-            ; Always log shader init failures (detail logging stays behind DiagShaderLog)
-            global LOG_PATH_SHADER
-            try LogAppend(LOG_PATH_SHADER, "FX_GPU_Init shader EXCEPTION: " shaderErr.Message " @ " shaderErr.What)
+            ; Always log shader init failures to the always-on error log
+            global LOG_PATH_STORE
+            try LogAppend(LOG_PATH_STORE, "FX_GPU_Init shader EXCEPTION: " shaderErr.Message " @ " shaderErr.What)
         }
 
         return true
@@ -394,11 +394,12 @@ FX_PreRenderShaderLayers(w, h) {
                 errDetail .= " extra=" e.Extra
             if (e.HasProp("Number") && e.Number != 0)
                 errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
-            ToolTip(errDetail)
-            static clearTT := () => ToolTip()
-            SetTimer(clearTT, -5000)
-            if (cfg.DiagShaderLog)
+            if (cfg.DiagShaderLog) {
+                ToolTip(errDetail)
+                static clearTT := () => ToolTip()
+                SetTimer(clearTT, -5000)
                 LogAppend(LOG_PATH_SHADER, errDetail)
+            }
         }
     }
     Profiler.Leave() ; @profile
@@ -492,13 +493,14 @@ FX_PreRenderMouseEffect(w, h) {
             gFX_MouseEffect.darkness, gFX_MouseEffect.desat, gFX_MouseEffect.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
     } catch as e {
-        global LOG_PATH_SHADER
-        errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
-        static clearTT := () => ToolTip()
-        SetTimer(clearTT, -5000)
-        if (cfg.DiagShaderLog)
+        if (cfg.DiagShaderLog) {
+            global LOG_PATH_SHADER
+            errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
+            ToolTip(errDetail)
+            static clearTT := () => ToolTip()
+            SetTimer(clearTT, -5000)
             LogAppend(LOG_PATH_SHADER, errDetail)
+        }
     }
     mouseLastRenderMs := QPC() - tBefore
 
@@ -595,13 +597,14 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0, rowRadius * 1.0)
     } catch as e {
-        global LOG_PATH_SHADER
-        errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
-        static clearTT := () => ToolTip()
-        SetTimer(clearTT, -5000)
-        if (cfg.DiagShaderLog)
+        if (cfg.DiagShaderLog) {
+            global LOG_PATH_SHADER
+            errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
+            ToolTip(errDetail)
+            static clearTT := () => ToolTip()
+            SetTimer(clearTT, -5000)
             LogAppend(LOG_PATH_SHADER, errDetail)
+        }
     }
     Profiler.Leave() ; @profile
 }
@@ -1187,13 +1190,14 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0, rowRadius * 1.0)
     } catch as e {
-        global LOG_PATH_SHADER
-        errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
-        static clearTT := () => ToolTip()
-        SetTimer(clearTT, -5000)
-        if (cfg.DiagShaderLog)
+        if (cfg.DiagShaderLog) {
+            global LOG_PATH_SHADER
+            errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
+            ToolTip(errDetail)
+            static clearTT := () => ToolTip()
+            SetTimer(clearTT, -5000)
             LogAppend(LOG_PATH_SHADER, errDetail)
+        }
     }
     Profiler.Leave() ; @profile
 }
