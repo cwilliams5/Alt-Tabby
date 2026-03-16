@@ -282,6 +282,8 @@ Anim_ForceCompleteHide() {
 }
 Anim_AddLayered() {
 }
+Anim_PrepareShowFade(animated) {
+}
 Anim_EaseOutQuad(t) {
     return t
 }

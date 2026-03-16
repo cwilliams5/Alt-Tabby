@@ -86,6 +86,7 @@ global gGUI_OverlayVisible := false
 global gGUI_LiveItems := []
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
+global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
 
 ; gGUI_State declared in gui_state.ahk (sole writer for state machine)
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)

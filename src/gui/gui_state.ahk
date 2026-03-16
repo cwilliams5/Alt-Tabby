@@ -39,7 +39,7 @@ global gStats_AltTabs := 0
 global gStats_QuickSwitches := 0
 global gStats_TabSteps := 0
 global gStats_Cancellations := 0
-global gStats_CrossWorkspace := 0
+; gStats_CrossWorkspace declared in gui_activation.ahk (sole writer)
 global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
 
 
@@ -722,14 +722,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; resized.  That nested paint either renders at the old RT size (stretched)
     ; or blocks on shader compilation and holds the reentrancy guard (blank).
     ; The tween starts after resize + show + reveal, right before the first paint.
-    global gAnim_OverlayOpacity
-    if (cfg.PerfAnimationType != "None") {
-        Anim_AddLayered()
-        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
-        gAnim_OverlayOpacity := 0.0
-    } else {
-        gAnim_OverlayOpacity := 1.0
-    }
+    Anim_PrepareShowFade(cfg.PerfAnimationType != "None")
 
     ; ===== TIMING: Resize =====
     t1 := QPC()
