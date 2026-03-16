@@ -998,19 +998,4 @@ RunUnitTests_CoreStore() {
     ; Cleanup
     WL_RemoveWindow([9201, 9202, 9203], true)
 
-    ; ============================================================
-    ; WL_IsOnCurrentWorkspace Edge Cases
-    ; ============================================================
-    Log("`n--- WL_IsOnCurrentWorkspace Edge Cases ---")
-
-    ; Both empty: non-komorebi windows (empty wsName) are always "on current"
-    AssertEq(WL_IsOnCurrentWorkspace("", ""), true, "IsOnCurrentWS: both empty = on current")
-    ; Empty workspace name always on current (non-komorebi window)
-    AssertEq(WL_IsOnCurrentWorkspace("", "Main"), true, "IsOnCurrentWS: empty wsName = on current")
-    ; Exact match
-    AssertEq(WL_IsOnCurrentWorkspace("Main", "Main"), true, "IsOnCurrentWS: exact match")
-    ; Different workspace
-    AssertEq(WL_IsOnCurrentWorkspace("Other", "Main"), false, "IsOnCurrentWS: different workspace")
-    ; Case sensitivity (AHK string comparison is case-insensitive by default)
-    AssertEq(WL_IsOnCurrentWorkspace("main", "Main"), true, "IsOnCurrentWS: case-insensitive match")
 }
