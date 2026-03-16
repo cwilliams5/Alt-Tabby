@@ -1132,7 +1132,7 @@ _KSub_OnNotification(jsonLine) {
             Critical "Off"
 
             ; NARROWED: WL_SetCurrentWorkspace has its own internal Critical
-            ; (window_list.ahk:787). Moving it outside saves the store iteration
+            ; (WL_SetCurrentWorkspace). Moving it outside saves the store iteration
             ; + GUI callback time (~50-200μs) from the Critical hold duration.
             ; GUI re-filters frozen items and repaints before ProcessFullState
             ; blocks the thread.
