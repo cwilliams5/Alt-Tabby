@@ -828,12 +828,15 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
 
 _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
     global cfg
+    Profiler.Enter("_GUI_DrawScrollbar") ; @profile
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
+        Profiler.Leave() ; @profile
         return
     }
 
     trackH := rowsDrawn * rowHPhys
     if (trackH <= 0) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -874,12 +877,14 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
             D2D_FillRoundRect(x, y, trackW, h2, r, thumbBr)
         }
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= FOOTER =========================
 
 _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
+    Profiler.Enter("_GUI_DrawFooter") ; @profile
 
     ; Use cached metrics (avoids per-frame Round() calls)
     cl := GUI_GetCachedLayout(scale)
@@ -962,6 +967,7 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     } else {
         D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ---- Text Shadow ----
@@ -988,11 +994,16 @@ _FX_GetShadowParams(fx, scale) {
     static sFx := -1, sScale := -1, sAlpha := -1, sDist := -1
 
     global cfg
-    if (!fx || !cfg.GUI_UseTextShadow)
+    Profiler.Enter("_FX_GetShadowParams") ; @profile
+    if (!fx || !cfg.GUI_UseTextShadow) {
+        Profiler.Leave() ; @profile
         return sDisabled
+    }
     alpha := cfg.GUI_TextShadowAlpha
-    if (alpha <= 0)
+    if (alpha <= 0) {
+        Profiler.Leave() ; @profile
         return sDisabled
+    }
 
     dist := cfg.GUI_TextShadowDistancePx
     if (fx != sFx || scale != sScale || alpha != sAlpha || dist != sDist) {
@@ -1005,6 +1016,7 @@ _FX_GetShadowParams(fx, scale) {
         sEnabled.offY := off
         sEnabled.argb := (alpha << 24) | 0x000000
     }
+    Profiler.Leave() ; @profile
     return sEnabled
 }
 

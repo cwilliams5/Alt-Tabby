@@ -812,18 +812,26 @@ D2D_Present(syncInterval := 0) {
 ; Does NOT commit — caller batches with other DComp changes then calls D2D_Commit().
 D2D_SetClipRect(wPhys, hPhys) {
     global gDComp_ClipVisual
-    if (!gDComp_ClipVisual)
+    Profiler.Enter("D2D_SetClipRect") ; @profile
+    if (!gDComp_ClipVisual) {
+        Profiler.Leave() ; @profile
         return
+    }
     clipRect := D2D_RectF(0, 0, wPhys, hPhys)
     gDComp_ClipVisual.SetClip(clipRect)
+    Profiler.Leave() ; @profile
 }
 
 ; Commit all pending DComp changes atomically.
 D2D_Commit() {
     global gDComp_Device
-    if (!gDComp_Device)
+    Profiler.Enter("D2D_Commit") ; @profile
+    if (!gDComp_Device) {
+        Profiler.Leave() ; @profile
         return
+    }
     gDComp_Device.Commit()
+    Profiler.Leave() ; @profile
 }
 
 ; Query all monitors and return the largest physical pixel dimensions.

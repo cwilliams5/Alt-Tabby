@@ -1077,9 +1077,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_StateDirty, gShader_BatchMode, cfg
     static dbgRendered := Map()
+    Profiler.Enter("Shader_PreRender") ; @profile
 
-    if (!gShader_Ready || !gShader_Registry.Has(name))
+    if (!gShader_Ready || !gShader_Registry.Has(name)) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; One-time log per shader name
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
@@ -1091,17 +1094,23 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     }
 
     entry := gShader_Registry[name]
-    if (!entry.ps)
+    if (!entry.ps) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Lazy create/resize render target
     if (entry.w != w || entry.h != h || !entry.tex) {
-        if (!_Shader_CreateRT(entry, w, h))
+        if (!_Shader_CreateRT(entry, w, h)) {
+            Profiler.Leave() ; @profile
             return false
+        }
     }
 
-    if (!entry.rtv || !entry.bitmap)
+    if (!entry.rtv || !entry.bitmap) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ctx := gShader_D3DCtx
 
@@ -1118,8 +1127,10 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     static mapped1 := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
     hr := ComCall(14, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped1, "int")
-    if (hr < 0)
+    if (hr < 0) {
+        Profiler.Leave() ; @profile
         return false
+    }
     pData := NumGet(mapped1, 0, "ptr")
     if (pData) {
         ; Core params + mouse (offset 0-44, 12 values)
@@ -1277,6 +1288,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; NOTE: The old staging-texture path had Map() here, which was an accidental GPU
     ; fence.  gui_paint.ahk's DwmFlush on grow resize compensates for its removal.
     ; If a GPU stall is ever re-added here, the DwmFlush becomes redundant but harmless.
+    Profiler.Leave() ; @profile
     return true
 }
 

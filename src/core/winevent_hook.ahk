@@ -49,7 +49,19 @@ global _WEH_MruFallbackActive := false   ; True when MRU_Lite is running as WEH 
 ; kills the periodic timer (SetTimer(_WEH_ProcessBatch, BatchMs)), leaving pending
 ; hwnds stranded until the next event. This wrapper has its own timer slot.
 _WEH_FastPathBatch() {
-    _WEH_ProcessBatch()
+    Profiler.Enter("_WEH_FastPathBatch") ; @profile
+    static _errCount := 0, _backoffUntil := 0
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
+        return
+    }
+    try {
+        _WEH_ProcessBatch()
+    } catch as e {
+        global LOG_PATH_STORE
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "_WEH_FastPathBatch")
+    }
+    Profiler.Leave() ; @profile
 }
 
 ; Debug logging for focus events - controlled by DiagWinEventLog config flag

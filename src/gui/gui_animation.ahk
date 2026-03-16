@@ -124,6 +124,7 @@ Anim_CancelAll() {
 
 _Anim_UpdateTweens() {
     global gAnim_Tweens
+    Profiler.Enter("_Anim_UpdateTweens") ; @profile
     now := QPC()
     activeCount := 0
     for _, tw in gAnim_Tweens {
@@ -141,6 +142,7 @@ _Anim_UpdateTweens() {
             activeCount += 1
         }
     }
+    Profiler.Leave() ; @profile
     return activeCount
 }
 
@@ -349,6 +351,7 @@ _Anim_FramePace() {
 
 _Anim_SyncOverlayOpacity() {
     global gAnim_OverlayOpacity, gAnim_Tweens
+    Profiler.Enter("_Anim_SyncOverlayOpacity") ; @profile
     ; hideFade takes priority — when present it's the latest intent and the
     ; completed showFade tween is still in the map (never removed until CancelAll).
     if (gAnim_Tweens.Has("hideFade")) {
@@ -364,6 +367,7 @@ _Anim_SyncOverlayOpacity() {
             _Anim_RemoveLayered()
         }
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Apply gAnim_OverlayOpacity to the window via SetLayeredWindowAttributes.

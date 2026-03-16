@@ -173,9 +173,12 @@ GUI_EvictDisplayItem(idx1) {
 ; Returns count of items removed.
 GUI_ReconcileDestroys() {
     global gGUI_State, gGUI_DisplayItems, gWS_Store
+    Profiler.Enter("GUI_ReconcileDestroys") ; @profile
 
-    if (gGUI_State != "ACTIVE")
+    if (gGUI_State != "ACTIVE") {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     Critical "On"
     removed := 0
@@ -198,6 +201,7 @@ GUI_ReconcileDestroys() {
         }
     }
 
+    Profiler.Leave() ; @profile
     return removed
 }
 

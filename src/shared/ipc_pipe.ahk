@@ -237,8 +237,11 @@ _IPC_Server_ReadClients(server) {
 ; ============================ Client internals =============================
 
 IPC__ClientTick(client) {
-    if (!client.hPipe)
+    Profiler.Enter("IPC__ClientTick") ; @profile
+    if (!client.hPipe) {
+        Profiler.Leave() ; @profile
         return
+    }
     readStatus := _IPC_ReadPipeLines(client.hPipe, client, client.onMessage)
     if (readStatus < 0) {
         if (_IPC_IsLogEnabled())
@@ -247,9 +250,11 @@ IPC__ClientTick(client) {
         client.hPipe := 0
         if (client.timerFn)
             SetTimer(client.timerFn, 0)
+        Profiler.Leave() ; @profile
         return
     }
     _IPC_Client_AdjustTimer(client, readStatus)
+    Profiler.Leave() ; @profile
 }
 
 ; ============================== Pipe helpers ===============================

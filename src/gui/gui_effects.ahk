@@ -218,6 +218,7 @@ _FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 
     ; Cache effect properties — skip COM Set* calls when values unchanged (inner shadow is config-stable)
     static lastARGB := -1, lastX := "", lastY := "", lastW := "", lastH := "", lastBlur := ""
+    Profiler.Enter("_FX_DrawSoftRect") ; @profile
 
     corrected := _FX_HDRCorrectARGB(argb)
     if (corrected != lastARGB) {
@@ -241,6 +242,7 @@ _FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     } else {
         gD2D_RT.DrawImage(gFX_SoftRectBlurOut)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Draw a soft rectangle using the secondary chain (flood2→crop2→blur2).
@@ -251,6 +253,7 @@ _FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 
     ; Cache effect properties — skip COM Set* calls when values unchanged
     static lastARGB := -1, lastX := "", lastY := "", lastW := "", lastH := "", lastBlur := ""
+    Profiler.Enter("_FX_DrawSoftRect2") ; @profile
 
     corrected := _FX_HDRCorrectARGB(argb)
     if (corrected != lastARGB) {
@@ -273,6 +276,7 @@ _FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     } else {
         gD2D_RT.DrawImage(gFX_SoftRect2BlurOut)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= GPU INNER SHADOW =========================
@@ -281,6 +285,7 @@ _FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     ; Pre-compute alpha multipliers — config-stable, only changes on config reload
     static cachedAlpha := -1, cachedEdge := 0, cachedBot := 0
+    Profiler.Enter("FX_GPU_DrawInnerShadow") ; @profile
     if (alpha != cachedAlpha) {
         cachedEdge := Round(alpha * 1.2)
         if (cachedEdge > 255) cachedEdge := 255
@@ -294,6 +299,7 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     ; Bottom
     botARGB := (cachedBot << 24) | 0x000000
     _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= GPU HOVER =========================
@@ -301,9 +307,12 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 ; GPU-enhanced hover with soft glow behind the row.
 FX_GPU_DrawHover(x, y, w, h, rad) {
     global cfg
+    Profiler.Enter("FX_GPU_DrawHover") ; @profile
     baseARGB := cfg.GUI_HoverARGB
-    if ((baseARGB >> 24) = 0 && cfg.GUI_HovBorderWidthPx <= 0)
+    if ((baseARGB >> 24) = 0 && cfg.GUI_HovBorderWidthPx <= 0) {
+        Profiler.Leave() ; @profile
         return  ; fully transparent fill + no border — nothing to draw
+    }
     if ((baseARGB >> 24) > 0)
         D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
     bw := cfg.GUI_HovBorderWidthPx
@@ -311,6 +320,7 @@ FX_GPU_DrawHover(x, y, w, h, rad) {
         half := bw / 2
         D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= HDR COMPENSATION =========================
