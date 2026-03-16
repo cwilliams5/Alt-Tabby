@@ -29,6 +29,7 @@ global _WEH_TimerOn := false
 global _WEH_ShellWindow := 0
 global _WEH_IdleTicks := 0                ; Counter for consecutive empty ticks
 global _WEH_IdleThreshold := 10           ; Default, overridden from config in WinEventHook_Start()
+global FOCUS_PROBE_EXPIRY_MS := 10000     ; Max age for MRU timestamp before focus probe is considered stale
 
 ; MRU tracking (replaces MRU_Lite when hook is active)
 global gWEH_LastFocusHwnd := 0
@@ -752,7 +753,8 @@ _WEH_RetryFocusProbe(hwnd, originalTick, attempt) {
     global gFR_Enabled, FR_EV_FOCUS_RETRY
 
     ; Expire: don't stamp stale MRU ticks from long-delayed timers
-    if (A_TickCount - originalTick > 10000)
+    global FOCUS_PROBE_EXPIRY_MS
+    if (A_TickCount - originalTick > FOCUS_PROBE_EXPIRY_MS)
         return
 
     ; Fast path: window already in store (WinEnum scan discovered it) — stamp MRU

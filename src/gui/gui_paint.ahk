@@ -13,6 +13,7 @@ global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration 
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 global _gPaint_SubCache := Map()      ; Paint-owned subtitle cache (hwnd → "Class: ..." string)
+global PAINT_IDLE_LOG_THRESHOLD_MS := 60000  ; Log verbose context for paints after this idle duration
 
 ; ========================= EFFECT STYLE SYSTEM =========================
 ; Toggled at runtime via B key (gui_interceptor.ahk).
@@ -87,8 +88,9 @@ GUI_Repaint() {
     gPaint_SessionPaintCount += 1
     paintNum := gPaint_SessionPaintCount
 
-    ; Log context for first paint or paint after long idle (>60s)
-    if (diagTiming && (paintNum = 1 || idleDuration > 60000)) {
+    ; Log context for first paint or paint after long idle
+    global PAINT_IDLE_LOG_THRESHOLD_MS
+    if (diagTiming && (paintNum = 1 || idleDuration > PAINT_IDLE_LOG_THRESHOLD_MS)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gD2D_Res.Count
         Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")

@@ -29,9 +29,10 @@ global gAnim_SelNewIndex := 0         ; New selection index (for slide Y calc)
 global gFX_AmbientTime := 0.0         ; Cumulative ms for ambient loops (Full mode)
 
 ; FPS debug counter state
+global FPS_SAMPLE_INTERVAL_MS := 500  ; How often to update the debug FPS readout
 global gAnim_FPSFrameCount := 0
 global gAnim_FPSLastSample := 0.0
-global gAnim_FPSDisplay := 0          ; Displayed FPS (updated every 500ms)
+global gAnim_FPSDisplay := 0          ; Displayed FPS (updated every FPS_SAMPLE_INTERVAL_MS)
 
 ; Compositor Clock state (Win11+ display-adaptive pacing)
 global gAnim_pWaitForClock := 0    ; Function ptr: DCompositionWaitForCompositorClock (0 = unavailable)
@@ -507,10 +508,10 @@ Anim_EaseOutQuad(t) {
 ; ========================= FPS DEBUG OVERLAY =========================
 
 _Anim_UpdateFPSCounter(now) {
-    global gAnim_FPSFrameCount, gAnim_FPSLastSample, gAnim_FPSDisplay
+    global gAnim_FPSFrameCount, gAnim_FPSLastSample, gAnim_FPSDisplay, FPS_SAMPLE_INTERVAL_MS
     gAnim_FPSFrameCount += 1
     elapsed := now - gAnim_FPSLastSample
-    if (elapsed >= 500.0) {  ; Update every 500ms
+    if (elapsed >= FPS_SAMPLE_INTERVAL_MS) {
         gAnim_FPSDisplay := Round(gAnim_FPSFrameCount / (elapsed / 1000.0))
         gAnim_FPSFrameCount := 0
         gAnim_FPSLastSample := now
