@@ -39,6 +39,8 @@ WinEnumLite_ScanAll() {
     list := WinGetList()
     DetectHiddenWindows(prevDetect)
 
+    records.Capacity := list.Length
+
     ; Capture foreground window once — stamp MRU if scan discovers it as new.
     ; Safety net: if the REFRESH guard missed this window, at least the scan
     ; gives it MRU #1 instead of lastActivatedTick: 0 (bottom of list).

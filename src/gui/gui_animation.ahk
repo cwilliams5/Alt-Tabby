@@ -122,10 +122,11 @@ Anim_CancelAll() {
     _Anim_StopTimer()
 }
 
-_Anim_UpdateTweens() {
+_Anim_UpdateTweens(now := 0) {
     global gAnim_Tweens
     Profiler.Enter("_Anim_UpdateTweens") ; @profile
-    now := QPC()
+    if (!now)
+        now := QPC()
     activeCount := 0
     for _, tw in gAnim_Tweens {
         if (tw.done)
@@ -281,7 +282,7 @@ _Anim_FrameLoop() {
         gAnim_LastFrameTime := now
 
         ; Update all active tweens
-        activeCount := _Anim_UpdateTweens()
+        activeCount := _Anim_UpdateTweens(now)
 
         ; Sync overlay opacity from tween → apply to window alpha
         _Anim_SyncOverlayOpacity()
@@ -298,7 +299,8 @@ _Anim_FrameLoop() {
         hasShaders := FX_HasActiveShaders()
 
         ; Update ambient animations (Full mode, or any mode with active shaders)
-        if (gGUI_OverlayVisible && (cfg.PerfAnimationType = "Full" || hasShaders))
+        animType := cfg.PerfAnimationType  ; PERF: cache config read
+        if (gGUI_OverlayVisible && (animType = "Full" || hasShaders))
             FX_UpdateAmbient(gAnim_FrameDt)
 
         ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
@@ -310,7 +312,7 @@ _Anim_FrameLoop() {
         _Anim_UpdateFPSCounter(now)
 
         ; Auto-stop (Minimal mode: exit when no active tweens AND no active shaders)
-        if (cfg.PerfAnimationType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
+        if (animType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
             break
 
         Critical "Off"

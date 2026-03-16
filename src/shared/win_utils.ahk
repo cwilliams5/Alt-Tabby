@@ -80,6 +80,7 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
 
     ; Build record as Map (required by WindowList)
     rec := Map()
+    rec.Capacity := 12
     rec["hwnd"] := hwnd
     rec["title"] := title
     rec["class"] := class

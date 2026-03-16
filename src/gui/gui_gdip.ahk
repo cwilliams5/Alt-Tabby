@@ -66,23 +66,23 @@ D2D_PushRoundRectClipLayer(x, y, w, h, r) {
     global gD2D_RT, gD2D_Factory
     if (!gD2D_RT || !gD2D_Factory || r <= 0)
         return false
-    ; D2D1_ROUNDED_RECT (24 bytes)
+    ; D2D1_ROUNDED_RECT (24 bytes) — only filled on cache miss (consumed by ComCall below)
     static rrBuf := Buffer(24)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h),
-           "float", Float(r), "float", Float(r), rrBuf)
     ; Cache geometry — only recreate when rounded rect parameters change.
     ; Selection rect moves on Tab; hover rect moves on mouse move; both rare vs frame count.
     ; ID2D1Factory::CreateRoundedRectangleGeometry (vtable 6)
     static _geomPtr := 0, _gx := 0.0, _gy := 0.0, _gw := 0.0, _gh := 0.0, _gr := 0.0
     fx := Float(x), fy := Float(y), fw := Float(x + w), fh := Float(y + h), fr := Float(r)
     if (_geomPtr && fx = _gx && fy = _gy && fw = _gw && fh = _gh && fr = _gr) {
-        ; Reuse cached geometry — skip COM Create+Release
+        ; Reuse cached geometry — skip COM Create+Release and rrBuf fill
     } else {
         if (_geomPtr) {
             ObjRelease(_geomPtr)
             _geomPtr := 0
         }
+        NumPut("float", fx, "float", fy,
+               "float", fw, "float", fh,
+               "float", fr, "float", fr, rrBuf)
         pGeom := 0
         try {
             ComCall(6, gD2D_Factory, "ptr", rrBuf, "ptr*", &pGeom, "hresult")

@@ -1078,6 +1078,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     global gShader_FrameCount, gShader_StateDirty, gShader_BatchMode, cfg
     static dbgRendered := Map()
     Profiler.Enter("Shader_PreRender") ; @profile
+    cb := gShader_CBuffer
 
     if (!gShader_Ready || !gShader_Registry.Has(name)) {
         Profiler.Leave() ; @profile
@@ -1126,7 +1127,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
     static mapped1 := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
-    hr := ComCall(14, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped1, "int")
+    hr := ComCall(14, ctx, "ptr", cb, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped1, "int")
     if (hr < 0) {
         Profiler.Leave() ; @profile
         return false
@@ -1150,7 +1151,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
                pData, 96)
     }
     ; Unmap (vtable 15) — void; "int" return type suppresses false HRESULT throw from RAX garbage
-    ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0, "int")
+    ComCall(15, ctx, "ptr", cb, "uint", 0, "int")
 
     ; --- Compute shader dispatch (if this shader has a CS component) ---
     if (entry.cs) {
@@ -1158,15 +1159,21 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ComCall(69, ctx, "ptr", entry.cs, "ptr", 0, "uint", 0, "int")
 
         ; CSSetConstantBuffers (vtable 71): same cbuffer at slot 0
-        static csCbBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", gShader_CBuffer, csCbBuf)
+        static csCbBuf := Buffer(A_PtrSize, 0), csLastCb := 0
+        if (cb != csLastCb) {
+            NumPut("ptr", cb, csCbBuf)
+            csLastCb := cb
+        }
         ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf, "int")
 
         ; CSSetUnorderedAccessViews (vtable 68): UAV at slot 0
         static csUavBuf := Buffer(A_PtrSize, 0)
         NumPut("ptr", entry.csUAV, csUavBuf)
-        static csInitialCount := Buffer(4, 0)
-        NumPut("uint", 0xFFFFFFFF, csInitialCount)  ; -1 = don't reset append counter
+        static csInitialCount := Buffer(4, 0), csInitDone := false
+        if (!csInitDone) {
+            NumPut("uint", 0xFFFFFFFF, csInitialCount)  ; -1 = don't reset append counter
+            csInitDone := true
+        }
         ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csUavBuf, "ptr", csInitialCount, "int")
 
         ; Dispatch (vtable 41): ceil(numElements / 64) thread groups
@@ -1214,7 +1221,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
         ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
         static cbBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", gShader_CBuffer, cbBuf)
+        NumPut("ptr", cb, cbBuf)
         ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf, "int")
 
         ; PSSetSamplers (vtable 10): bind all 8 slots with shared sampler
@@ -1265,20 +1272,16 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ; OMSetRenderTargets(0, null, null)
         ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
 
-        ; Unbind SRVs if they were bound
-        if (nSrvs > 0) {
-            static nullSrvBuf := 0, nullSrvBufN := 0
-            if (nullSrvBufN != nSrvs) {
-                nullSrvBufN := nSrvs
-                nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
-            }
-            ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf, "int")
-        }
-
-        ; Unbind compute particle SRV at slot 4
-        if (entry.csSRV) {
-            static csNullParticleSrv := Buffer(A_PtrSize, 0)
-            ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv, "int")
+        ; Unbind SRVs: consolidated single call covering slots 0-4 when both
+        ; iChannel textures and compute particle SRV are bound (avoids two ComCalls)
+        static nullSrvBuf5 := Buffer(A_PtrSize * 5, 0)
+        if (nSrvs > 0 && entry.csSRV) {
+            ; Single call unbinds slots 0-4 (iChannels at 0..nSrvs-1 + particle SRV at 4)
+            ComCall(8, ctx, "uint", 0, "uint", 5, "ptr", nullSrvBuf5, "int")
+        } else if (nSrvs > 0) {
+            ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf5, "int")
+        } else if (entry.csSRV) {
+            ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", nullSrvBuf5, "int")
         }
     }
 

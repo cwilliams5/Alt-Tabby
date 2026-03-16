@@ -142,10 +142,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     ; File-based debug logging (no performance impact from tooltips)
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
-    if (diagLog) {
+    if (diagLog)
         evName := _GUI_GetEventName(evCode)
+    if (diagLog)
         GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_Pending.phase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
-    }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
@@ -182,7 +182,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gFR_Enabled)
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (diagLog)
-            GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_Pending.phase ")")
+            GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_Pending.phase ")")
         Profiler.Leave() ; @profile
         return
     }
@@ -889,11 +889,13 @@ _GUI_ActivateFromFrozen() {
     global gGUI_Sel, gGUI_DisplayItems, cfg
     global FR_EV_ACTIVATE_GONE, FR_EV_ACTIVATE_RETRY, gFR_Enabled
 
-    if (cfg.DiagEventLog)
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+
+    if (diagLog)
         GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
 
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_DisplayItems.Length) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
         Profiler.Leave() ; @profile
         return
@@ -906,12 +908,12 @@ _GUI_ActivateFromFrozen() {
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
             Profiler.Leave() ; @profile
             return
         }
-        if (cfg.DiagEventLog) {
+        if (diagLog) {
             title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
             GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
         }
@@ -936,12 +938,12 @@ _GUI_ActivateFromFrozen() {
             ; Window gone — record and try next
             if (gFR_Enabled)
                 FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE RETRY: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
 
             nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
             if (nextSel = 0) {
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("ACTIVATE RETRY: exhausted all windows")
                 Profiler.Leave() ; @profile
                 return
@@ -951,7 +953,7 @@ _GUI_ActivateFromFrozen() {
         }
 
         ; Live window found
-        if (cfg.DiagEventLog) {
+        if (diagLog) {
             title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
             isRetry := (gGUI_Sel != startSel) ? " (retry)" : ""
             GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item) isRetry)
@@ -961,7 +963,7 @@ _GUI_ActivateFromFrozen() {
 
         ; Post-activation check: if activation failed AND window is now dead, retry next
         if (!success && !DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE RETRY: window died during activation hwnd=" hwnd)
             nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
             if (nextSel = 0) {
@@ -981,7 +983,7 @@ _GUI_ActivateFromFrozen() {
         return
     }
 
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("ACTIVATE RETRY: reached max depth " maxAttempts)
     Profiler.Leave() ; @profile
 }
