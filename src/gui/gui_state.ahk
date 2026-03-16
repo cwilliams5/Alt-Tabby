@@ -484,7 +484,7 @@ GUI_OnWorkspaceFlips() {
             if (wsName != "" && wsName != gGUI_CurrentWSName) {
                 gGUI_CurrentWSName := wsName
                 GUI_UpdateFooterText()
-                GUI_HandleWorkspaceSwitch()
+                _GUI_HandleWorkspaceSwitch()
             }
             Critical "Off"
         }
@@ -529,8 +529,8 @@ GUI_DismissOverlay() {
 ; Handle workspace context switch during ACTIVE state.
 ; Resets selection to top, marks sticky context switch, and requests fresh
 ; display list when frozen. Caller must hold Critical "On".
-GUI_HandleWorkspaceSwitch() {
-    Profiler.Enter("GUI_HandleWorkspaceSwitch") ; @profile
+_GUI_HandleWorkspaceSwitch() {
+    Profiler.Enter("_GUI_HandleWorkspaceSwitch") ; @profile
     global gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
     global gGUI_CurrentWSName, gGUI_ToggleBase, gGUI_DisplayItems, gGUI_OverlayVisible
     global cfg, gGUI_WorkspaceMode, WS_MODE_CURRENT
@@ -549,7 +549,7 @@ GUI_HandleWorkspaceSwitch() {
     ; Just re-filter to show the right windows.
 
     ; Re-filter display items and select foreground window
-    GUI_RefilterForWorkspaceChange()
+    _GUI_RefilterForWorkspaceChange()
 
     ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
     ; with deferred SetWindowPos (right before ULW) so DWM can't present a
@@ -592,9 +592,9 @@ _GUI_FilterDisplayItems(items) {
 ; Re-filter display items for a workspace change (window moved or workspace switched).
 ; Resets scroll/selection and tries to select the foreground window, since a workspace
 ; change is a context switch — the moved/focused window is what the user wants.
-GUI_RefilterForWorkspaceChange() {
+_GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
-    Profiler.Enter("GUI_RefilterForWorkspaceChange") ; @profile
+    Profiler.Enter("_GUI_RefilterForWorkspaceChange") ; @profile
     gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
@@ -612,7 +612,7 @@ GUI_RefilterForWorkspaceChange() {
 }
 
 ; Re-filter display items after workspace mode toggle.
-; Unlike RefilterForWorkspaceChange (which selects foreground window),
+; Unlike _GUI_RefilterForWorkspaceChange (which selects foreground window),
 ; this preserves MRU-based selection since the user is browsing, not switching.
 GUI_ApplyWorkspaceFilter() {
     _GUI_ApplyFilter("GUI_ApplyWorkspaceFilter")
