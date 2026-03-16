@@ -34,11 +34,11 @@ global gConfigRegistry := [
 
     {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", default: 150,
      min: 0, max: 2000,
-     d: "Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI."},
+     d: "Grace period before showing the overlay (ms). During this time, if Alt is released, we do a quick switch without showing the overlay."},
 
     {s: "AltTab", k: "QuickSwitchMs", g: "AltTabQuickSwitchMs", t: "int", default: 100,
      min: 0, max: 1000,
-     d: "Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch."},
+     d: "Maximum time for quick switch without showing the overlay (ms). If Alt+Tab and release happen within this time, instant switch."},
 
     {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
      d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
@@ -401,7 +401,7 @@ global gConfigRegistry := [
 
     {s: "GUI", k: "CornerStyle", g: "GUI_CornerStyle", t: "enum", default: "Round",
      options: ["Round", "RoundSmall", "Square"],
-     d: "Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners."},
+     d: "Window corner shape. Round = 8px rounding. RoundSmall = 4px. Square = sharp corners."},
 
     {s: "GUI", k: "OverlayMonitor", g: "GUI_OverlayMonitor", t: "enum", default: "FocusedWindow",
      options: ["FocusedWindow", "Primary"],
@@ -416,7 +416,7 @@ global gConfigRegistry := [
 
     {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", default: 0.6,
      min: 0.1, max: 1.0,
-     d: "GUI width as fraction of screen"},
+     d: "Overlay width as a fraction of screen width (0.6 = 60%)"},
 
     {s: "GUI", k: "RowsVisibleMin", g: "GUI_RowsVisibleMin", t: "int", default: 1,
      min: 1, max: 20,

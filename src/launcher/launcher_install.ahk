@@ -304,7 +304,7 @@ _Launcher_OfferOneTimeElevation() {
     ; Offer one-time elevation for THIS session
     result := ThemeMsgBox(
         "The installed version runs as Administrator.`n`n"
-        "Run this version elevated too?`n"
+        "Run this version as Administrator too?`n"
         "(This is one-time and won't affect the installed version)",
         APP_NAME " - Run Elevated?",
         "YesNo Icon?"

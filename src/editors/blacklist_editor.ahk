@@ -96,13 +96,13 @@ _BE_CreateGui() {
 
     ; Class tab
     tabs.UseTab("Class Patterns")
-    gBE_Gui.AddText("x20 y90 w550", "Class patterns — match window class names (e.g., 'Notepad', 'Chrome_*'):")
+    gBE_Gui.AddText("x20 y90 w550", "Class patterns — match the internal type name Windows assigns each window (e.g., 'Notepad', 'Chrome_*'):")
     gBE_ClassEdit := gBE_Gui.AddEdit("vClassEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
     Theme_ApplyToControl(gBE_ClassEdit, "Edit", themeEntry)
 
     ; Pair tab
     tabs.UseTab("Pair Patterns")
-    gBE_Gui.AddText("x20 y90 w550", "Pair patterns — match class and title together (e.g., 'Chrome_WidgetWin_1|*YouTube*'):")
+    gBE_Gui.AddText("x20 y90 w550", "Pair patterns — match class AND title together, separated by | (e.g., 'Chrome_WidgetWin_1|*YouTube*'):")
     gBE_PairEdit := gBE_Gui.AddEdit("vPairEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
     Theme_ApplyToControl(gBE_PairEdit, "Edit", themeEntry)
 

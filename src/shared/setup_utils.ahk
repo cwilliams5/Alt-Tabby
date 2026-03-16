@@ -761,7 +761,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
                             if (downloadUrl)
                                 Update_DownloadAndApply(downloadUrl, latestVersion)
                             else
-                                ThemeMsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
+                                ThemeMsgBox("The update file was not found on the server. Please try again later.", "Update Error", "Iconx")
                         }
                     }
                 } else {
@@ -778,7 +778,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
                 g_LastUpdateCheckTick := A_TickCount
                 g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
                 if (showIfCurrent && showModal) {
-                    TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
+                    TrayTip("Update Check Failed", "The server returned an error. Please try again later.", "Icon!")
                 }
                 whr := ""  ; Release COM on error path
             }
@@ -791,7 +791,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
             if (showIfCurrent && showModal)
-                TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
+                TrayTip("Update Check Failed", "Could not check for updates. Please check your internet connection and try again.", "Icon!")
         }
         whr := ""  ; Final safety - ensure release on all exit paths
     } finally {
@@ -849,7 +849,7 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         if (whr.Status != 200) {
             if (cfg.DiagUpdateLog)
                 _Update_Log("DownloadAndApply: HTTP error status=" whr.Status)
-            ThemeMsgBox("Download failed (HTTP " whr.Status ").`n`nPlease check your internet connection or visit the GitHub releases page to download manually.", "Update Error", "Iconx")
+            ThemeMsgBox("Download failed (HTTP " whr.Status ").`n`nPlease check your internet connection or visit github.com/cwilliams5/Alt-Tabby/releases to download manually.", "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
         }
