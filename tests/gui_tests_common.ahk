@@ -225,14 +225,8 @@ GUIPump_ProbeConnect() {
     return false
 }
 
-; GDI+ icon cache invalidation mock
-Gdip_InvalidateIconCache(hwnd) {
-    global gGdip_IconCache
-    if (gGdip_IconCache.Has(hwnd))
-        gGdip_IconCache.Delete(hwnd)
-}
-
 ; GDI+ icon cache prune mock (called by GUI_RefreshLiveItems)
+; SYNC: core logic must match gui_gdip.ahk:Gdip_PruneIconCache
 global gMock_PruneCalledWith := ""
 Gdip_PruneIconCache(liveHwnds) {
     global gMock_PruneCalledWith, gGdip_IconCache
@@ -330,10 +324,6 @@ Win_GetScaleForWindow(hwnd) {
 ; Mock store data: tests populate this, then call GUI_RefreshLiveItems()
 global gMock_StoreItems := []
 global gMock_StoreItemsMap := Map()
-
-WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
-    return (workspaceName = currentWSName) || (workspaceName = "")
-}
 
 WL_GetDisplayList(opts := "") {
     global gMock_StoreItems, gMock_StoreItemsMap
