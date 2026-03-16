@@ -158,13 +158,55 @@ foreach ($file in $allFiles) {
     $isCritical = $criticalFiles.Contains($file.FullName)
 
     # For critical files, pre-process all lines (reused by critical_leaks)
+    # Inline BC_CleanLine/BC_StripComments/BC_CountBraces to eliminate ~36K function dispatches
     if ($isCritical) {
         $lineData = [System.Collections.ArrayList]::new($lines.Count)
         for ($li = 0; $li -lt $lines.Count; $li++) {
             $rawLine = $lines[$li]
-            $cleaned = BC_CleanLine $rawLine
-            $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
-            $braces = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+
+            # Inline BC_CleanLine
+            $_trimmed = $rawLine.TrimStart()
+            if ($_trimmed.Length -eq 0 -or $_trimmed[0] -eq ';') {
+                $cleaned = ''
+            } else {
+                $cleaned = $rawLine
+                if ($rawLine.IndexOf('"') -ge 0) {
+                    $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
+                }
+                if ($rawLine.IndexOf("'") -ge 0) {
+                    $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
+                }
+                if ($cleaned.IndexOf(';') -ge 0) {
+                    $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
+                }
+            }
+
+            if ($cleaned -ne '') {
+                # Inline BC_StripComments
+                if ($rawLine.IndexOf(';') -ge 0) {
+                    $_stTrimmed = $rawLine.TrimStart()
+                    if ($_stTrimmed.Length -gt 0 -and $_stTrimmed[0] -ne ';') {
+                        $stripped = $script:RX_CMT_TAIL.Replace($rawLine, '')
+                    } else {
+                        $stripped = ''
+                    }
+                } else {
+                    $stripped = $rawLine
+                }
+
+                # Inline BC_CountBraces
+                $_opens = 0; $_closes = 0
+                for ($_ci = 0; $_ci -lt $cleaned.Length; $_ci++) {
+                    $_ch = $cleaned[$_ci]
+                    if ($_ch -eq '{') { $_opens++ }
+                    elseif ($_ch -eq '}') { $_closes++ }
+                }
+                $braces = @($_opens, $_closes)
+            } else {
+                $stripped = ''
+                $braces = @(0, 0)
+            }
+
             [void]$lineData.Add(@{ Raw = $rawLine; Cleaned = $cleaned; Stripped = $stripped; Braces = $braces })
         }
         $sharedLineData[$file.FullName] = $lineData
@@ -1104,11 +1146,37 @@ foreach ($file in $allFiles) {
     $funcGlobals = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
+    # Reuse $sharedLineData for critical files (avoids redundant BC_CleanLine/BC_CountBraces)
+    $_gtfHasLineData = $sharedLineData.ContainsKey($file.FullName)
+    $_gtfLineData = if ($_gtfHasLineData) { $sharedLineData[$file.FullName] } else { $null }
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        if ($raw -match '^\s*;') { continue }
-        $cleaned = BC_CleanLine $raw
-        if ($cleaned -eq '') { continue }
+        if ($_gtfHasLineData) {
+            $_ld = $_gtfLineData[$i]
+            $cleaned = $_ld.Cleaned
+            if ($cleaned -eq '') { continue }
+            $raw = $_ld.Raw
+            $_brO = $_ld.Braces[0]; $_brC = $_ld.Braces[1]
+        } else {
+            $raw = $lines[$i]
+            if ($raw -match '^\s*;') { continue }
+            # Inline BC_CleanLine
+            $_tr = $raw.TrimStart()
+            if ($_tr.Length -eq 0 -or $_tr[0] -eq ';') { $cleaned = '' }
+            else {
+                $cleaned = $raw
+                if ($raw.IndexOf('"') -ge 0) { $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""') }
+                if ($raw.IndexOf("'") -ge 0) { $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''") }
+                if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '') }
+            }
+            if ($cleaned -eq '') { continue }
+            # Inline BC_CountBraces
+            $_brO = 0; $_brC = 0
+            for ($_bi = 0; $_bi -lt $cleaned.Length; $_bi++) {
+                $_bc = $cleaned[$_bi]
+                if ($_bc -eq '{') { $_brO++ } elseif ($_bc -eq '}') { $_brC++ }
+            }
+        }
 
         # Detect function definitions (not inside another function)
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\(') {
@@ -1123,8 +1191,7 @@ foreach ($file in $allFiles) {
             }
         }
 
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
+        $depth += $_brO - $_brC
 
         if ($inFunc) {
             # Track global declarations
@@ -1248,11 +1315,36 @@ foreach ($cand in $gtfCandidates) {
     $falseLineSet = [System.Collections.Generic.HashSet[int]]::new()
     foreach ($fl in $cand.FalseLines) { [void]$falseLineSet.Add($fl) }
 
+    # Reuse $sharedLineData if available for this candidate's file
+    $_gtf2HasLD = $sharedLineData.ContainsKey($cand.File)
+    $_gtf2LD = if ($_gtf2HasLD) { $sharedLineData[$cand.File] } else { $null }
+
     for ($i = $firstTrueLine + 1; $i -le $cand.FuncEnd; $i++) {
-        $raw = $lines[$i]
-        if ($raw -match '^\s*;') { continue }
-        $cleaned = BC_CleanLine $raw
-        if ($cleaned -eq '') { continue }
+        if ($_gtf2HasLD) {
+            $_ld2 = $_gtf2LD[$i]
+            $cleaned = $_ld2.Cleaned
+            if ($cleaned -eq '') { continue }
+            $_brO2 = $_ld2.Braces[0]; $_brC2 = $_ld2.Braces[1]
+        } else {
+            $raw = $lines[$i]
+            if ($raw -match '^\s*;') { continue }
+            # Inline BC_CleanLine
+            $_tr2 = $raw.TrimStart()
+            if ($_tr2.Length -eq 0 -or $_tr2[0] -eq ';') { $cleaned = '' }
+            else {
+                $cleaned = $raw
+                if ($raw.IndexOf('"') -ge 0) { $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""') }
+                if ($raw.IndexOf("'") -ge 0) { $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''") }
+                if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '') }
+            }
+            if ($cleaned -eq '') { continue }
+            # Inline BC_CountBraces
+            $_brO2 = 0; $_brC2 = 0
+            for ($_bi2 = 0; $_bi2 -lt $cleaned.Length; $_bi2++) {
+                $_bc2 = $cleaned[$_bi2]
+                if ($_bc2 -eq '{') { $_brO2++ } elseif ($_bc2 -eq '}') { $_brC2++ }
+            }
+        }
 
         # Detect try { opening (before depth adjustment)
         if ($script:RX_TRY_OPEN.IsMatch($cleaned)) {
@@ -1270,8 +1362,7 @@ foreach ($cand in $gtfCandidates) {
         }
 
         # Adjust depth
-        $braces = BC_CountBraces $cleaned
-        $localDepth += $braces[0] - $braces[1]
+        $localDepth += $_brO2 - $_brC2
 
         # Pop finished finally blocks
         while ($finallyStack.Count -gt 0 -and $localDepth -le $finallyStack.Peek()) {
@@ -1437,6 +1528,7 @@ $script:RX_PROF_LEAVE  = [regex]::new('Profiler\.Leave\(\)', 'Compiled')
 foreach ($file in $profilerFiles) {
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $_pbUseCache = $criticalFiles.Contains($file.FullName)
 
     $depth = 0
     $inFunc = $false
@@ -1449,12 +1541,32 @@ foreach ($file in $profilerFiles) {
     $returnLines = [System.Collections.ArrayList]::new()
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        $trimmed = $raw.TrimStart()
-        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
-
-        $cleaned = BC_CleanLine $raw
-        if ($cleaned -eq '') { continue }
+        if ($_pbUseCache) {
+            $_pbLd = $sharedLineData[$file.FullName][$i]
+            $cleaned = $_pbLd.Cleaned
+            if (-not $cleaned) { continue }
+            $trimmed = $lines[$i].TrimStart()
+            $_pbBrO = $_pbLd.Braces[0]; $_pbBrC = $_pbLd.Braces[1]
+        } else {
+            $raw = $lines[$i]
+            $trimmed = $raw.TrimStart()
+            if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+            # Inline BC_CleanLine
+            $_pbTr = $trimmed
+            if ($_pbTr.IndexOf('"') -ge 0 -or $_pbTr.IndexOf("'") -ge 0 -or $_pbTr.IndexOf(';') -ge 0) {
+                $cleaned = $raw
+                if ($raw.IndexOf('"') -ge 0) { $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""') }
+                if ($raw.IndexOf("'") -ge 0) { $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''") }
+                if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '') }
+            } else { $cleaned = $raw }
+            if ($cleaned -eq '') { continue }
+            # Inline BC_CountBraces
+            $_pbBrO = 0; $_pbBrC = 0
+            for ($_pbi = 0; $_pbi -lt $cleaned.Length; $_pbi++) {
+                $_pbc = $cleaned[$_pbi]
+                if ($_pbc -eq '{') { $_pbBrO++ } elseif ($_pbc -eq '}') { $_pbBrC++ }
+            }
+        }
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -1469,8 +1581,7 @@ foreach ($file in $profilerFiles) {
             }
         }
 
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
+        $depth += [int]$_pbBrO - [int]$_pbBrC
 
         if ($inFunc) {
             if (-not $hasEnter -and $script:RX_PROF_ENTER.IsMatch($trimmed)) {
@@ -1588,7 +1699,17 @@ $heavyDirect = [System.Collections.Generic.HashSet[string]]::new(
 
 foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
-    $hasLineData = $sharedLineData.ContainsKey($file.FullName)
+    $_chHasLD = $sharedLineData.ContainsKey($file.FullName)
+
+    # Pre-filter: skip non-critical files that don't contain any heavy call patterns
+    if (-not $_chHasLD) {
+        $_chText = $fileCacheText[$file.FullName]
+        if ($_chText.IndexOf('BeginDraw') -lt 0 -and $_chText.IndexOf('EndDraw') -lt 0 -and
+            $_chText.IndexOf('DrawBitmap') -lt 0 -and $_chText.IndexOf('CreateEffect') -lt 0 -and
+            $_chText.IndexOf('ShowWindow') -lt 0 -and $_chText.IndexOf('SetWindowPos') -lt 0 -and
+            $_chText.IndexOf('DwmFlush') -lt 0 -and $_chText.IndexOf('ProcessExist') -lt 0 -and
+            $_chText.IndexOf('RunWait') -lt 0) { continue }
+    }
 
     $depth = 0
     $inFunc = $false
@@ -1597,16 +1718,40 @@ foreach ($file in $allFiles) {
     $hasHeavy = $false
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($hasLineData) {
+        if ($_chHasLD) {
             $ld = $sharedLineData[$file.FullName][$i]
             $cleaned = $ld.Cleaned
             $stripped = $ld.Stripped
             $braceData = $ld.Braces
         } else {
             $rawLine = $lines[$i]
-            $cleaned = BC_CleanLine $rawLine
-            $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
-            $braceData = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+            # Inline BC_CleanLine
+            $_chTr = $rawLine.TrimStart()
+            if ($_chTr.Length -eq 0 -or $_chTr[0] -eq ';') { $cleaned = '' }
+            else {
+                $cleaned = $rawLine
+                if ($rawLine.IndexOf('"') -ge 0) { $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""') }
+                if ($rawLine.IndexOf("'") -ge 0) { $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''") }
+                if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '') }
+            }
+            # Inline BC_StripComments
+            if ($cleaned -ne '') {
+                if ($rawLine.IndexOf(';') -ge 0) {
+                    $_chSt = $rawLine.TrimStart()
+                    $stripped = if ($_chSt.Length -gt 0 -and $_chSt[0] -ne ';') {
+                        $script:RX_CMT_TAIL.Replace($rawLine, '')
+                    } else { '' }
+                } else { $stripped = $rawLine }
+            } else { $stripped = '' }
+            # Inline BC_CountBraces
+            if ($cleaned -ne '') {
+                $_chO = 0; $_chC = 0
+                for ($_chi = 0; $_chi -lt $cleaned.Length; $_chi++) {
+                    $_chCh = $cleaned[$_chi]
+                    if ($_chCh -eq '{') { $_chO++ } elseif ($_chCh -eq '}') { $_chC++ }
+                }
+                $braceData = @($_chO, $_chC)
+            } else { $braceData = @(0, 0) }
         }
 
         if ($cleaned -eq '') {

@@ -305,6 +305,8 @@ $fileCache = @{}
 $fileCacheText = @{}
 # cleanedLineCache: filePath -> array of [cleaned_line, brace_delta] per line
 $cleanedLineCache = @{}
+# funcNameCacheMap: filePath -> string[] of enclosing function name per line ('' = file scope)
+$funcNameCacheMap = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -320,13 +322,26 @@ foreach ($file in $srcFiles) {
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
+    $funcName = ""
 
-    # Build per-line cache: [cleaned_line, brace_delta]
+    # Build per-line cache: [cleaned_line, brace_delta] + function name map
     $lineCount = $lines.Count
     $cachedLines = [object[]]::new($lineCount)
+    $funcNames = [string[]]::new($lineCount)
 
     for ($i = 0; $i -lt $lineCount; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+        # Inline Clean-Line (eliminates ~41K function call dispatches)
+        $_raw = $lines[$i]
+        $_trimmed = $_raw.TrimStart()
+        if ($_trimmed.Length -eq 0 -or $_trimmed[0] -eq ';') {
+            $cleaned = ''
+        } elseif ($_trimmed.IndexOf('"') -lt 0 -and $_trimmed.IndexOf("'") -lt 0 -and $_trimmed.IndexOf(';') -lt 0) {
+            $cleaned = $_trimmed
+        } else {
+            $cleaned = $script:_rxDblQuote.Replace($_trimmed, '""')
+            $cleaned = $script:_rxSglQuote.Replace($cleaned, "''")
+            $cleaned = $script:_rxComment.Replace($cleaned, '')
+        }
         if ($cleaned -eq '') {
             $cachedLines[$i] = @('', 0)
             continue
@@ -352,6 +367,7 @@ foreach ($file in $srcFiles) {
                 if ($hasBody) {
                     $inFunc = $true
                     $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
+                    $funcName = $fname
                 }
             }
         }
@@ -362,7 +378,10 @@ foreach ($file in $srcFiles) {
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
             $funcDepth = -1
+            $funcName = ""
         }
+
+        $funcNames[$i] = $funcName
 
         # File-scope global declarations (outside any function)
         if (-not $inFunc -and $cleaned -match '^\s*global\s+(.+)') {
@@ -387,6 +406,7 @@ foreach ($file in $srcFiles) {
     }
 
     $cleanedLineCache[$file.FullName] = $cachedLines
+    $funcNameCacheMap[$file.FullName] = $funcNames
 }
 
 # Build lookup set for fast matching
@@ -459,24 +479,47 @@ foreach ($file in $srcFiles) {
     if (-not $hasCachedLines) {
         $lineCount = $lines.Count
         $cachedLines = [object[]]::new($lineCount)
+        $_fnNames = [string[]]::new($lineCount)
+        $_d = 0; $_inF = $false; $_fD = -1; $_fN = ""
         for ($ci = 0; $ci -lt $lineCount; $ci++) {
             $cleaned = Clean-Line $lines[$ci]
             if ($cleaned -eq '') {
                 $cachedLines[$ci] = @('', 0)
             } else {
-                $opens = $cleaned.Length - $cleaned.Replace('{','').Length
-                $closes = $cleaned.Length - $cleaned.Replace('}','').Length
-                $cachedLines[$ci] = @($cleaned, $opens - $closes)
+                $_o = $cleaned.Length - $cleaned.Replace('{','').Length
+                $_c = $cleaned.Length - $cleaned.Replace('}','').Length
+                $cachedLines[$ci] = @($cleaned, $_o - $_c)
+
+                if (-not $_inF -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+                    $_fn = $Matches[1]
+                    if (-not $AHK_KEYWORDS_SET.Contains($_fn)) {
+                        $_hb = $cleaned.Contains('{')
+                        if (-not $_hb) {
+                            for ($_la = $ci + 1; $_la -lt [Math]::Min($ci + 10, $lineCount); $_la++) {
+                                $_pk = $lines[$_la].Trim()
+                                if ($_pk -eq '' -or $_pk.StartsWith(';')) { continue }
+                                if ($_pk.Contains('{')) { $_hb = $true; break }
+                            }
+                        }
+                        if ($_hb) {
+                            $_inF = $true
+                            $_fD = if ($cleaned.Contains('{')) { $_d } else { -2 }
+                            $_fN = $_fn
+                        }
+                    }
+                }
+                if ($_inF -and $_fD -eq -2 -and $cleaned.Contains('{')) { $_fD = $_d }
+                $_d += $_o - $_c
+                if ($_inF -and $_d -le $_fD) { $_inF = $false; $_fD = -1; $_fN = "" }
+                $_fnNames[$ci] = $_fN
             }
         }
         $cleanedLineCache[$file.FullName] = $cachedLines
+        $funcNameCacheMap[$file.FullName] = $_fnNames
     }
     $cachedLines = $cleanedLineCache[$file.FullName]
+    $_funcNames = $funcNameCacheMap[$file.FullName]
 
-    $depth = 0
-    $inFunc = $false
-    $funcDepth = -1
-    $funcName = ""
     $seen = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -484,37 +527,12 @@ foreach ($file in $srcFiles) {
         $entry = $cachedLines[$i]
         $cleaned = $entry[0]
         if ($cleaned -eq '') { continue }
-        $delta = $entry[1]
 
-        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fname = $Matches[1]
-            if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
-                $hasBody = $cleaned.Contains('{')
-                if (-not $hasBody) {
-                    for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
-                        $peek = $lines[$la].Trim()
-                        if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
-                        if ($peek.Contains('{')) { $hasBody = $true; break }
-                    }
-                }
-                if ($hasBody) {
-                    $inFunc = $true
-                    $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
-                    $funcName = $fname
-                }
-            }
-        }
-
-        if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
-        $depth += $delta
-
-        if ($inFunc -and $depth -le $funcDepth) {
-            $inFunc = $false
-            $funcDepth = -1
-        }
+        # Use pre-computed function name from Pass 1 (or lazy cache above)
+        $funcName = $_funcNames[$i]
 
         # Only scan inside function bodies
-        if (-not $inFunc) { continue }
+        if ($funcName -eq '' -or $funcName -eq $null) { continue }
 
         # Line-level pre-filter: skip lines that can't possibly be mutations
         # (no assignment, increment, or mutating method operator present)
@@ -527,56 +545,72 @@ foreach ($file in $srcFiles) {
                     $cleaned.Contains('.InsertAt(') -or $cleaned.Contains('.RemoveAt(') -or
                     $cleaned.Contains('.Set(')
 
-        # In enforcement mode (non-Query), skip lines without mutation operators entirely
-        if (-not $Query -and -not $hasMutOp) { continue }
+        if ($Query) {
+            # Query mode: need word extraction for read tracking + mutation detection
+            $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
+            $wordMatches = $script:_rxWord.Matches($cleaned)
+            $seen.Clear()
 
-        # Check if this is a global declaration line (not a read)
-        $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
+            foreach ($wm in $wordMatches) {
+                $wName = $wm.Value
+                if ($seen.Contains($wName)) { continue }
+                [void]$seen.Add($wName)
+                if (-not $globalSet.Contains($wName)) { continue }
 
-        # Find word tokens that match known globals, then test for mutation
-        $wordMatches = $script:_rxWord.Matches($cleaned)
-        $seen.Clear()
-
-        foreach ($wm in $wordMatches) {
-            $wName = $wm.Value
-            if ($seen.Contains($wName)) { continue }
-            [void]$seen.Add($wName)
-            if (-not $globalSet.Contains($wName)) { continue }
-
-            # Test mutation using generic patterns + HashSet verification
-            # Each pattern captures (\w+) at the mutation position; we check all
-            # matches on the line to see if $wName appears as a mutation target.
-            # Short-circuits on first pattern that confirms a match.
-            $isMutation = $false
-            if ($hasMutOp) {
-                :mutCheck foreach ($rxMut in @($_rxMut1, $_rxMut2, $_rxMut3, $_rxMut4, $_rxMut5)) {
-                    foreach ($rm in $rxMut.Matches($cleaned)) {
-                        if ($rm.Groups[1].Value -eq $wName) {
-                            $isMutation = $true
-                            break mutCheck
+                $isMutation = $false
+                if ($hasMutOp) {
+                    :mutCheck foreach ($rxMut in @($_rxMut1, $_rxMut2, $_rxMut3, $_rxMut4, $_rxMut5)) {
+                        foreach ($rm in $rxMut.Matches($cleaned)) {
+                            if ($rm.Groups[1].Value -eq $wName) {
+                                $isMutation = $true
+                                break mutCheck
+                            }
                         }
                     }
                 }
-            }
 
-            if ($isMutation) {
-                [void]$mutations.Add(@{
-                    Global  = $wName
-                    File    = $file.FullName
-                    RelPath = $relPath
-                    Line    = ($i + 1)
-                    Code    = $lines[$i].Trim()
-                    Func    = $funcName
-                })
-            }
-
-            # Track non-mutation, non-declaration references as reads (Query mode only)
-            if ($Query -and -not $isMutation -and -not $isGlobalDeclLine) {
-                if (-not $reads.ContainsKey($wName)) {
-                    $reads[$wName] = [System.Collections.Generic.HashSet[string]]::new(
-                        [System.StringComparer]::OrdinalIgnoreCase)
+                if ($isMutation) {
+                    [void]$mutations.Add(@{
+                        Global  = $wName
+                        File    = $file.FullName
+                        RelPath = $relPath
+                        Line    = ($i + 1)
+                        Code    = $lines[$i].Trim()
+                        Func    = $funcName
+                    })
                 }
-                [void]$reads[$wName].Add($file.FullName)
+
+                if (-not $isMutation -and -not $isGlobalDeclLine) {
+                    if (-not $reads.ContainsKey($wName)) {
+                        $reads[$wName] = [System.Collections.Generic.HashSet[string]]::new(
+                            [System.StringComparer]::OrdinalIgnoreCase)
+                    }
+                    [void]$reads[$wName].Add($file.FullName)
+                }
+            }
+        } else {
+            # Enforcement mode: skip word extraction, run mutation regex directly.
+            # Reverses the approach: instead of "find all words → filter to globals →
+            # check if mutation", we do "find all mutations → check if target is a global".
+            # Eliminates ~52K word iterations per run.
+            if (-not $hasMutOp) { continue }
+
+            $seen.Clear()
+            foreach ($rxMut in @($_rxMut1, $_rxMut2, $_rxMut3, $_rxMut4, $_rxMut5)) {
+                foreach ($rm in $rxMut.Matches($cleaned)) {
+                    $_vName = $rm.Groups[1].Value
+                    if ($seen.Contains($_vName)) { continue }
+                    if (-not $globalSet.Contains($_vName)) { continue }
+                    [void]$seen.Add($_vName)
+                    [void]$mutations.Add(@{
+                        Global  = $_vName
+                        File    = $file.FullName
+                        RelPath = $relPath
+                        Line    = ($i + 1)
+                        Code    = $lines[$i].Trim()
+                        Func    = $funcName
+                    })
+                }
             }
         }
     }
