@@ -289,7 +289,8 @@ _Anim_FrameLoop() {
         _Anim_ApplyWindowAlpha()
 
         ; Check if hide-fade completed
-        if (gAnim_HidePending && gAnim_Tweens.Has("hideFade") && gAnim_Tweens["hideFade"].done) {
+        hideTw := gAnim_HidePending ? gAnim_Tweens.Get("hideFade", 0) : 0
+        if (hideTw && hideTw.done) {
             _Anim_OnHideFadeComplete()
             Critical "Off"
             continue  ; CancelAll sets gAnim_TimerRunning=false → loop exits
@@ -353,20 +354,27 @@ _Anim_FramePace() {
 
 _Anim_SyncOverlayOpacity() {
     global gAnim_OverlayOpacity, gAnim_Tweens
+    static showFadeHandled := false
     Profiler.Enter("_Anim_SyncOverlayOpacity") ; @profile
     ; hideFade takes priority — when present it's the latest intent and the
     ; completed showFade tween is still in the map (never removed until CancelAll).
-    if (gAnim_Tweens.Has("hideFade")) {
-        gAnim_OverlayOpacity := gAnim_Tweens["hideFade"].current
+    tw := gAnim_Tweens.Get("hideFade", 0)
+    if (tw) {
+        showFadeHandled := false  ; reset for next show/hide cycle
+        gAnim_OverlayOpacity := tw.current
         if (gAnim_OverlayOpacity < 0.0)
             gAnim_OverlayOpacity := 0.0
-    } else if (gAnim_Tweens.Has("showFade")) {
-        gAnim_OverlayOpacity := gAnim_Tweens["showFade"].current
-        if (gAnim_Tweens["showFade"].done) {
-            gAnim_OverlayOpacity := 1.0
-            ; Show-fade complete: remove WS_EX_LAYERED so DWM resumes
-            ; live acrylic blur (layered windows get stale cached blur).
-            _Anim_RemoveLayered()
+    } else if (!showFadeHandled) {
+        tw := gAnim_Tweens.Get("showFade", 0)
+        if (tw) {
+            gAnim_OverlayOpacity := tw.current
+            if (tw.done) {
+                gAnim_OverlayOpacity := 1.0
+                ; Show-fade complete: remove WS_EX_LAYERED so DWM resumes
+                ; live acrylic blur (layered windows get stale cached blur).
+                _Anim_RemoveLayered()
+                showFadeHandled := true
+            }
         }
     }
     Profiler.Leave() ; @profile
