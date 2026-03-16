@@ -453,12 +453,15 @@ _Anim_DoActualHide() {
     GUI_ClearHoverState()
 
     ; Clear D2D surface — ensures clean swap chain buffer for next Show.
-    ; STA reentrancy guard: BeginDraw/EndDraw/Present pump the message loop,
-    ; which can dispatch callbacks that reach GUI_Repaint (e.g., via
-    ; Anim_ForceCompleteHide during a new show sequence while state is ACTIVE).
-    ; Save/restore handles nesting when called from within an existing paint.
-    if (gD2D_RT) {
-        wasInProgress := gPaint_RepaintInProgress
+    ; Skip when a paint is in progress: if called during an outer paint's
+    ; STA pump (e.g., ForceCompleteHide from TAB_DN during hide-fade paint),
+    ; nested AcquireBackBuffer overwrites gD2D_BackBuffer and nested BeginDraw
+    ; fails (D2DERR_WRONG_STATE), corrupting the outer paint's D2D state.
+    ; The next show's first paint will clear the surface.  The window is about
+    ; to be hidden anyway, so skipping the clear has no visible effect.
+    ; When NOT in a paint, the guard blocks nested GUI_Repaint from timer
+    ; callbacks dispatched during this block's STA pump.
+    if (gD2D_RT && !gPaint_RepaintInProgress) {
         gPaint_RepaintInProgress := true
         try {
             if (D2D_AcquireBackBuffer()) {
@@ -469,9 +472,10 @@ _Anim_DoActualHide() {
                 D2D_Present(0)  ; Immediate — about to hide
             }
         } catch {
+            try gD2D_RT.EndDraw()   ; Best-effort: don't leave D2D in BeginDraw state
             D2D_ReleaseBackBuffer()
         } finally {
-            gPaint_RepaintInProgress := wasInProgress
+            gPaint_RepaintInProgress := false
         }
     }
 
