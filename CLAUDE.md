@@ -83,10 +83,10 @@ Query tools live in `tools/`. Prefer these over reading full files or grepping:
 - `query_function_visibility.ps1 <funcName>` — where defined, public/private, all callers
 - `query_function.ps1 <funcName>` — extract full function body without loading the entire file
 - `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))
-- `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value
+- `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value. `-Format hex` / `-Type int` / `-HasBounds`: metadata filters
 - `query_callchain.ps1 <funcName>` — call graph from a function: what it calls (or `-Reverse` for callers), to `-Depth N` levels. Primary tool for tracing code paths
 
-Additional domain-specific query tools (ipc, timers, impact, mutations, includes, messages, state) exist in `tools/` — run `ls tools/query_*.ps1` to discover when needed.
+Additional domain-specific query tools (ipc, timers, impact, mutations, includes, messages, state, shader, events) exist in `tools/` — run `ls tools/query_*.ps1` to discover when needed.
 
 For deep multi-module flow tracing, use `/trace <question>` — spawns an agent in separate context that uses all query tools and returns only the semantic answer.
 

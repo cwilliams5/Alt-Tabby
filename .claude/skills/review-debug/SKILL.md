@@ -38,7 +38,7 @@ See `.claude/rules/debugging.md` for the full list of diagnostic config flags an
 
 ## Explore Strategy
 
-Use `query_timers.ps1` to identify timer callbacks — these often contain diagnostic writes for heartbeat, stats, or producer health checks.
+Use `query_timers.ps1` to identify timer callbacks — these often contain diagnostic writes for heartbeat, stats, or producer health checks. Use `query_callchain.ps1 <logFunc> -Reverse` to trace all callers of logging functions and verify gate coverage. Use `query_function_visibility.ps1 <logFunc>` to find all call sites of diagnostic output functions.
 
 Split into independent zones and explore in parallel:
 

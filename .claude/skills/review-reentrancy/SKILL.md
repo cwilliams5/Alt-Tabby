@@ -173,6 +173,7 @@ Split by path (run in parallel):
 - `query_callchain.ps1 <func> -Reverse` — find callers (verify a COM call is only reached from protected contexts)
 - `query_global_ownership.ps1 gPaint_RepaintInProgress` — verify the reentrancy guard is set/cleared correctly
 - `query_timers.ps1` — identify all timer callbacks that could fire during STA pump
+- `query_state.ps1` — extract state machine branches to identify which state transitions could trigger COM calls or be interrupted by STA pump reentrancy
 
 ## Assessment Format
 

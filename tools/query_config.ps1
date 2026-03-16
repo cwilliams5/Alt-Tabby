@@ -8,12 +8,18 @@
 #   powershell -File tools/query_config.ps1 theme                 (fuzzy search for "theme")
 #   powershell -File tools/query_config.ps1 -Section GUI          (list all settings in a section)
 #   powershell -File tools/query_config.ps1 -Usage GUI_RowHeight  (find all consumers of cfg.X)
+#   powershell -File tools/query_config.ps1 -Format hex           (filter: all color/hex settings)
+#   powershell -File tools/query_config.ps1 -Type int             (filter: all settings of type int/bool/string)
+#   powershell -File tools/query_config.ps1 -HasBounds            (filter: all settings with min/max constraints)
 
 param(
     [Parameter(Position=0)]
     [string]$Search,
     [string]$Section,
-    [string]$Usage
+    [string]$Usage,
+    [string]$Format,
+    [string]$Type,
+    [switch]$HasBounds
 )
 
 $ErrorActionPreference = 'Stop'
@@ -83,10 +89,13 @@ foreach ($rawLine in $rawLines) {
                 $eOptions = ($Matches[1] -split ',' | ForEach-Object { $_.Trim().Trim($q) }) -join ', '
             }
             $eFmt = if ($e -match 'fmt:\s*"([^"]*)"') { $Matches[1] } else { $null }
+            $eMin = if ($e -match '\bmin:\s*(0x[0-9A-Fa-f]+|-?\d+(?:\.\d+)?)') { $Matches[1] } else { $null }
+            $eMax = if ($e -match '\bmax:\s*(0x[0-9A-Fa-f]+|-?\d+(?:\.\d+)?)') { $Matches[1] } else { $null }
 
             [void]$settings.Add(@{
                 S = $eS; K = $eK; G = $eG; T = $eT; D = $eD
                 Default = $eDefault; Options = $eOptions; Fmt = $eFmt
+                Min = $eMin; Max = $eMax
                 SL = $eS.ToLower(); KL = $eK.ToLower(); GL = $eG.ToLower()
                 DL = $eD.ToLower()
             })
@@ -94,6 +103,43 @@ foreach ($rawLine in $rawLines) {
 
         $entryText = ""
     }
+}
+
+# === Metadata filter modes ===
+if ($Format -or $Type -or $HasBounds.IsPresent) {
+    $filtered = [System.Collections.ArrayList]::new()
+    foreach ($st in $settings) {
+        if ($Format -and $st.Fmt -ne $Format) { continue }
+        if ($Type -and $st.T -ne $Type) { continue }
+        if ($HasBounds.IsPresent -and (-not $st.Min -and -not $st.Max)) { continue }
+        [void]$filtered.Add($st)
+    }
+
+    $label = "Filtered settings"
+    if ($Format) { $label = "Settings with fmt=$Format" }
+    elseif ($Type) { $label = "Settings with type=$Type" }
+    elseif ($HasBounds.IsPresent) { $label = "Settings with min/max bounds" }
+
+    Write-Host ""
+    Write-Host "  $label ($($filtered.Count)):" -ForegroundColor White
+    Write-Host ""
+
+    foreach ($st in $filtered) {
+        $typeInfo = "type: $($st.T)"
+        if ($st.Options) { $typeInfo += "  options: $($st.Options)" }
+        $defaultInfo = "default: $($st.Default)"
+        if ($st.Fmt) { $defaultInfo += " [fmt=$($st.Fmt)]" }
+        if ($st.Min -or $st.Max) { $defaultInfo += " [min=$($st.Min) max=$($st.Max)]" }
+
+        Write-Host "  [$($st.S)] $($st.K)  $($st.G)" -ForegroundColor Green
+        Write-Host "    $typeInfo  $defaultInfo" -ForegroundColor DarkGray
+        if ($st.D) {
+            Write-Host "    $($st.D)" -ForegroundColor DarkGray
+        }
+    }
+
+    Write-Host ""
+    exit 0
 }
 
 # === No arguments: show section/group index ===
@@ -116,9 +162,10 @@ if (-not $Search -and -not $Section -and -not $Usage) {
     }
 
     Write-Host ""
-    Write-Host "  Search: query_config.ps1 <keyword>" -ForegroundColor DarkGray
-    Write-Host "  List:   query_config.ps1 -Section <name>" -ForegroundColor DarkGray
-    Write-Host "  Usage:  query_config.ps1 -Usage <propertyName>" -ForegroundColor DarkGray
+    Write-Host "  Search:  query_config.ps1 <keyword>" -ForegroundColor DarkGray
+    Write-Host "  List:    query_config.ps1 -Section <name>" -ForegroundColor DarkGray
+    Write-Host "  Usage:   query_config.ps1 -Usage <propertyName>" -ForegroundColor DarkGray
+    Write-Host "  Filter:  query_config.ps1 -Format hex | -Type int | -HasBounds" -ForegroundColor DarkGray
     Write-Host ""
     exit 0
 }
@@ -214,7 +261,8 @@ if ($Section) {
         $typeInfo = "type: $($st.T)"
         if ($st.Options) { $typeInfo += "  options: $($st.Options)" }
         $defaultInfo = "default: $($st.Default)"
-        if ($st.Fmt -eq 'hex') { $defaultInfo += " [hex]" }
+        if ($st.Fmt) { $defaultInfo += " [fmt=$($st.Fmt)]" }
+        if ($st.Min -or $st.Max) { $defaultInfo += " [min=$($st.Min) max=$($st.Max)]" }
 
         Write-Host "  [$sectionName] $($st.K)  $($st.G)" -ForegroundColor Green
         Write-Host "    $typeInfo  $defaultInfo" -ForegroundColor DarkGray
@@ -274,7 +322,8 @@ foreach ($r in $sorted) {
     $typeInfo = "type: $($st.T)"
     if ($st.Options) { $typeInfo += "  options: $($st.Options)" }
     $defaultInfo = "default: $($st.Default)"
-    if ($st.Fmt -eq 'hex') { $defaultInfo += " [hex]" }
+    if ($st.Fmt) { $defaultInfo += " [fmt=$($st.Fmt)]" }
+    if ($st.Min -or $st.Max) { $defaultInfo += " [min=$($st.Min) max=$($st.Max)]" }
 
     Write-Host "  [$($st.S)] $($st.K)  $($st.G)" -ForegroundColor Green
     Write-Host "    $typeInfo  $defaultInfo" -ForegroundColor DarkGray

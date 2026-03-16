@@ -72,7 +72,7 @@ Data structures that grow over time without pruning:
 Split by resource type for independent parallel exploration:
 
 - **D2D / GDI+** — `src/gui/gui_paint.ahk`, `src/gui/gui_overlay.ahk`, `src/gui/gui_gdip.ahk`, any file using `D2D_*` functions. Some `Gdip_*` may remain in `src/lib/` but the paint pipeline is D2D now
-- **Win32 handles** — `src/core/` producers, `src/shared/ipc_pipe.ahk`, DllCall-heavy files. Use `query_function_visibility.ps1` to trace cleanup call chains and `query_callchain.ps1 -Reverse` to find all callers that should reach cleanup — verify every Create/Open has a corresponding Close/Delete reachable from all callers.
+- **Win32 handles** — `src/core/` producers, `src/shared/ipc_pipe.ahk`, DllCall-heavy files. Use `query_function_visibility.ps1` to trace cleanup call chains and `query_callchain.ps1 -Reverse` to find all callers that should reach cleanup — verify every Create/Open has a corresponding Close/Delete reachable from all callers. Use `query_global_ownership.ps1 <resource>` to determine who declares and writes resource handles (responsible for cleanup). Use `query_impact.ps1 <cleanup_func>` to assess the blast radius if a cleanup function is missing or broken.
 - **Timers** — use `query_timers.ps1` to inventory all timers, then check each for proper cleanup
 - **Pipe IPC** — `src/shared/ipc_pipe.ahk`, `src/pump/` files
 - **Data growth** — `src/shared/window_list.ahk` (window store), icon/process caches

@@ -150,6 +150,7 @@ Split by optimization category (run in parallel):
 - Grep for pattern scanning across all HLSL files
 - Read for examining specific shaders in detail
 - The `.glsl` file next to each `.hlsl` is the original Shadertoy source for reference
+- `query_interface.ps1 <file>` — understand the public surface of D3D11 infrastructure files (`d2d_shader.ahk`, `gui_effects.ahk`) when tracing how shaders are loaded and composed
 
 ## Assessment Format
 

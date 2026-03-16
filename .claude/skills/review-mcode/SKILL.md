@@ -12,7 +12,7 @@ MCode replaces AHK-interpreted tight loops with native C machine code embedded a
 
 All four must be true:
 
-1. **Hot path** — called frequently OR scales with data (per-window, per-pixel, per-byte). Use `query_function_visibility.ps1` to check call frequency — a loop called 1x/session vs 100x/sec changes the MCode ROI.
+1. **Hot path** — called frequently OR scales with data (per-window, per-pixel, per-byte). Use `query_function_visibility.ps1` to check call frequency — a loop called 1x/session vs 100x/sec changes the MCode ROI. Use `query_callchain.ps1 <funcName> -Reverse` to trace all invocation contexts. Use `query_timers.ps1` to check if the candidate is inside a timer callback (hot path signal).
 2. **Pure buffer computation** — operates on `Buffer` / `NumGet` / `NumPut`, not AHK objects
 3. **Interpreter-bound** — the bottleneck is AHK loop overhead, not an underlying Win32/native call
 4. **Measurable** — worst-case cost exceeds ~100μs (below that, DllCall overhead eats the savings)

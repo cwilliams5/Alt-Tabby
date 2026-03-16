@@ -70,6 +70,8 @@ Exclude `src/lib/` (third-party code).
 
 Each explore agent should scan for ALL checklist patterns within its zone, not just one pattern at a time.
 
+Use `query_function_visibility.ps1 <funcName>` to validate whether flagged function call patterns are v1 or v2 — it shows all callers and the definition site, confirming whether indirect references (timers, callbacks) use v1 string syntax or v2 direct refs.
+
 ## Validation
 
 Many v1-looking patterns may actually be correct v2 code. AHK v2 kept some syntax from v1. **Validate every finding yourself** before including it in the plan.

@@ -41,7 +41,7 @@ Before testing combinations, build a current inventory by reading the code. Thes
 
 ## Step 2 — Test Combinatorial Paths
 
-For each pair/group of options, trace the user journey through the code. Use `query_callchain.ps1` to follow how config option reads flow through functions across files. Use `query_ipc.ps1` to check cross-process message flows that can trigger option interactions:
+For each pair/group of options, trace the user journey through the code. Use `query_callchain.ps1` to follow how config option reads flow through functions across files. Use `query_ipc.ps1` to check cross-process message flows that can trigger option interactions. Use `query_function_visibility.ps1 <funcName>` to find all callers of elevation/UAC functions. Use `query_global_ownership.ps1 <globalName>` to trace install state ownership across files:
 
 - How does feature X behave when run as admin vs not admin?
 - What happens if UAC is refused at each elevation prompt?

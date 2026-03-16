@@ -84,7 +84,7 @@ Match timestamps across sources to build the full picture.
 
 If the cause is clear:
 - Explain the root cause with evidence from the data
-- Point to the relevant code (use query tools — `query_state.ps1` for state machine issues, `query_messages.ps1` for message handlers)
+- Point to the relevant code (use query tools — `query_state.ps1` for state machine issues, `query_messages.ps1` for message handlers, `query_events.ps1 <code>` to look up event field meanings and emitter functions)
 - Suggest whether this is a bug to fix or a known limitation
 
 If the cause is unclear:

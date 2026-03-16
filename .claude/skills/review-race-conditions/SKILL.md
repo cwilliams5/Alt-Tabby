@@ -62,6 +62,7 @@ Split by concurrency boundary, not just file location:
 - **IPC handlers** — `ipc_pipe.ahk`, pump files: pipe read/write paths
 - **State machine** — use `query_state.ps1` to extract specific branches from `GUI_OnInterceptorEvent` without loading the full function
 - **Call graph** — use `query_function_visibility.ps1` to map which interrupt sources can reach vulnerable code (e.g., "is this function called from both timer callbacks and hotkey handlers?")
+- **Mutation detail** — use `query_mutations.ps1 <globalName>` to see per-function mutation sites with assignment operators and assigned values — reveals unguarded writes without reading full files
 
 ## Validation
 
