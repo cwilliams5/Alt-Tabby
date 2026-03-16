@@ -653,6 +653,57 @@ RunUnitTests_CoreStore() {
     WL_RemoveWindow([testHwnd], true)
 
     ; ============================================================
+    ; Monotonic lastActivatedTick Regression (#179)
+    ; ============================================================
+    ; _WS_ApplyPatch rejects stale (lower) lastActivatedTick writes.
+    ; Without this guard, UWP retry probes can overwrite a newer tick
+    ; with a stale one, corrupting MRU ordering.
+    Log("`n--- Monotonic lastActivatedTick Tests (#179) ---")
+
+    WL_Init()
+    WL_BeginScan()
+    monoRecs := []
+    monoRecs.Push(_TestRec(Map("hwnd", 17901, "title", "Mono_A", "class", "T", "pid", 1,
+                                "z", 1, "lastActivatedTick", 2000)))
+    monoRecs.Push(_TestRec(Map("hwnd", 17902, "title", "Mono_B", "class", "T", "pid", 2,
+                                "z", 2, "lastActivatedTick", 1000)))
+    WL_UpsertWindow(monoRecs, "test")
+    WL_EndScan()
+
+    ; Test 1: Stale tick rejected via WL_UpdateFields (Map patch)
+    res179 := WL_UpdateFields(17901, Map("lastActivatedTick", 500), "test")
+    AssertEq(gWS_Store[17901].lastActivatedTick, 2000, "#179: stale tick rejected (2000 preserved)")
+    AssertEq(res179.changed, false, "#179: stale tick = no change reported")
+
+    ; Test 2: Equal tick is a no-op (not < guard, but == means no change)
+    res179eq := WL_UpdateFields(17901, Map("lastActivatedTick", 2000), "test")
+    AssertEq(gWS_Store[17901].lastActivatedTick, 2000, "#179: equal tick preserved")
+
+    ; Test 3: Higher tick accepted
+    res179hi := WL_UpdateFields(17901, Map("lastActivatedTick", 3000), "test")
+    AssertEq(gWS_Store[17901].lastActivatedTick, 3000, "#179: higher tick accepted")
+    AssertEq(res179hi.changed, true, "#179: higher tick = change reported")
+
+    ; Test 4: BatchUpdateFields rejects stale tick but applies other fields
+    WL_GetDisplayList()  ; Reset dirty flags
+    batchMono := Map()
+    batchMono[17901] := Map("lastActivatedTick", 500, "title", "Mono_A_Updated")
+    batchRes179 := WL_BatchUpdateFields(batchMono, "test")
+    AssertEq(gWS_Store[17901].lastActivatedTick, 3000, "#179 batch: stale tick rejected (3000 preserved)")
+    AssertEq(gWS_Store[17901].title, "Mono_A_Updated", "#179 batch: other fields still applied")
+    AssertEq(batchRes179.changed, 1, "#179 batch: changed=1 (title changed)")
+
+    ; Test 5: MRU sort order preserved after stale tick rejection
+    WL_GetDisplayList()  ; Prime cache
+    WL_UpdateFields(17901, Map("lastActivatedTick", 100), "test")  ; Stale - should be rejected
+    proj179 := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(proj179.items[1].hwnd, 17901, "#179 sort: A still first (tick 3000 preserved)")
+    AssertEq(proj179.items[2].hwnd, 17902, "#179 sort: B still second (tick 1000)")
+
+    ; Cleanup
+    WL_RemoveWindow([17901, 17902], true)
+
+    ; ============================================================
     ; Path 1.5: MRU Bump Optimization Tests
     ; ============================================================
     ; When only MRU fields change (lastActivatedTick/isFocused), Path 1.5 does an
