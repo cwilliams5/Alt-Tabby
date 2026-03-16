@@ -66,9 +66,10 @@ This is not "is this a good idea" — it's "name the exact interleaving." What i
 
 These Critical sections have been deliberately designed, tested, and documented. Do not propose removing, narrowing, or questioning them:
 
-- **`Critical "On"` through the entire `GUI_OnInterceptorEvent` handler including GDI+ rendering** (~16ms). This was previously narrowed and reverted — releasing before render causes partial glass background, window mapping corruption, and stale projection data. See `keyboard-hooks.md` "Do NOT Release Critical Before Rendering." This is the most important Critical section in the codebase.
+- **`Critical "On"` through the entire `GUI_OnInterceptorEvent` handler including GDI+ rendering** (~16ms). This was previously narrowed and reverted — releasing before render causes partial glass background, window mapping corruption, and stale projection data. See `keyboard-hooks.md` "CRITICAL: Critical Sections During Rendering (Context-Dependent)." No internal abort points — unsafe to interrupt. This is the most important Critical section in the codebase.
 - **`Critical "On"` in `_INT_Alt_Down`, `_INT_Alt_Up`, `_INT_Tab_Down`, `_INT_Tab_Up`, `_INT_Tab_Decide`, `_INT_Ctrl_Down`, `_INT_Escape_Down`** — all hotkey callbacks require Critical to prevent callback-interrupting-callback corruption.
 - **`Critical "On"` in `_Anim_FrameLoop`** — covers `_Anim_UpdateTweens()` → `GUI_Repaint()` → DComp sync. Phase 1 (#177) deliberately moved the long blocking wait (compositor clock / waitable swap chain) OUTSIDE Critical so the AHK message pump runs during the wait. The Critical section is only held during the render + present + commit sequence. This is the intended design.
+- **`Critical "Off"` before `_GUI_ShowOverlayWithFrozen()` in `_GUI_GraceTimerFired`** — must release before the 1-2s first paint or Windows' `LowLevelHooksTimeout` (~300ms) silently removes hooks (#303). This is safe because the show path has 3 RACE FIX abort points that detect `gGUI_State != "ACTIVE"`. This is the deliberate opposite of `GUI_OnInterceptorEvent` — context-dependent rule, see `keyboard-hooks.md`.
 - **Async activation event buffer** (`gGUI_EventBuffer`) — Critical around buffer push/pop is necessary by design.
 - **Flight recorder `FR_Record()`** — if it uses Critical, it's protecting the ring buffer write pointer. Pre-allocated, intentional.
 

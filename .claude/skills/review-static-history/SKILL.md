@@ -32,7 +32,7 @@ Group fix commits by root cause class. Use occurrence count as a signal, not a h
 Cross-reference each pattern against the current pre-gate inventory:
 
 **Already caught** (validate these are working):
-- Missing `global` declaration → `check_batch_simple.ps1` (switch_global sub-check) + `query_global_ownership.ps1 -Check`
+- Missing `global` declaration → `check_batch_simple_b.ps1` (switch_global sub-check) + `query_global_ownership.ps1 -Check`
 - Cross-file private function calls → `query_function_visibility.ps1 -Check`
 - Ownership violations → `query_global_ownership.ps1 -Check`
 

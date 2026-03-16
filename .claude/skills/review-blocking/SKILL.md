@@ -82,7 +82,7 @@ Use `query_state.ps1` to determine if a blocking function is only reachable from
 **Critical section duration:**
 - Work inside `Critical "On"` ... `Critical "Off"` that doesn't need the interrupt lock
 - Computations that could be moved before Critical or after Critical
-- Note: Do NOT suggest removing Critical sections or restructuring them — that's `review-race-conditions` territory. Only suggest moving non-critical work outside the existing boundaries.
+- Note: Do NOT suggest removing Critical sections or restructuring them — that's `review-criticals` territory. Only suggest moving non-critical work outside the existing boundaries.
 
 **Cache opportunities:**
 - Pure computations (same input → same output) that are called repeatedly with the same arguments
@@ -92,7 +92,7 @@ Use `query_state.ps1` to determine if a blocking function is only reachable from
 
 - **Algorithmic changes that alter the function's contract** — changing sort order, filtering differently, returning different data
 - **Moving work to a different function or restructuring call patterns** — that's `review-latency` territory
-- **Removing Critical sections or changing their scope** — that's `review-race-conditions` territory
+- **Removing Critical sections or changing their scope** — that's `review-criticals` territory
 - **Buffer loops suitable for MCode** — that's `review-mcode` territory (but do note if you spot one, as a cross-reference)
 
 ### Micro-audit output (per function)

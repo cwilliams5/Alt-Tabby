@@ -45,7 +45,7 @@ These have been deliberately designed and tested — flagging them wastes time:
 
 - `Critical "On"` held through the entire `GUI_OnInterceptorEvent` handler including rendering (~16ms). This is intentional — releasing early causes corruption.
 - `SendMode("Event")` instead of `SendInput` — prevents hook uninstall during sends.
-- Async activation with `gGUI_EventBuffer` — events buffered while `gGUI_PendingPhase != ""`.
+- Async activation with `gGUI_EventBuffer` — events buffered while `gGUI_Pending.phase != ""`.
 - Lost Tab synthesis (`ALT_DN` + `ALT_UP` without `TAB`).
 - Flight recorder `FR_Record()` — pre-allocated ring buffer, writes are inherently safe.
 - `_GUI_LogError()` — always-on by design.

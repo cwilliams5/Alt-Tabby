@@ -118,7 +118,7 @@ This is separate from the two paths above — even if Path 1 and Path 2 are indi
 Split by hot path (run in parallel):
 
 - **Path 1 agent**: All producers in `src/core/`, eligibility in `blacklist.ahk`, store internals in `window_list.ahk`. Focus on per-event callback cost.
-- **Path 2 agent**: `gui_interceptor.ahk`, `gui_state.ahk`, `gui_input.ahk`, `gui_data.ahk`, `gui_overlay.ahk`, `gui_antiflash.ahk`, `gui_workspace.ahk`. Focus on keypress-to-paint-call and paint-done-to-visible sequences. Do NOT audit the rendering pipeline itself.
+- **Path 2 agent**: `gui_interceptor.ahk`, `gui_state.ahk`, `gui_input.ahk`, `gui_data.ahk`, `gui_overlay.ahk`, `src/shared/gui_antiflash.ahk`, `gui_workspace.ahk`. Focus on keypress-to-paint-call and paint-done-to-visible sequences. Do NOT audit the rendering pipeline itself.
 - **Cross-cutting agent**: `query_timers.ps1` output, Critical section durations, any synchronous I/O on the main thread. Scan all `src/gui/` and `src/core/` files for blocking operations.
 
 ### Tools
