@@ -57,8 +57,10 @@ GUI_ActivateItem(item) {
     if (gFR_Enabled)
         FR_Record(FR_EV_ACTIVATE_START, hwnd, isOnCurrent)
 
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+
     ; DEBUG: Log all async activation conditions
-    if (cfg.DiagEventLog) {
+    if (diagLog) {
         komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
         komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
         curWS := gGUI_CurrentWSName != "" ? gGUI_CurrentWSName : "(unknown)"
@@ -71,7 +73,7 @@ GUI_ActivateItem(item) {
         gStats_CrossWorkspace += 1
 
         crossMethod := cfg.KomorebiCrossWorkspaceMethod
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("CROSS-WS: method=" crossMethod " hwnd=" hwnd " ws='" wsName "'")
 
         ; MimicNative: Direct uncloak + activate via COM (like native Alt+Tab)
@@ -79,12 +81,12 @@ GUI_ActivateItem(item) {
         if (crossMethod = "MimicNative") {
             ; Returns: 0=failed, 1=uncloaked (need activate), 2=uncloaked+activated via SwitchTo
             uncloakResult := _GUI_UncloakWindow(hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("CROSS-WS: MimicNative uncloakResult=" uncloakResult)
 
             if (uncloakResult = 2) {
                 ; Full success - SwitchTo handled activation
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("CROSS-WS: MimicNative success (SwitchTo)")
                 ; Optional settle delay for slower systems
                 if (cfg.KomorebiMimicNativeSettleMs > 0)
@@ -94,7 +96,7 @@ GUI_ActivateItem(item) {
                 return true
             } else if (uncloakResult = 1) {
                 ; Uncloaked but SwitchTo failed - use manual activation
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
                 if (GUI_RobustActivate(hwnd))
                     _GUI_UpdateLocalMRU(hwnd)
@@ -102,7 +104,7 @@ GUI_ActivateItem(item) {
                 return true
             }
             ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("CROSS-WS: MimicNative failed, falling back to SwitchActivate")
         }
 
@@ -111,14 +113,14 @@ GUI_ActivateItem(item) {
         if (crossMethod = "RevealMove") {
             ; Step 1: Uncloak (we only need uncloaking, not SwitchTo)
             uncloakResult := _GUI_UncloakWindow(hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("CROSS-WS: RevealMove uncloakResult=" uncloakResult)
 
             if (uncloakResult > 0) {
                 ; Step 2: Focus the window (makes it the "focused window" for komorebic)
                 ; Gate on success — if activation fails, komorebic move would target wrong window
                 if (GUI_RobustActivate(hwnd)) {
-                    if (cfg.DiagEventLog)
+                    if (diagLog)
                         GUI_LogEvent("CROSS-WS: RevealMove focused window")
 
                     ; Step 3: Command komorebi to move the focused window to its workspace
@@ -126,19 +128,19 @@ GUI_ActivateItem(item) {
                     try {
                         _GUI_KomorebiWorkspaceCmd("MoveToNamedWorkspace", "move-to-named-workspace", wsName)
                     } catch as e {
-                        if (cfg.DiagEventLog)
+                        if (diagLog)
                             GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
                     }
 
                     _GUI_UpdateLocalMRU(hwnd)
-                } else if (cfg.DiagEventLog) {
+                } else if (diagLog) {
                     GUI_LogEvent("CROSS-WS: RevealMove activation failed, skipping move")
                 }
                 Profiler.Leave() ; @profile
                 return true
             }
             ; uncloakResult = 0: COM failed, fall through to SwitchActivate
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("CROSS-WS: RevealMove failed (COM), falling back to SwitchActivate")
         }
 
