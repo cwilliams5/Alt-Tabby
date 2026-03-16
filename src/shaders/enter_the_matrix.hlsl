@@ -39,7 +39,8 @@ float4 PSMain(PSInput input) : SV_Target {
         // Texture lookup for character mask
         float2 texUV = (p.xz + ceil(T + X.x)) / 4.0;
         float texA = iChannel0.Sample(samp0, texUV).a;
-        M = 4.0 * pow(smoothstep(1.0, 0.5, texA), 8.0) - 5.0;
+        float ss = smoothstep(1.0, 0.5, texA); float ss2 = ss*ss; float ss4 = ss2*ss2;
+        M = 4.0 * (ss4 * ss4) - 5.0; // pow(x,8)
 
         A += p.y * 0.6 - (M + A + A + 3.0) / 67.0;
 

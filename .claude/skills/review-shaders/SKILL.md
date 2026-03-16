@@ -207,3 +207,13 @@ Then for each affected file, list the specific locations as a sub-table or bulle
 Order within each section by total impact (per-pixel savings × number of affected shaders, highest first).
 
 Ignore any existing plans — create a fresh one.
+
+## MANDATORY: Post-Implementation Verification
+
+After implementing any shader changes, you MUST:
+
+1. **Run the full `--live` test suite** — `powershell -File tests/test.ps1 --live`. This compiles the exe (which compiles HLSL→DXBC) and validates everything end-to-end.
+2. **Check `git status`** for changed `.bin` files in `resources/shaders/`. HLSL source changes produce new compiled DXBC binaries — these MUST be committed alongside the `.hlsl` changes.
+3. **Do not ship** until both the test suite passes and all compiled bins are staged.
+
+Shader changes without compiled bins are broken — the compiled exe embeds the `.bin` files, not the `.hlsl` source.

@@ -80,7 +80,8 @@ void nm() {
 }
 
 void px() {
-    cc = float3(0.35, 0.25, 0.45) + length(pow(abs(rd + float3(0.0, 0.5, 0.0)), (float3)3)) * 0.3 + gl;
+    float3 rd_off = abs(rd + float3(0.0, 0.5, 0.0));
+    cc = float3(0.35, 0.25, 0.45) + length(rd_off * rd_off * rd_off) * 0.3 + gl; // pow(x,3)
     float3 l = float3(0.9, 0.7, 0.5);
     if (cd > 128.0) { oa = 1.0; return; }
     float df = saturate(length(cn * l));
