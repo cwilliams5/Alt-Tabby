@@ -459,10 +459,12 @@ _GUIPump_OnMessage(msg, hPipe) {
     ; Re-enqueue hwnds the pump returned nothing for (silently dropped).
     ; Without this, windows that failed enrichment (e.g., cloaked windows where
     ; WinGetPID fails transiently) are permanently lost from the icon queue.
-    global _gPump_LastSentHwnds, gWS_IconQueue, gWS_IconQueueDedup
+    global _gPump_LastSentHwnds
     if (_gPump_LastSentHwnds.Length > 0) {
         requeueCount := 0
-        Critical "On"
+        ; No outer Critical needed — WL_EnqueueIconDirect manages its own atomicity
+        ; for the dedup-check-then-insert. Loop variables (results, _gPump_LastSentHwnds)
+        ; are local/private, and WL_GetByHwnd is a read-only store lookup.
         for _, h in _gPump_LastSentHwnds {
             h := h + 0
             if (!h)
@@ -473,13 +475,9 @@ _GUIPump_OnMessage(msg, hPipe) {
             row := WL_GetByHwnd(h)
             if (!row || row.iconHicon || !row.present)
                 continue  ; Already has icon, or window gone
-            if (gWS_IconQueueDedup.Has(h))
-                continue  ; Already queued
-            gWS_IconQueue.Push(h)
-            gWS_IconQueueDedup[h] := true
+            WL_EnqueueIconDirect(h)
             requeueCount++
         }
-        Critical "Off"
         _gPump_LastSentHwnds := []
         if (requeueCount > 0 && cfg.DiagPumpLog)
             _GUIPump_Log("RETRY: re-enqueued " requeueCount " hwnds that pump returned nothing for")

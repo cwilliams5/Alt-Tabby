@@ -120,7 +120,6 @@ FX_GPU_Init() {
         ; --- Background image effect chain: Blur → Saturation → ColorMatrix ---
         ; Wrapped in try/catch: failure falls back to direct DrawBitmap (no effects)
         try {
-            global gBGImg_EffectsReady
             gFX_GPU["bgImgBlur"]  := gD2D_RT.CreateEffect(CLSID_D2D1GaussianBlur)
             gFX_GPU["bgImgSat"]   := gD2D_RT.CreateEffect(CLSID_D2D1Saturation)
             gFX_GPU["bgImgColor"] := gD2D_RT.CreateEffect(CLSID_D2D1ColorMatrix)
@@ -130,7 +129,7 @@ FX_GPU_Init() {
             gFX_GPUOutput["bgImgColor"] := gFX_GPU["bgImgColor"].GetOutput()
             ; Shadow effect (independent — not part of blur/sat/color chain)
             gFX_GPU["bgImgShadow"] := gD2D_RT.CreateEffect(CLSID_D2D1Shadow)
-            gBGImg_EffectsReady := true
+            BGImg_NotifyEffectsReady()
         } catch {
             ; Background image effects unavailable — BGImg_Draw falls back to direct DrawBitmap
         }
