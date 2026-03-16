@@ -3,6 +3,8 @@
 // creating ripples that propagate, interfere, and reflect off boundaries.
 // Nearly invisible when calm — waves visible through specular highlights and Fresnel.
 
+static const float3 lightDir = float3(0.2591958, -0.4319929, 0.8639858);  // normalize(0.3,-0.5,1.0)
+
 
 struct Cell {
     float2 _pad0;     // offset 0-7
@@ -111,7 +113,6 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 normal = normalize(float3(-ddx(height) * 60.0, -ddy(height) * 60.0, 1.0));
 
     // Lighting
-    float3 lightDir = normalize(float3(0.3, -0.5, 1.0));
     float3 viewDir = float3(0.0, 0.0, 1.0);
     float3 halfVec = normalize(lightDir + viewDir);
 

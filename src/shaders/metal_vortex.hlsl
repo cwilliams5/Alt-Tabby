@@ -3,6 +3,8 @@
 #define MAX_STEPS_REF 32
 #define MAX_STEPS_SHAD 16
 
+static const float3 refLightDir = float3(0.1690309, 0.5070926, -0.8451543);  // normalize(1,3,-5)
+
 static int mat_id;
 static float3 ref_vec = float3(0.0, 0.0, 0.0);
 
@@ -158,7 +160,7 @@ float4 traceRef(float3 ro, float3 rd, float start_d, float end_d) {
         k = map(ro + rd * t);
         t += k * 0.25;
         if (k < SURF_DIST) {
-            float light = dot(calcNormal(ro + rd * t), normalize(float3(1.0, 3.0, -5.0))) * 2.0;
+            float light = dot(calcNormal(ro + rd * t), refLightDir) * 2.0;
             if (mat_id == 1)
                 col = float3(0.5, 0.5, 0.5);
             else if (mat_id == 3)
@@ -191,7 +193,7 @@ float softShadow(float3 ro, float3 rd, float start_d, float end_d, float k) {
         if (h < SURF_DIST || d > end_d) break;
     }
 
-    return min(max(shade, 0.0) + 0.3, 1.0);
+    return saturate(shade + 0.3);
 }
 
 float3 lighting(float3 sp, float3 camPos, int reflectionPass, float _st, float _ct, float _st2, float _ct2) {

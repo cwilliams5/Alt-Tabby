@@ -22,14 +22,14 @@ float2 Noise(float3 x)
 
 float4 Density(float3 pos)
 {
-    pos /= 30.0;
+    pos *= 0.03333333;
     float2 s = (float2)0;
     s += Noise(pos.xyz);
     s += Noise(pos.zxy * 2.0) * 0.5;
     s += Noise(pos.yzx * 4.0) * 0.25;
     s += Noise(pos.xzy * 8.0) * 0.125;
 
-    s /= 2.0 - 0.125;
+    s *= 0.53333333;
 
     float sy2 = s.y*s.y; float sy4 = sy2*sy2;
     s.y = s.y*sy4;

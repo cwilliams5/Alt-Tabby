@@ -25,7 +25,7 @@ float4 PSMain(PSInput input) : SV_Target {
         e = p.y;
         f = p.y;
         for (; s < 50.0;) {
-            s /= 0.66;
+            s *= 1.51515151;
             p.xz = mul(rotate2D(s), p.xz);
             float inv_s = 1.0 / s;
             e += abs(dot(sin(p * s) * inv_s, (float3)0.6));

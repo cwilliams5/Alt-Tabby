@@ -132,7 +132,7 @@ float3 RaindropSurface(float2 XY, float DistanceScale, float ZScale) {
     float TempZ = 1.0 - xA * xA - yA * yA;
     float Z = pow(max(TempZ, 0.0), halfA);
     float ZInMAndN = (Z - M) / (N - M);
-    float t = min(max(ZInMAndN, 0.0), 1.0);
+    float t = saturate(ZInMAndN);
 
     float Height = S * t * t * (3.0 - 2.0 * t);
 

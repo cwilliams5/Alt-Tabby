@@ -22,7 +22,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Angle from center (0-1)
     float2 delta = px - rc;
     float angle = atan2(delta.y, delta.x);
-    float perim = frac(angle / 6.28318 + 0.5);
+    float perim = frac(angle * 0.15915494 + 0.5);
 
     // Rotating gradient — full spectrum cycling around the border
     float rotation = time * 0.15;

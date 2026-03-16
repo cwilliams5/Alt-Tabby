@@ -1,6 +1,7 @@
 // CC0: Spirals for windows terminal
 static const float PI = 3.141592654;
 static const float TAU = 2.0 * PI;
+static const float3 baseDro = float3(0.3162278, 0.0, 0.9486833);  // normalize(1,0,3)
 
 // GLSL mod: x - y * floor(x/y)
 float glsl_mod(float x, float y) { return x - y * floor(x / y); }
@@ -52,7 +53,7 @@ float2 rayCylinder(float3 ro, float3 rd, float3 cb, float3 ca, float cr) {
 }
 
 float3 skyColor(float3 ro, float3 rd) {
-    float3 l = normalize(float3(0.0, 0.0, -1.0));
+    float3 l = float3(0.0, 0.0, -1.0);  // already unit vector, normalize is no-op
     float3 baseCol = 0.005 * float3(0.05, 0.33, 1.0);
     return baseCol / (1.00025 + dot(rd, l));
 }
@@ -116,7 +117,7 @@ float3 color_val(float3 ww, float3 uu, float3 vv, float3 ro, float2 p) {
 float3 effect(float2 p, float2 pp) {
     float tm = time;
     float3 ro = float3(0.0, 0.0, tm);
-    float3 dro = normalize(float3(1.0, 0.0, 3.0));
+    float3 dro = baseDro;
     // dro.xz *= ROT(0.2*sin(0.05*tm))
     float2 dro_xz = rot2(float2(dro.x, dro.z), 0.2 * sin(0.05 * tm));
     dro.x = dro_xz.x;

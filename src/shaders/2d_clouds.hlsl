@@ -45,8 +45,9 @@ float fbm(float2 n) {
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
+    float aspect = resolution.x / resolution.y;
     float2 p = fragCoord.xy / resolution.xy;
-    float2 uv = p * float2(resolution.x / resolution.y, 1.0);
+    float2 uv = p * float2(aspect, 1.0);
     float t = time * speed;
     float q = fbm(uv * cloudscale * 0.5);
 
@@ -63,7 +64,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     //noise shape
     float f = 0.0;
-    uv = p * float2(resolution.x / resolution.y, 1.0);
+    uv = p * float2(aspect, 1.0);
     uv *= cloudscale;
     uv -= q - t;
     weight = 0.7;
@@ -78,7 +79,7 @@ float4 PSMain(PSInput input) : SV_Target {
     //noise colour
     float c = 0.0;
     t = time * speed * 2.0;
-    uv = p * float2(resolution.x / resolution.y, 1.0);
+    uv = p * float2(aspect, 1.0);
     uv *= cloudscale * 2.0;
     uv -= q - t;
     weight = 0.4;
@@ -91,7 +92,7 @@ float4 PSMain(PSInput input) : SV_Target {
     //noise ridge colour
     float c1 = 0.0;
     t = time * speed * 3.0;
-    uv = p * float2(resolution.x / resolution.y, 1.0);
+    uv = p * float2(aspect, 1.0);
     uv *= cloudscale * 3.0;
     uv -= q - t;
     weight = 0.4;

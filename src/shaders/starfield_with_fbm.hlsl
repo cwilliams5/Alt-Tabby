@@ -76,14 +76,15 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
 
     // get coords and direction
+    float aspect = resolution.x / resolution.y;
     float2 uv = fragCoord.xy / resolution.xy - 0.5;
-    uv.y *= resolution.y / resolution.x;
+    uv.y /= aspect;
     float3 dir = float3(uv * zoom, 1.);
 
     float3 from = float3(1., .5, 0.5);
 
     float2 pos = (fragCoord.xy / resolution.xy) * 2.0 - 1.0;
-    pos.x *= resolution.x / resolution.y;
+    pos.x *= aspect;
 
     float2 pos2 = pos;
     pos2.y -= time * .10;
