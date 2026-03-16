@@ -925,6 +925,76 @@ foreach ($file in $srcFiles) {
     }
 }
 
+# Pass 2b: .Bind() arity check — verify bound args don't exceed function's max params
+# The direct-call check (above) explicitly skips .Bind() calls (line 878). This pass
+# catches cases where too many arguments are pre-bound via .Bind(), which AHK v2 silently
+# drops at runtime (no error, just wrong behavior).
+$bindRegex = [regex]::new('(?<!\.)(\w+)\s*\.\s*Bind\s*\(', 'Compiled')
+
+foreach ($file in $srcFiles) {
+    $lines = $fileCache[$file.FullName]
+    $plCache = $processedLines[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw -match ';\s*lint-ignore:\s*arity') { continue }
+        if ($raw.IndexOf('.Bind(', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        $cleaned = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $raw }
+        if ($cleaned -eq '') { continue }
+
+        $bindMatches = $bindRegex.Matches($cleaned)
+        foreach ($bm in $bindMatches) {
+            $funcName = $bm.Groups[1].Value
+
+            # Must be a known user-defined function (skip variables, builtins, this/super)
+            if (-not $sharedFuncDefs.ContainsKey($funcName)) { continue }
+
+            $def = $sharedFuncDefs[$funcName]
+            if ($def.Variadic) { continue }  # No upper bound for variadic functions
+
+            # Extract .Bind() argument content (handles multi-line)
+            $bindParenPos = $bm.Index + $bm.Length - 1
+            $fullText = $cleaned
+            $lineIdx = $i
+            $afterParen = $fullText.Substring($bindParenPos)
+            $openParens = ($afterParen -split '\(').Count - ($afterParen -split '\)').Count
+            while ($openParens -gt 0 -and ($lineIdx + 1) -lt $lines.Count) {
+                $lineIdx++
+                $nc = if ($null -ne $plCache -and $null -ne $plCache[$lineIdx]) { $plCache[$lineIdx].Cleaned } else { BF_CleanLine $lines[$lineIdx] }
+                if ($nc -eq '') { continue }
+                $fullText += ' ' + $nc
+                $afterParen = $fullText.Substring($bindParenPos)
+                $openParens = ($afterParen -split '\(').Count - ($afterParen -split '\)').Count
+            }
+
+            $reBindMatch = $bindRegex.Match($fullText, $bm.Index)
+            if (-not $reBindMatch.Success) { continue }
+            $actualParenPos = $reBindMatch.Index + $reBindMatch.Length - 1
+
+            $argContent = BF_ExtractParenContent $fullText $actualParenPos
+            if ($null -eq $argContent) { continue }
+            $trimmedArgs = $argContent.Trim()
+            if ($trimmedArgs.Length -eq 0) { continue }  # .Bind() with no args is always valid
+
+            $boundArgCount = BF_CountArgs $argContent
+
+            if ($boundArgCount -gt $def.Max) {
+                [void]$arityIssues.Add([PSCustomObject]@{
+                    File     = $relPath
+                    Line     = ($i + 1)
+                    Function = "$funcName.Bind()"
+                    Detail   = "too many bound args: got $boundArgCount, function accepts max $($def.Max)"
+                    DefFile  = $def.File
+                    DefLine  = $def.Line
+                })
+            }
+        }
+    }
+}
+
 if ($arityIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
