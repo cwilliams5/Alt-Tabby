@@ -128,7 +128,8 @@ RunUnitTests_Cleanup() {
         sizeBefore := FileGetSize(testLogPath)
 
         if (sizeBefore <= 102400) {
-            Log("SKIP: LogTrim tail test: content only " sizeBefore " bytes (need > 102400)")
+            Log("FAIL: LogTrim tail test: content only " sizeBefore " bytes (need > 102400) - test wrote 128KB but file is too small")
+            TestErrors++
         } else {
             LogTrim(testLogPath)
 
