@@ -741,7 +741,9 @@ GUI_ReleaseComObjects() {
     global gGUI_Pending, gGUI_ImmersiveShell, gGUI_AppViewCollection
     gGUI_Pending.shell := ""
     gGUI_ImmersiveShell := ""
-    gGUI_AppViewCollection := ""
+    if (gGUI_AppViewCollection)
+        ObjRelease(gGUI_AppViewCollection)
+    gGUI_AppViewCollection := 0
 }
 
 ; Check if a window is cloaked via DWM
