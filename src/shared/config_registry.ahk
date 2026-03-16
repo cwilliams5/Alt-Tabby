@@ -968,10 +968,6 @@ global gConfigRegistry := [
      min: 0, max: 50,
      d: "Gap between content and footer in pixels"},
 
-    {s: "GUI", k: "FooterPaddingX", g: "GUI_FooterPaddingX", t: "int", default: 12, ; lint-ignore: dead-config
-     min: 0, max: 100,
-     d: "Footer horizontal padding in pixels"},
-
     ; ============================================================
     ; Komorebi Integration
     ; ============================================================

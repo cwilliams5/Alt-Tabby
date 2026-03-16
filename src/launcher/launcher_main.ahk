@@ -250,7 +250,7 @@ Launcher_StartSubprocesses() {
         hwndPath := A_Temp "\" StrLower(exeBase) "_hwnd.txt"
         try FileDelete(hwndPath)
         ; Line 1: launcher HWND, Line 2: gui PID, Line 3: pump PID
-        try FileAppend(A_ScriptHwnd "`n" g_GuiPID "`n" g_PumpPID, hwndPath)  ; lint-ignore: fileappend-encoding
+        try FileAppend(A_ScriptHwnd "`n" g_GuiPID "`n" g_PumpPID, hwndPath, "UTF-8")
     }
 
     ; Hide splash after duration/loops complete

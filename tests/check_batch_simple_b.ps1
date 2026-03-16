@@ -1011,21 +1011,14 @@ $liIssues = [System.Collections.ArrayList]::new()
 $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
 @(
     'phantom-global',
-    'singleinstance', 'winexist-cloaked', 'mixed-returns',
+    'mixed-returns',
     'critical-leak',
-    'ipc-constant', 'dllcall-types', 'isset-with-default',
-    'cfg-property', 'duplicate-function',
-    'fileappend-encoding',
-    'send-pattern', 'map-dot-access',
-    'thememsgbox', 'callback-critical', 'onmessage-collision',
-    'postmessage-unsafe', 'callback-signature',
+    'cfg-property',
+    'callback-critical', 'onmessage-collision',
+    'postmessage-unsafe',
     'static-in-timer', 'timer-lifecycle',
-    'dead-function', 'dead-config', 'dead-global', 'dead-local', 'dead-param', 'test-assertions',
-    'arity', 'error-boundary',
-    'onevent-name', 'destroy-untrack',
-    'unreachable-code', 'ipc-symmetry',
-    'callback-null-guard', 'setcallbacks-wiring', 'cosmetic-patch-safety',
-    'registry-duplicate-key', 'registry-completeness', 'registry-section-casing',
+    'dead-function', 'dead-config', 'dead-global', 'dead-param',
+    'error-boundary',
     'map-delete',
     'guard-try-finally'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
