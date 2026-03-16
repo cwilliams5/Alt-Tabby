@@ -156,13 +156,20 @@ Stats_Init() {
 Stats_FlushToDisk() {
     global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
     global gStats_Dirty, gGUI_State
+    Profiler.Enter("Stats_FlushToDisk") ; @profile
 
-    if (!cfg.StatsTrackingEnabled)
+    if (!cfg.StatsTrackingEnabled) {
+        Profiler.Leave() ; @profile
         return
-    if (!gStats_Dirty)
+    }
+    if (!gStats_Dirty) {
+        Profiler.Leave() ; @profile
         return
-    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE")
+    }
+    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE") {
+        Profiler.Leave() ; @profile
         return  ; Defer to next housekeeping cycle
+    }
 
     statsPath := STATS_INI_PATH
 
@@ -191,12 +198,14 @@ Stats_FlushToDisk() {
     ; Try pump offload first (pipe write ~10-15μs vs 10-75ms of IniWrite loop)
     if (_Stats_TrySendToPump(statsPath, content)) {
         gStats_Dirty := false
+        Profiler.Leave() ; @profile
         return
     }
 
     ; Fallback: direct write (pump not connected or send failed)
     _Stats_DirectWrite(statsPath, content)
     gStats_Dirty := false
+    Profiler.Leave() ; @profile
 }
 
 ; Force-flush stats directly to disk (bypass dirty flag, state gate, and pump offload).

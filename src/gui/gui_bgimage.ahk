@@ -65,16 +65,22 @@ BGImg_EnsureCache(wPhys, hPhys) {
 ; Hot path: one DrawBitmap from the pre-rendered cache.
 BGImg_Draw() {
     global gBGImg_Ready, gBGImg_Cache, gD2D_RT, cfg
+    Profiler.Enter("BGImg_Draw") ; @profile
 
-    if (!gBGImg_Ready || !gD2D_RT || !gBGImg_Cache)
+    if (!gBGImg_Ready || !gD2D_RT || !gBGImg_Cache) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     opacity := cfg.BGImgOpacity
-    if (opacity <= 0.0)
+    if (opacity <= 0.0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Single DrawBitmap blit — destRect=0 means full target, srcRect=0 means full source
     gD2D_RT.DrawBitmap(gBGImg_Cache, 0, opacity, 1, 0)
+    Profiler.Leave() ; @profile
 }
 
 ; Release all resources. Called from FX_GPU_Dispose().

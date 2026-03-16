@@ -592,6 +592,7 @@ _GUI_FilterDisplayItems(items) {
 ; change is a context switch — the moved/focused window is what the user wants.
 GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
+    Profiler.Enter("GUI_RefilterForWorkspaceChange") ; @profile
     gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
@@ -605,6 +606,7 @@ GUI_RefilterForWorkspaceChange() {
         }
     }
     GUI_ClampSelection(gGUI_DisplayItems)
+    Profiler.Leave() ; @profile
 }
 
 ; Re-filter display items after workspace mode toggle.

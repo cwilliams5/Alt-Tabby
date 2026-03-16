@@ -237,14 +237,17 @@ _INT_Tab_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabHeld, gINT_TabPending
     global FR_EV_TAB_UP, gFR_Enabled
+    Profiler.Enter("_INT_Tab_Up") ; @profile
     if (gFR_Enabled)
         FR_Record(FR_EV_TAB_UP, gINT_TabHeld)
 
     if (gINT_TabHeld) {
         ; Released from Alt+Tab step
         gINT_TabHeld := false
+        Profiler.Leave() ; @profile
         return
     }
+    Profiler.Leave() ; @profile
 }
 
 _INT_Tab_Decide() {
@@ -330,12 +333,14 @@ _INT_Escape_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, TABBY_EV_ESCAPE
     global FR_EV_ESC, gFR_Enabled
+    Profiler.Enter("_INT_Escape_Down") ; @profile
     if (gFR_Enabled)
         FR_Record(FR_EV_ESC, gINT_SessionActive, gINT_PressCount)
 
     ; Only consume Escape if in active Alt+Tab session
     if (!gINT_SessionActive || gINT_PressCount < 1) {
         Send("{Escape}")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -346,6 +351,7 @@ _INT_Escape_Down(*) {
     gINT_SessionActive := false
     gINT_PressCount := 0
     gINT_TabHeld := false
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= FPS DEBUG OVERLAY TOGGLE =========================
