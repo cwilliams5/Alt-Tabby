@@ -122,10 +122,11 @@ Anim_CancelAll() {
     _Anim_StopTimer()
 }
 
-_Anim_UpdateTweens() {
+_Anim_UpdateTweens(now := 0) {
     global gAnim_Tweens
     Profiler.Enter("_Anim_UpdateTweens") ; @profile
-    now := QPC()
+    if (!now)
+        now := QPC()
     activeCount := 0
     for _, tw in gAnim_Tweens {
         if (tw.done)
@@ -281,7 +282,7 @@ _Anim_FrameLoop() {
         gAnim_LastFrameTime := now
 
         ; Update all active tweens
-        activeCount := _Anim_UpdateTweens()
+        activeCount := _Anim_UpdateTweens(now)
 
         ; Sync overlay opacity from tween → apply to window alpha
         _Anim_SyncOverlayOpacity()
@@ -299,7 +300,8 @@ _Anim_FrameLoop() {
         hasShaders := FX_HasActiveShaders()
 
         ; Update ambient animations (Full mode, or any mode with active shaders)
-        if (gGUI_OverlayVisible && (cfg.PerfAnimationType = "Full" || hasShaders))
+        animType := cfg.PerfAnimationType  ; PERF: cache config read
+        if (gGUI_OverlayVisible && (animType = "Full" || hasShaders))
             FX_UpdateAmbient(gAnim_FrameDt)
 
         ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
@@ -311,7 +313,7 @@ _Anim_FrameLoop() {
         _Anim_UpdateFPSCounter(now)
 
         ; Auto-stop (Minimal mode: exit when no active tweens AND no active shaders)
-        if (cfg.PerfAnimationType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
+        if (animType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
             break
 
         Critical "Off"
@@ -392,6 +394,20 @@ _Anim_ApplyWindowAlpha() {
     DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", alpha, "uint", 2)  ; LWA_ALPHA=2
 }
 
+; Prepare opacity state for the show-fade sequence.
+; animated=true: add WS_EX_LAYERED, set alpha=0, opacity=0.0 (tween drives it up)
+; animated=false: set opacity=1.0 (no fade)
+Anim_PrepareShowFade(animated) {
+    global gAnim_OverlayOpacity, gGUI_BaseH
+    if (animated) {
+        Anim_AddLayered()
+        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
+        gAnim_OverlayOpacity := 0.0
+    } else {
+        gAnim_OverlayOpacity := 1.0
+    }
+}
+
 ; Add WS_EX_LAYERED for fade animation. Called at fade start.
 Anim_AddLayered() {
     global gGUI_BaseH, GWL_EXSTYLE, WS_EX_LAYERED
@@ -447,12 +463,15 @@ _Anim_DoActualHide() {
     GUI_ClearHoverState()
 
     ; Clear D2D surface — ensures clean swap chain buffer for next Show.
-    ; STA reentrancy guard: BeginDraw/EndDraw/Present pump the message loop,
-    ; which can dispatch callbacks that reach GUI_Repaint (e.g., via
-    ; Anim_ForceCompleteHide during a new show sequence while state is ACTIVE).
-    ; Save/restore handles nesting when called from within an existing paint.
-    if (gD2D_RT) {
-        wasInProgress := gPaint_RepaintInProgress
+    ; Skip when a paint is in progress: if called during an outer paint's
+    ; STA pump (e.g., ForceCompleteHide from TAB_DN during hide-fade paint),
+    ; nested AcquireBackBuffer overwrites gD2D_BackBuffer and nested BeginDraw
+    ; fails (D2DERR_WRONG_STATE), corrupting the outer paint's D2D state.
+    ; The next show's first paint will clear the surface.  The window is about
+    ; to be hidden anyway, so skipping the clear has no visible effect.
+    ; When NOT in a paint, the guard blocks nested GUI_Repaint from timer
+    ; callbacks dispatched during this block's STA pump.
+    if (gD2D_RT && !gPaint_RepaintInProgress) {
         gPaint_RepaintInProgress := true
         try {
             if (D2D_AcquireBackBuffer()) {
@@ -463,9 +482,10 @@ _Anim_DoActualHide() {
                 D2D_Present(0)  ; Immediate — about to hide
             }
         } catch {
+            try gD2D_RT.EndDraw()   ; Best-effort: don't leave D2D in BeginDraw state
             D2D_ReleaseBackBuffer()
         } finally {
-            gPaint_RepaintInProgress := wasInProgress
+            gPaint_RepaintInProgress := false
         }
     }
 

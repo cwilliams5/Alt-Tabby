@@ -20,28 +20,23 @@
 #   Preview manifest changes: powershell -File tools/query_global_ownership.ps1 -Generate
 #   Discover full landscape: powershell -File tools/query_global_ownership.ps1 -Discover
 
-cfg: config_loader, launcher_tray, setup_utils
+cfg: launcher_tray, config_loader, setup_utils
+gAnim_DeferredTimerStart: gui_animation, gui_paint
+gAnim_HidePending: gui_animation, gui_overlay
+gBGImg_EffectsReady: gui_bgimage, gui_effects
 gD2D_RT: gui_animation, gui_bgimage, gui_overlay, gui_paint
-gGUI_DisplayItems: gui_animation, gui_data, gui_state
-gGUI_ToggleBase: gui_data, gui_state
+gFX_AmbientTime: gui_animation, gui_effects
 gGUI_CurrentWSName: gui_activation, gui_state
+gGUI_DisplayItems: gui_animation, gui_data, gui_state
 gGUI_EventBuffer: gui_activation, gui_state
+gGUI_FocusBeforeShow: gui_paint, gui_state
+gGUI_LastRowsDesired: gui_paint, gui_state
 gGUI_LiveItems: gui_activation, gui_data
-_gGUI_LastCosmeticRepaintTick: gui_main
 gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
 gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
-gGUI_LastRowsDesired: gui_paint, gui_state
 gGUI_ScrollTop: gui_data, gui_input, gui_paint, gui_state
-gGUI_HoverBtn: gui_input, gui_paint
-gGUI_HoverRow: gui_input, gui_paint
 gGUI_Sel: gui_data, gui_input, gui_state
-gGUI_FocusBeforeShow: gui_state, gui_paint
+gGUI_ToggleBase: gui_data, gui_state
 gPaint_RepaintInProgress: gui_animation, gui_overlay, gui_paint
-gStats_CrossWorkspace: gui_activation
-gAnim_DeferredTimerStart: gui_animation, gui_paint
-gAnim_OverlayOpacity: gui_animation, gui_state
-gAnim_HidePending: gui_animation, gui_overlay
-gFX_AmbientTime: gui_animation, gui_effects
-gBGImg_EffectsReady: gui_bgimage, gui_effects
 gWS_IconQueue: gui_pump, window_list
 gWS_IconQueueDedup: gui_pump, window_list

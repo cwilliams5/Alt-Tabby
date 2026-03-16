@@ -177,9 +177,7 @@ GUI_Repaint() {
         ; Suppress stale hover during resize — hover row was computed against
         ; OLD overlay geometry so action buttons would render at wrong position.
         ; WM_MOUSEMOVE will recalculate correctly after resize completes.
-        global gGUI_HoverRow, gGUI_HoverBtn
-        gGUI_HoverRow := 0
-        gGUI_HoverBtn := ""
+        GUI_InvalidateHoverPosition()
         ; Shrink: resize HWND before paint.  During STA pump, old content is
         ; shown clipped by the smaller HWND — no stale-pixel exposure.
         if (!isGrowing && phW > 0 && phH > 0)
@@ -449,6 +447,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     ; Text shadow params (always enabled when GPU ready)
     shadowP := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
     shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
+    shadowEnabled := shadowP.enabled
+    sOffX := shadowP.offX
+    sOffY := shadowP.offY
 
     ; Header (hoist gD2D_Res lookups — same pattern as row loop at lines 534-539)
     if (cfg.GUI_ShowHeader) {
@@ -456,10 +457,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         hdrTextH := cachedLayout.hdrTextH
         brHdr := gD2D_Res["brHdr"]
         tfHdr := gD2D_Res["tfHdr"]
-        if (shadowP.enabled) {
-            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, shadowP.offX, shadowP.offY)
+        if (shadowEnabled) {
+            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             for _, col in cols {
-                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, shadowP.offX, shadowP.offY)
+                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             }
         } else {
             D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
@@ -483,6 +484,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (availH < 0) {
         availH := 0
     }
+    contentBottomY := contentTopY + availH
 
     rowsCap := 0
     if (availH > 0) {
@@ -509,8 +511,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             emptyText := "No windows on this workspace"
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
-        if (shadowP.enabled) {
-            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, shadowP.offX, shadowP.offY)
+        if (shadowEnabled) {
+            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, sOffX, sOffY)
         } else {
             D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
         }
@@ -586,7 +588,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             }
         }
 
-        while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
+        while (i < rowsToDraw && (yRow + RowH <= contentBottomY)) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
             cur := items[idx1]
@@ -635,7 +637,6 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; ===== TIMING: Icon draw =====
             if (diagTiming)
                 tIcon := QPC()
-            iconDrawn := false
             iconWasCacheHit := false
             ; #178: cur is a live store ref — iconHicon may be zeroed after window
             ; destruction.  Try the bitmap cache regardless so frozen display items
@@ -673,14 +674,14 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 }
             }
 
-            if (shadowP.enabled) {
-                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, shadowP.offX, shadowP.offY)
-                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, shadowP.offX, shadowP.offY)
+            if (shadowEnabled) {
+                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
+                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
                 for _, col in cols {
                     val := ""
                     if (cur.HasOwnProp(col.key))
                         val := cur.%col.key%
-                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, shadowP.offX, shadowP.offY)
+                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
@@ -886,6 +887,10 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     Profiler.Enter("_GUI_DrawFooter") ; @profile
 
+    hasShadow := shadowP.enabled
+    sOffX := shadowP.offX
+    sOffY := shadowP.offY
+
     ; Use cached metrics (avoids per-frame Round() calls)
     cl := GUI_GetCachedLayout(scale)
     fh := cl.footerH
@@ -930,8 +935,8 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    if (shadowP.enabled) {
-        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
+    if (hasShadow) {
+        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
     }
@@ -949,8 +954,8 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    if (shadowP.enabled) {
-        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
+    if (hasShadow) {
+        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
     }
@@ -962,8 +967,8 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
         textW := 0
     }
 
-    if (shadowP.enabled) {
-        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
+    if (hasShadow) {
+        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
     }

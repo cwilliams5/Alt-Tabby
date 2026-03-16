@@ -45,7 +45,7 @@ float fbm(float3 p)
     f += 0.2500 * linear3D(p * 2.01);
     f += 0.1250 * linear3D(p * 4.02);
     f += 0.0625 * linear3D(p * 8.03);
-    f /= 0.9375;
+    f *= 1.06666667;
     return f;
 }
 

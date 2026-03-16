@@ -39,7 +39,7 @@ global gStats_AltTabs := 0
 global gStats_QuickSwitches := 0
 global gStats_TabSteps := 0
 global gStats_Cancellations := 0
-global gStats_CrossWorkspace := 0
+; gStats_CrossWorkspace declared in gui_activation.ahk (sole writer)
 global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
 
 
@@ -142,10 +142,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     ; File-based debug logging (no performance impact from tooltips)
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
-    if (diagLog) {
+    if (diagLog)
         evName := _GUI_GetEventName(evCode)
+    if (diagLog)
         GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_Pending.phase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
-    }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
@@ -182,7 +182,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gFR_Enabled)
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (diagLog)
-            GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_Pending.phase ")")
+            GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_Pending.phase ")")
         Profiler.Leave() ; @profile
         return
     }
@@ -484,7 +484,7 @@ GUI_OnWorkspaceFlips() {
             if (wsName != "" && wsName != gGUI_CurrentWSName) {
                 gGUI_CurrentWSName := wsName
                 GUI_UpdateFooterText()
-                GUI_HandleWorkspaceSwitch()
+                _GUI_HandleWorkspaceSwitch()
             }
             Critical "Off"
         }
@@ -529,8 +529,8 @@ GUI_DismissOverlay() {
 ; Handle workspace context switch during ACTIVE state.
 ; Resets selection to top, marks sticky context switch, and requests fresh
 ; display list when frozen. Caller must hold Critical "On".
-GUI_HandleWorkspaceSwitch() {
-    Profiler.Enter("GUI_HandleWorkspaceSwitch") ; @profile
+_GUI_HandleWorkspaceSwitch() {
+    Profiler.Enter("_GUI_HandleWorkspaceSwitch") ; @profile
     global gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
     global gGUI_CurrentWSName, gGUI_ToggleBase, gGUI_DisplayItems, gGUI_OverlayVisible
     global cfg, gGUI_WorkspaceMode, WS_MODE_CURRENT
@@ -549,7 +549,7 @@ GUI_HandleWorkspaceSwitch() {
     ; Just re-filter to show the right windows.
 
     ; Re-filter display items and select foreground window
-    GUI_RefilterForWorkspaceChange()
+    _GUI_RefilterForWorkspaceChange()
 
     ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
     ; with deferred SetWindowPos (right before ULW) so DWM can't present a
@@ -592,9 +592,9 @@ _GUI_FilterDisplayItems(items) {
 ; Re-filter display items for a workspace change (window moved or workspace switched).
 ; Resets scroll/selection and tries to select the foreground window, since a workspace
 ; change is a context switch — the moved/focused window is what the user wants.
-GUI_RefilterForWorkspaceChange() {
+_GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
-    Profiler.Enter("GUI_RefilterForWorkspaceChange") ; @profile
+    Profiler.Enter("_GUI_RefilterForWorkspaceChange") ; @profile
     gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
@@ -612,7 +612,7 @@ GUI_RefilterForWorkspaceChange() {
 }
 
 ; Re-filter display items after workspace mode toggle.
-; Unlike RefilterForWorkspaceChange (which selects foreground window),
+; Unlike _GUI_RefilterForWorkspaceChange (which selects foreground window),
 ; this preserves MRU-based selection since the user is browsing, not switching.
 GUI_ApplyWorkspaceFilter() {
     _GUI_ApplyFilter("GUI_ApplyWorkspaceFilter")
@@ -722,14 +722,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; resized.  That nested paint either renders at the old RT size (stretched)
     ; or blocks on shader compilation and holds the reentrancy guard (blank).
     ; The tween starts after resize + show + reveal, right before the first paint.
-    global gAnim_OverlayOpacity
-    if (cfg.PerfAnimationType != "None") {
-        Anim_AddLayered()
-        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
-        gAnim_OverlayOpacity := 0.0
-    } else {
-        gAnim_OverlayOpacity := 1.0
-    }
+    Anim_PrepareShowFade(cfg.PerfAnimationType != "None")
 
     ; ===== TIMING: Resize =====
     t1 := QPC()
@@ -889,11 +882,13 @@ _GUI_ActivateFromFrozen() {
     global gGUI_Sel, gGUI_DisplayItems, cfg
     global FR_EV_ACTIVATE_GONE, FR_EV_ACTIVATE_RETRY, gFR_Enabled
 
-    if (cfg.DiagEventLog)
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+
+    if (diagLog)
         GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
 
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_DisplayItems.Length) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
         Profiler.Leave() ; @profile
         return
@@ -906,12 +901,12 @@ _GUI_ActivateFromFrozen() {
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
             Profiler.Leave() ; @profile
             return
         }
-        if (cfg.DiagEventLog) {
+        if (diagLog) {
             title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
             GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
         }
@@ -936,12 +931,12 @@ _GUI_ActivateFromFrozen() {
             ; Window gone — record and try next
             if (gFR_Enabled)
                 FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE RETRY: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
 
             nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
             if (nextSel = 0) {
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("ACTIVATE RETRY: exhausted all windows")
                 Profiler.Leave() ; @profile
                 return
@@ -951,7 +946,7 @@ _GUI_ActivateFromFrozen() {
         }
 
         ; Live window found
-        if (cfg.DiagEventLog) {
+        if (diagLog) {
             title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
             isRetry := (gGUI_Sel != startSel) ? " (retry)" : ""
             GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item) isRetry)
@@ -961,7 +956,7 @@ _GUI_ActivateFromFrozen() {
 
         ; Post-activation check: if activation failed AND window is now dead, retry next
         if (!success && !DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ACTIVATE RETRY: window died during activation hwnd=" hwnd)
             nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
             if (nextSel = 0) {
@@ -981,7 +976,7 @@ _GUI_ActivateFromFrozen() {
         return
     }
 
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("ACTIVATE RETRY: reached max depth " maxAttempts)
     Profiler.Leave() ; @profile
 }

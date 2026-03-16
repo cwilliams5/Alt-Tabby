@@ -40,7 +40,7 @@ _GUI_GetDisplayItems() {
 
 _GUI_MoveSelection(delta) {
     Profiler.Enter("_GUI_MoveSelection") ; @profile
-    global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg, gGUI_MouseTracking
 
     items := _GUI_GetDisplayItems()
     if (items.Length = 0 || delta = 0) {
@@ -85,7 +85,8 @@ _GUI_MoveSelection(delta) {
     }
     Critical "Off"
 
-    GUI_RecalcHover()
+    if (gGUI_MouseTracking)
+        GUI_RecalcHover()
     ; When animation frame loop is running, skip synchronous repaint —
     ; the loop will paint next frame. Prevents message queue flooding
     ; during rapid mouse wheel scroll (Logitech infinite scroll).
@@ -522,6 +523,13 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     x := lParam & 0xFFFF
     y := (lParam >> 16) & 0xFFFF
 
+    ; Skip redundant detection when cursor hasn't moved
+    static lastMX := -1, lastMY := -1
+    if (x = lastMX && y = lastMY)
+        return 0
+    lastMX := x
+    lastMY := y
+
     ; Store mouse position for backdrop specular effect
     gFX_MouseX := x
     gFX_MouseY := y
@@ -572,6 +580,12 @@ GUI_StartHoverPolling() {
 
 _GUI_StopHoverPolling() {
     SetTimer(_GUI_HoverPollTick, 0)
+}
+
+GUI_InvalidateHoverPosition() {
+    global gGUI_HoverRow, gGUI_HoverBtn
+    gGUI_HoverRow := 0
+    gGUI_HoverBtn := ""
 }
 
 GUI_ClearHoverState() {

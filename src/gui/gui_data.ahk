@@ -5,7 +5,7 @@
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
-global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
+; _gGUI_LastCosmeticRepaintTick declared in gui_main.ahk (sole writer + reader)
 global PRECACHE_TICK_MS := 50              ; Background icon pre-cache batch interval
 
 ; ========================= LIVE ITEMS REFRESH =========================
@@ -234,7 +234,8 @@ _GUI_PreCacheTick() {
     ; Scan store and collect uncached icons under Critical (safe Map iteration)
     ; gGdip_IconCache is GUI-thread-only, safe to read here
     Critical "On"
-    work := []
+    static work := [] ; lint-ignore: static-in-timer
+    work.Length := 0
     for hwnd, rec in gWS_Store {
         if (!rec.present || !rec.iconHicon)
             continue

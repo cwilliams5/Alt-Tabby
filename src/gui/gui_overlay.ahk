@@ -11,6 +11,7 @@ global gGUI_Overlay := 0       ; Alias → same as gGUI_Base (single-window comp
 global gGUI_BaseH := 0         ; Window handle
 global gGUI_OverlayH := 0      ; Alias → same as gGUI_BaseH (single-window compat)
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
+global gGUI_CachedVisibleRows := -1   ; Cached result of GUI_GetVisibleRows; -1 = stale
 global gGUI_StealFocus := false      ; Effective steal-focus (cfg OR Mica)
 global gGUI_FocusBeforeShow := 0     ; Hwnd of foreground window before overlay took focus
 
@@ -107,7 +108,7 @@ GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
-    global gAnim_HidePending, gPaint_RepaintInProgress
+    global gAnim_HidePending, gPaint_RepaintInProgress, gGUI_CachedVisibleRows
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -146,11 +147,12 @@ GUI_HideOverlay() {
     ; Clear D2D surface BEFORE hiding — ensures a clean swap chain buffer
     ; for the next Show().  SwapChain.Present() works for hidden windows
     ; (unlike HwndRenderTarget), so the clear actually commits.
-    ; STA reentrancy guard: BeginDraw/EndDraw/Present pump the message loop,
-    ; which can dispatch callbacks that reach GUI_Repaint. Save/restore
-    ; handles nesting when called from within an existing paint.
-    if (gD2D_RT) {
-        wasInProgress := gPaint_RepaintInProgress
+    ; Skip when a paint is in progress: nested AcquireBackBuffer overwrites
+    ; gD2D_BackBuffer and nested BeginDraw fails (D2DERR_WRONG_STATE),
+    ; corrupting the outer paint's D2D state.  The next show's first paint
+    ; will clear the surface.  When NOT in a paint, the guard blocks nested
+    ; GUI_Repaint from timer callbacks dispatched during this block's STA pump.
+    if (gD2D_RT && !gPaint_RepaintInProgress) {
         gPaint_RepaintInProgress := true
         try {
             if (D2D_AcquireBackBuffer()) {
@@ -161,9 +163,10 @@ GUI_HideOverlay() {
                 D2D_Present(0)  ; Immediate — about to hide
             }
         } catch {
+            try gD2D_RT.EndDraw()   ; Best-effort: don't leave D2D in BeginDraw state
             D2D_ReleaseBackBuffer()
         } finally {
-            gPaint_RepaintInProgress := wasInProgress
+            gPaint_RepaintInProgress := false
         }
     }
 
@@ -172,6 +175,7 @@ GUI_HideOverlay() {
     }
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
+    gGUI_CachedVisibleRows := -1
 
     ; Cancel any animation state
     Anim_CancelAll()
@@ -224,7 +228,10 @@ _GUI_FooterBlockDip() {
 }
 
 GUI_GetVisibleRows() {
-    global gGUI_BaseH, cfg
+    global gGUI_BaseH, cfg, gGUI_CachedVisibleRows
+
+    if (gGUI_CachedVisibleRows >= 0)
+        return gGUI_CachedVisibleRows
 
     ox := 0
     oy := 0
@@ -240,15 +247,19 @@ GUI_GetVisibleRows() {
     usableDip := ohDip - headerTopDip - cfg.GUI_MarginY - footerDip
 
     if (usableDip < cfg.GUI_RowHeight)
-        return 0
-    return Floor(usableDip / cfg.GUI_RowHeight)
+        result := 0
+    else
+        result := Floor(usableDip / cfg.GUI_RowHeight)
+    gGUI_CachedVisibleRows := result
+    return result
 }
 
 ; ========================= RESIZE =========================
 
 GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Profiler.Enter("GUI_ResizeToRows") ; @profile
-    global gGUI_Base, gGUI_BaseH, gD2D_RT, cfg
+    global gGUI_Base, gGUI_BaseH, gD2D_RT, cfg, gGUI_CachedVisibleRows
+    gGUI_CachedVisibleRows := -1
 
     xDip := 0
     yDip := 0

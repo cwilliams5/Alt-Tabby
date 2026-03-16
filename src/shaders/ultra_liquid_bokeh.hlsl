@@ -6,15 +6,16 @@
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
 
+    float aspect = resolution.x / resolution.y;
     float2 uv = -1.0 + 2.0 * fragCoord.xy / resolution.xy;
-    uv.x *= resolution.x / resolution.y;
+    uv.x *= aspect;
     float3 color = (float3)0.0;
     for (int i = 0; i < 128; i++)
     {
         float pha =      sin(float(i) * 546.13 + 1.0) * 0.5 + 0.5;
         float _sizT = sin(float(i) * 651.74 + 5.0) * 0.5 + 0.5; float _sizT2 = _sizT * _sizT;
         float siz = _sizT2 * _sizT2;
-        float pox =      sin(float(i) * 321.55 + 4.1) * resolution.x / resolution.y;
+        float pox =      sin(float(i) * 321.55 + 4.1) * aspect;
         float rad = 0.1 + 0.5 * siz + sin(pha + siz) / 4.0;
         float2 pos = float2( pox + sin(time / 15. + pha + siz), -1.0 - rad + (2.0 + 2.0 * rad) * frac(pha + 0.3 * (time / 7.) * (0.2 + 0.8 * siz)));
         float dis = length( uv - pos );

@@ -115,6 +115,23 @@ WL_SetCallbacks(onStoreChanged, onWorkspaceChanged) {
 ; Fields that are internal tracking and should not bump rev when changed
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
+; Unified field classification map for single-lookup in _WS_ApplyPatch.
+; Maps field name -> class: "internal", "mruSort", "sort", "content".
+; "title" is omitted: its classification depends on runtime flag gWS_TitleSortActive.
+global gWS_FieldClass := Map()
+for k, _ in gWS_InternalFields
+    gWS_FieldClass[k] := "internal"
+for k, _ in gWS_SortAffectingFields {
+    if (gWS_MRUOnlyFields.Has(k))
+        gWS_FieldClass[k] := "mruSort"
+    else
+        gWS_FieldClass[k] := "sort"
+}
+for k, _ in gWS_ContentOnlyFields {
+    if (k != "title")  ; title handled at runtime via gWS_TitleSortActive
+        gWS_FieldClass[k] := "content"
+}
+
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
 WS_SnapshotMapKeys(mapObj) {
@@ -267,6 +284,7 @@ WL_UpsertWindow(records, source := "") {
     ; This matches the BatchUpdateFields pattern which already uses single-section.
     ; Enrichment enqueue happens AFTER Critical ends (accesses different queues).
     Critical "On"
+    tick := A_TickCount
     for _, rec in records {
         if (!IsObject(rec))
             continue
@@ -340,7 +358,7 @@ WL_UpsertWindow(records, source := "") {
         }
         ; Always update scan tracking (these don't trigger rev bump)
         row.lastSeenScanId := gWS_ScanId
-        row.lastSeenTick := A_TickCount
+        row.lastSeenTick := tick
 
         if (rowChanged)
             updated += 1
@@ -379,7 +397,8 @@ WL_UpsertWindow(records, source := "") {
 _WS_ApplyPatch(row, patch, hwnd) {
     global gWS_InternalFields, gWS_SortAffectingFields, gWS_ContentOnlyFields
     global gWS_MRUOnlyFields, gWS_DirtyHwnds
-    global gWS_TitleSortActive
+    global gWS_TitleSortActive, gWS_FieldClass
+    static r := { changed: false, sortDirty: false, contentDirty: false, mruOnly: false }
     changed := false
     sortDirty := false
     contentDirty := false
@@ -394,19 +413,23 @@ _WS_ApplyPatch(row, patch, hwnd) {
                 continue
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                if (!gWS_InternalFields.Has(k)) {
+                cls := gWS_FieldClass.Get(k, "")
+                if (cls = "internal") {
+                    ; internal field - don't mark changed
+                } else {
                     changed := true
                     gWS_DirtyHwnds[hwnd] := true
-                }
-                if (gWS_SortAffectingFields.Has(k)) {
-                    sortDirty := true
-                    if (!gWS_MRUOnlyFields.Has(k))
+                    if (cls = "sort") {
+                        sortDirty := true
                         mruOnly := false
-                } else if (k = "title" && gWS_TitleSortActive) {
-                    sortDirty := true
-                    mruOnly := false
-                } else if (!contentDirty && gWS_ContentOnlyFields.Has(k)) {
-                    contentDirty := true
+                    } else if (cls = "mruSort") {
+                        sortDirty := true
+                    } else if (k = "title" && gWS_TitleSortActive) {
+                        sortDirty := true
+                        mruOnly := false
+                    } else if (cls = "content") {
+                        contentDirty := true
+                    }
                 }
             }
         }
@@ -418,19 +441,23 @@ _WS_ApplyPatch(row, patch, hwnd) {
                 continue
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                if (!gWS_InternalFields.Has(k)) {
+                cls := gWS_FieldClass.Get(k, "")
+                if (cls = "internal") {
+                    ; internal field - don't mark changed
+                } else {
                     changed := true
                     gWS_DirtyHwnds[hwnd] := true
-                }
-                if (gWS_SortAffectingFields.Has(k)) {
-                    sortDirty := true
-                    if (!gWS_MRUOnlyFields.Has(k))
+                    if (cls = "sort") {
+                        sortDirty := true
                         mruOnly := false
-                } else if (k = "title" && gWS_TitleSortActive) {
-                    sortDirty := true
-                    mruOnly := false
-                } else if (!contentDirty && gWS_ContentOnlyFields.Has(k)) {
-                    contentDirty := true
+                    } else if (cls = "mruSort") {
+                        sortDirty := true
+                    } else if (k = "title" && gWS_TitleSortActive) {
+                        sortDirty := true
+                        mruOnly := false
+                    } else if (cls = "content") {
+                        contentDirty := true
+                    }
                 }
             }
         }
@@ -438,7 +465,11 @@ _WS_ApplyPatch(row, patch, hwnd) {
     ; mruOnly is meaningful only when sortDirty is true
     if (!sortDirty)
         mruOnly := false
-    return { changed: changed, sortDirty: sortDirty, contentDirty: contentDirty, mruOnly: mruOnly }
+    r.changed := changed
+    r.sortDirty := sortDirty
+    r.contentDirty := contentDirty
+    r.mruOnly := mruOnly
+    return r
 }
 
 WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {

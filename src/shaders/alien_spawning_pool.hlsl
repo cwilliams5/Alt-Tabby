@@ -2,6 +2,8 @@
 // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
 // Converted from https://www.shadertoy.com/view/MtffW8
 
+static const float3 lig = float3(0.3909862, -0.4115644, -0.8231289);  // normalize(0.19,-0.2,-0.4)
+
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
 
@@ -114,7 +116,6 @@ float4 PSMain(PSInput input) : SV_Target
     float2 ex = -1.0 * float2(2.0 / resolution.x, 0.0);
     float2 ey = -1.0 * float2(0.0, 2.0 / resolution.y);
     float3 nor = normalize(float3(funcs(q + ex) - f, ex.x, funcs(q + ey) - f));
-    float3 lig = normalize(float3(0.19, -0.2, -0.4));
     float dif = saturate(0.03 + 0.7 * dot(nor, lig));
 
     float3 bdrf;

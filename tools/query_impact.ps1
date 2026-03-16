@@ -71,10 +71,7 @@ foreach ($file in $srcFiles) {
 
     # Pre-clean all lines and cache for later step reuse
     $lineCount = $lines.Count
-    $cleaned_arr = [string[]]::new($lineCount)
-    for ($ci = 0; $ci -lt $lineCount; $ci++) {
-        $cleaned_arr[$ci] = Clean-Line $lines[$ci]
-    }
+    $cleaned_arr = Bulk-CleanLines $lines
     $cleanedCache[$file.FullName] = $cleaned_arr
 
     $depth = 0
@@ -249,8 +246,9 @@ $globalsWrittenSet = [System.Collections.Generic.HashSet[string]]::new(
 # First find which globals are declared in this function's scope
 $funcGlobalDecls = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
-foreach ($bodyLine in $funcBody) {
-    $cleaned = Clean-Line $bodyLine
+$funcCleanedArr = $cleanedCache[$funcFile]
+for ($bi = 0; $bi -lt $funcBody.Count; $bi++) {
+    $cleaned = $funcCleanedArr[$funcBodyStartIdx + $bi]
     if ($cleaned -match '^\s*global\s+(.+)') {
         $declPart = $Matches[1]
         $stripped = Strip-Nested $declPart
@@ -277,8 +275,8 @@ foreach ($gName in $funcGlobalDecls) {
         [regex]::new("\b$e\.\w+\s*[:+\-\*\/\.]+\=")
     )
 
-    foreach ($bodyLine in $funcBody) {
-        $cleaned = Clean-Line $bodyLine
+    for ($bi = 0; $bi -lt $funcBody.Count; $bi++) {
+        $cleaned = $funcCleanedArr[$funcBodyStartIdx + $bi]
         if ($cleaned -eq '') { continue }
 
         $isMutation = $mutPatterns[0].IsMatch($cleaned) -or
@@ -300,18 +298,30 @@ foreach ($gName in $funcGlobalDecls) {
 
 # ============================================================
 # Step 4: Find downstream readers of written globals
+# Batched: scan each file ONCE for ALL written globals (O(F) not O(G*F))
 # ============================================================
 $downstreamReaders = @{}  # globalName -> ArrayList of @{ RelPath; Func }
 
-foreach ($gw in $globalsWritten) {
-    $gName = $gw.Name
-    $readers = [System.Collections.ArrayList]::new()
-    $seenReaders = [System.Collections.Generic.HashSet[string]]::new(
-        [System.StringComparer]::OrdinalIgnoreCase)
+if ($globalsWritten.Count -gt 0) {
+    # Pre-build per-global tracking
+    $seenReadersAll = @{}
+    foreach ($gw in $globalsWritten) {
+        $downstreamReaders[$gw.Name] = [System.Collections.ArrayList]::new()
+        $seenReadersAll[$gw.Name] = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+    }
 
     foreach ($file in $srcFiles) {
         $text = $fileCacheText[$file.FullName]
-        if ($text.IndexOf($gName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+        # Per-file pre-filter: which written globals appear in this file?
+        $relevantGlobals = [System.Collections.ArrayList]::new()
+        foreach ($gw in $globalsWritten) {
+            if ($text.IndexOf($gw.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                [void]$relevantGlobals.Add($gw.Name)
+            }
+        }
+        if ($relevantGlobals.Count -eq 0) { continue }
 
         $lines = $fileCache[$file.FullName]
         $cleaned_arr = $cleanedCache[$file.FullName]
@@ -323,11 +333,12 @@ foreach ($gw in $globalsWritten) {
             $boundaryCache[$file.FullName] = $bounds
         }
 
-        # Check if any function in this file declares global <gName>
+        # Single pass: track function context + check all relevant globals
         $inFunc = $false
         $funcDepth = -1
         $curFunc = ""
-        $curFuncDeclaresGlobal = $false
+        $curFuncDeclaredGlobals = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
         $depth = 0
 
         for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -351,7 +362,7 @@ foreach ($gw in $globalsWritten) {
                             $inFunc = $true
                             $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
                             $curFunc = $fn
-                            $curFuncDeclaresGlobal = $false
+                            $curFuncDeclaredGlobals.Clear()
                         }
                     }
                 }
@@ -368,19 +379,24 @@ foreach ($gw in $globalsWritten) {
 
             if (-not $inFunc) { continue }
 
-            # Check for global declaration inside function
-            if ($cleaned -match '^\s*global\s+' -and $cleaned -match "(?<!\w)$([regex]::Escape($gName))(?!\w)") {
-                $curFuncDeclaresGlobal = $true
+            # Check for global declarations of our target globals
+            if ($cleaned -match '^\s*global\s+') {
+                foreach ($gName in $relevantGlobals) {
+                    if ($cleaned -match "(?<!\w)$([regex]::Escape($gName))(?!\w)") {
+                        [void]$curFuncDeclaredGlobals.Add($gName)
+                    }
+                }
+                continue
             }
 
-            # Check for read reference (non-mutation, non-declaration line)
-            if ($curFuncDeclaresGlobal -and $cleaned -match "(?<![.\w])$([regex]::Escape($gName))(?!\w)") {
-                $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
-                if (-not $isGlobalDeclLine) {
+            # Check for read references (non-declaration lines)
+            foreach ($gName in $relevantGlobals) {
+                if (-not $curFuncDeclaredGlobals.Contains($gName)) { continue }
+                if ($cleaned -match "(?<![.\w])$([regex]::Escape($gName))(?!\w)") {
                     $readerKey = "${relPath}:${curFunc}"
-                    if (-not $seenReaders.Contains($readerKey)) {
-                        [void]$seenReaders.Add($readerKey)
-                        [void]$readers.Add(@{
+                    if (-not $seenReadersAll[$gName].Contains($readerKey)) {
+                        [void]$seenReadersAll[$gName].Add($readerKey)
+                        [void]$downstreamReaders[$gName].Add(@{
                             RelPath = $relPath
                             Func    = $curFunc
                         })
@@ -390,9 +406,9 @@ foreach ($gw in $globalsWritten) {
         }
     }
 
-    if ($readers.Count -gt 0) {
-        $downstreamReaders[$gName] = $readers
-    }
+    # Remove empty entries
+    $emptyKeys = @($downstreamReaders.Keys | Where-Object { $downstreamReaders[$_].Count -eq 0 })
+    foreach ($k in $emptyKeys) { $downstreamReaders.Remove($k) }
 }
 
 # ============================================================

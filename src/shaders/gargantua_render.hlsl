@@ -136,7 +136,7 @@ float3 stars(float3 p) {
 float3 getBgColor(float3 dir) {
     float rho, phi, theta;
     cartesianToSpherical(dir, rho, phi, theta);
-    float2 uv = float2(phi / PI, theta / TWO_PI);
+    float2 uv = float2(phi * 0.31830989, theta * 0.15915494);
     float3 c0 = iChannel1.Sample(samp1, uv).xyz * 0.3;
     float3 c1 = stars(dir);
     return c0.bgr * 0.4 + c1 * 2.0;

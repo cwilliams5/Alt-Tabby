@@ -54,8 +54,8 @@ float aafi(float2 p) {
 }
 
 float2 lonlat(float3 p) {
-    float lon = aafi(p.xy) / TAU;
-    float lat = aafi(float2(p.z, length(p.xy))) / PI;
+    float lon = aafi(p.xy) * 0.15915494;
+    float lat = aafi(float2(p.z, length(p.xy))) * 0.31830989;
     return float2(lon, lat);
 }
 

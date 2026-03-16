@@ -187,7 +187,7 @@ RunGUITests_Data() {
     gGUI_WSContextSwitch := false
 
     ; Simulate workspace change (direct state + production function)
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(gGUI_Sel, 1, "WS change: sel reset to 1")
     GUI_AssertEq(gGUI_WSContextSwitch, true, "WS change: WSContextSwitch set to true")
@@ -209,7 +209,7 @@ RunGUITests_Data() {
 
     ; Trigger WS change to set the flag (switch to "Other" which has 6 items)
     gGUI_CurrentWSName := "Other"
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
     GUI_AssertEq(gGUI_WSContextSwitch, true, "WSContextSwitch persist: flag set")
     GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: initial sel=1")
 
@@ -230,7 +230,7 @@ RunGUITests_Data() {
     gGUI_Sel := 3  ; Start at non-1 to verify production code resets it
     SetupTestItems(1)
 
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(gGUI_Sel, 1, "WS change single: sel=1")
 
@@ -786,7 +786,7 @@ RunGUITests_Data() {
     }
 
     ; ============================================================
-    ; GUI_HandleWorkspaceSwitch WORKSPACE DATA PATCHING TESTS
+    ; _GUI_HandleWorkspaceSwitch WORKSPACE DATA PATCHING TESTS
     ; ============================================================
 
     ; ----- Test: Frozen record refs have live workspace data after switch -----
@@ -811,7 +811,7 @@ RunGUITests_Data() {
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
 
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(items[1].workspaceName, "New", "WSPatch: item 1 workspaceName is 'New'")
     GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch: item 1 isOnCurrentWorkspace true")
@@ -833,7 +833,7 @@ RunGUITests_Data() {
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
 
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(items[1].workspaceName, "Main", "WSPatch noop: workspaceName unchanged")
     GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch noop: isOnCurrentWorkspace still true")
@@ -921,7 +921,7 @@ RunGUITests_Data() {
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
 
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(gGUI_HoverRow, 0, "WSHover: gGUI_HoverRow cleared to 0")
     GUI_AssertEq(gGUI_HoverBtn, "", "WSHover: gGUI_HoverBtn cleared to empty")
@@ -941,7 +941,7 @@ RunGUITests_Data() {
     gGUI_ToggleBase := items
     gGUI_DisplayItems := items.Clone()
 
-    GUI_HandleWorkspaceSwitch()
+    _GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(gGUI_HoverRow, 0, "WSHoverFull: hover row cleared")
     GUI_AssertEq(gGUI_HoverBtn, "", "WSHoverFull: hover btn cleared")
@@ -1022,7 +1022,7 @@ RunGUITests_Data() {
     ; ============================================================
     ; GUI_OnWorkspaceFlips CALLBACK TESTS
     ; Covers the workspace change entry point that reads gWS_Meta
-    ; and calls GUI_HandleWorkspaceSwitch.
+    ; and calls _GUI_HandleWorkspaceSwitch.
     ; ============================================================
 
     ; ----- Test: OnWorkspaceFlips detects workspace change -----

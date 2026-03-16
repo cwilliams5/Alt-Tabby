@@ -58,7 +58,7 @@ float height(float2 p) {
     float d = length(p);
     float c = 1E6;
     float x = pow(d, 0.1);
-    float y = (atan2(p.x, p.y) + 0.05 * tm - 2.0 * d) / TAU;
+    float y = (atan2(p.x, p.y) + 0.05 * tm - 2.0 * d) * 0.15915494;
 
     for (float i = 0.0; i < 4.0; i += 1.0) {
         float v = length(frac(float2(x - tm * i * xm, frac(y + i * ym) * 0.125) * 16.0) * 2.0 - 1.0);

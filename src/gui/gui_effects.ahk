@@ -552,16 +552,13 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
     ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
     ; Single .Get() lookup + guarded mutation (config-stable values)
-    if (!gFX_SelectionEffect.isBGShader) {
-        entry := gShader_Registry.Get(gFX_SelectionEffect.key, 0)
-        if (entry) {
-            static _selLastGlow := -1, _selLastInt := -1.0
-            if (cfg.GUI_SelectionGlow != _selLastGlow || cfg.GUI_SelectionIntensity != _selLastInt) {
-                entry.selGlow := cfg.GUI_SelectionGlow
-                entry.selIntensity := cfg.GUI_SelectionIntensity
-                _selLastGlow := cfg.GUI_SelectionGlow
-                _selLastInt := cfg.GUI_SelectionIntensity
-            }
+    if (!gFX_SelectionEffect.isBGShader && (entry := gShader_Registry.Get(gFX_SelectionEffect.key, 0))) {
+        static _selLastGlow := -1, _selLastInt := -1.0
+        if (cfg.GUI_SelectionGlow != _selLastGlow || cfg.GUI_SelectionIntensity != _selLastInt) {
+            entry.selGlow := cfg.GUI_SelectionGlow
+            entry.selIntensity := cfg.GUI_SelectionIntensity
+            _selLastGlow := cfg.GUI_SelectionGlow
+            _selLastInt := cfg.GUI_SelectionIntensity
         }
     }
 
@@ -666,9 +663,15 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
         ; Draw border on top (outside clip layer so it's not masked)
         bw := cfg.GUI_SelBorderWidthPx
         if (bw > 0) {
+            static _cachedBorderARGB := 0, _cachedBorderBrush := 0
+            borderARGB := cfg.GUI_SelBorderARGB
+            if (borderARGB != _cachedBorderARGB || !_cachedBorderBrush) {
+                _cachedBorderBrush := D2D_GetCachedBrush(borderARGB)
+                _cachedBorderARGB := borderARGB
+            }
             half := bw / 2
             D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, rad,
-                D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+                _cachedBorderBrush, bw)
         }
     } else {
         gD2D_RT.DrawImage(pBitmap)

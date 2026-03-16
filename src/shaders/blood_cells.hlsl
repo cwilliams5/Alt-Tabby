@@ -3,6 +3,7 @@
 // License: CC BY-NC-SA 3.0
 
 static const float BEAT = 4.0;
+static const float3 ld = float3(0.2672612, 0.5345225, 0.8017837);  // normalize(1,2,3)
 
 float smin(float a, float b, float k) {
     float h = saturate(0.5 + 0.5 * (b - a) / k);
@@ -47,8 +48,6 @@ float3 g(float2 uv) {
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
-
-    float3 ld = normalize(float3(1.0, 2.0, 3.0));
 
     float2 uv = fragCoord / resolution;
     uv -= (float2)0.5;

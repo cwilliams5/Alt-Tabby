@@ -48,9 +48,10 @@ foreach ($file in $srcFiles) {
 
     $depth = 0
     $lineCount = $lines.Count
+    $cleaned_arr = Bulk-CleanLines $lines
 
     for ($i = 0; $i -lt $lineCount; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+        $cleaned = $cleaned_arr[$i]
         if ($cleaned -eq '') { continue }
 
         # Function definition at file scope (depth 0), public only (no _ prefix)

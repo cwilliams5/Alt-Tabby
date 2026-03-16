@@ -49,11 +49,13 @@ $MUTATING_METHODS = 'Push|Pop|Delete|InsertAt|RemoveAt|Set|Clear'
 # ============================================================
 $declaration = $null
 $fileCache = @{}
+$fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     if ($text.IndexOf($GlobalName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
+    $fileCacheText[$file.FullName] = $text
     $lines = Split-Lines $text
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
@@ -168,7 +170,13 @@ $literalValues = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
 foreach ($file in $srcFiles) {
-    $text = [System.IO.File]::ReadAllText($file.FullName)
+    if ($fileCacheText.ContainsKey($file.FullName)) {
+        $text = $fileCacheText[$file.FullName]
+    } else {
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+        if ($text.IndexOf($GlobalName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        $fileCacheText[$file.FullName] = $text
+    }
     if ($text.IndexOf($GlobalName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
     if (-not $fileCache.ContainsKey($file.FullName)) {
