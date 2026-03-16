@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks (batch A)
 # Checks that require shared preprocessing data ($sharedFuncDefs, $sharedLineData, $sharedSetCallbacksDefs).
-# Sub-checks: guard_try_finally, critical_leaks, critical_sections, callback_signatures, producer_error_boundary, callback_invocation_arity, paint_resize_ordering, profiler_balance
+# Sub-checks: guard_try_finally, critical_leaks, critical_sections, callback_signatures, producer_error_boundary, callback_invocation_arity, paint_resize_ordering, profiler_balance, critical_heavy_calls
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1555,6 +1555,204 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_profiler_balance"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 9: critical_heavy_calls
+# Detects calls to functions containing STA-pumping COM calls
+# or blocking operations from inside Critical "On" sections.
+# STA-pumping calls (BeginDraw, EndDraw, DwmFlush, ShowWindow,
+# SetWindowPos) exceed Windows' 300ms LowLevelHooksTimeout when
+# held under Critical, silently removing keyboard hooks (#303).
+# Blocking calls (ProcessExist, RunWait) hold Critical for ms+.
+# 1-level depth: flags callers of functions that directly contain
+# heavy patterns. Does not use transitive closure (the paint
+# pipeline is designed to run under Critical with mitigations).
+# Suppress: ; lint-ignore: critical-heavy
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$chIssues = [System.Collections.ArrayList]::new()
+
+# Pre-compiled pattern: STA-pumping COM methods, DllCall STA targets, blocking calls
+# Matched against comment-stripped lines (string contents preserved for DllCall args)
+$script:RX_HEAVY_CALL = [regex]::new(
+    '(?:' +
+    '\.\s*(?:BeginDraw|EndDraw|DrawBitmap|CreateEffect)\s*\(' +
+    '|DllCall\s*\(\s*["' + "'" + '](?:[^"' + "'" + ']*\\)?(?:ShowWindow|SetWindowPos|DwmFlush)["' + "'" + ']' +
+    '|(?<![.\w])(?:ProcessExist|RunWait)\s*\(' +
+    ')', 'Compiled, IgnoreCase')
+
+# Pre-compiled pattern: extract function calls (callee names) from cleaned lines
+$rxChCalleeExtract = [regex]::new('(?<![.\w])(\w+)\s*\(', 'Compiled')
+
+# --- Pass 1: Identify functions that directly contain heavy calls ---
+$heavyDirect = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $hasLineData = $sharedLineData.ContainsKey($file.FullName)
+
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $funcName = ""
+    $hasHeavy = $false
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($hasLineData) {
+            $ld = $sharedLineData[$file.FullName][$i]
+            $cleaned = $ld.Cleaned
+            $stripped = $ld.Stripped
+            $braceData = $ld.Braces
+        } else {
+            $rawLine = $lines[$i]
+            $cleaned = BC_CleanLine $rawLine
+            $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
+            $braceData = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+        }
+
+        if ($cleaned -eq '') {
+            $depth += $braceData[0] - $braceData[1]
+            if ($depth -lt 0) { $depth = 0 }
+            continue
+        }
+
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            $fname = $Matches[1]
+            if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
+                $inFunc = $true
+                $funcName = $fname
+                $funcDepth = $depth
+                $hasHeavy = $false
+            }
+        }
+
+        $depth += $braceData[0] - $braceData[1]
+
+        if ($inFunc) {
+            # Check for heavy patterns (stripped line preserves string contents for DllCall args)
+            if (-not $hasHeavy -and $stripped -ne '' -and $script:RX_HEAVY_CALL.IsMatch($stripped)) {
+                $hasHeavy = $true
+            }
+
+            if ($depth -le $funcDepth) {
+                if ($hasHeavy) { [void]$heavyDirect.Add($funcName) }
+                $inFunc = $false
+                $funcDepth = -1
+            }
+        }
+    }
+}
+
+# --- Pass 2: Flag calls to heavy functions from inside Critical "On" blocks ---
+if ($heavyDirect.Count -gt 0) {
+    # Pre-filter regex: skip files that don't mention any heavy function or direct blocking call
+    $escapedHeavy = @($heavyDirect | ForEach-Object { [regex]::Escape($_) })
+    $chFileFilter = [regex]::new(
+        '(?:' + ($escapedHeavy -join '|') + '|ProcessExist|RunWait)',
+        'Compiled, IgnoreCase')
+
+    foreach ($file in $allFiles) {
+        if (-not $criticalFiles.Contains($file.FullName)) { continue }
+        if (-not $chFileFilter.IsMatch($fileCacheText[$file.FullName])) { continue }
+
+        $lineData = $sharedLineData[$file.FullName]
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+        $depth = 0
+        $inFunc = $false
+        $funcDepth = -1
+        $funcName = ""
+        $criticalOn = $false
+
+        for ($i = 0; $i -lt $lineData.Count; $i++) {
+            $ld = $lineData[$i]
+            $cleaned = $ld.Cleaned
+            if ($cleaned -eq '') { continue }
+
+            if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+                $fname = $Matches[1]
+                if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
+                    $inFunc = $true
+                    $funcName = $fname
+                    $funcDepth = $depth
+                    $criticalOn = $false
+                }
+            }
+
+            $depth += $ld.Braces[0] - $ld.Braces[1]
+
+            if ($inFunc) {
+                if (BC_TestCriticalOn $ld.Stripped) {
+                    $criticalOn = $true
+                }
+                elseif (BC_TestCriticalOff $ld.Stripped) {
+                    $criticalOn = $false
+                }
+
+                if ($criticalOn) {
+                    # Cross-function: calls to directly-heavy functions
+                    $chCallMatches2 = $rxChCalleeExtract.Matches($cleaned)
+                    foreach ($m in $chCallMatches2) {
+                        $callee = $m.Groups[1].Value
+                        if ($BC_keywordSet.Contains($callee)) { continue }
+                        if ($callee -eq $funcName) { continue }
+
+                        if ($heavyDirect.Contains($callee)) {
+                            if ($ld.Raw -notmatch 'lint-ignore:\s*critical-heavy') {
+                                [void]$chIssues.Add([PSCustomObject]@{
+                                    File   = $relPath
+                                    Line   = $i + 1
+                                    Caller = $funcName
+                                    Callee = $callee
+                                    Reason = "contains STA-pumping/blocking calls"
+                                })
+                            }
+                        }
+                    }
+
+                    # Direct: ProcessExist/RunWait inline in Critical block
+                    if ($ld.Stripped -match '(?<![.\w])(ProcessExist|RunWait)\s*\(') {
+                        if ($ld.Raw -notmatch 'lint-ignore:\s*critical-heavy') {
+                            [void]$chIssues.Add([PSCustomObject]@{
+                                File   = $relPath
+                                Line   = $i + 1
+                                Caller = $funcName
+                                Callee = $Matches[1]
+                                Reason = "blocking call directly inside Critical"
+                            })
+                        }
+                    }
+                }
+
+                if ($depth -le $funcDepth) {
+                    $inFunc = $false
+                    $funcDepth = -1
+                    $criticalOn = $false
+                }
+            }
+        }
+    }
+}
+
+if ($chIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($chIssues.Count) heavy call(s) inside Critical section(s) found.")
+    [void]$failOutput.AppendLine("  STA-pumping COM calls (BeginDraw, EndDraw, DwmFlush, ShowWindow, SetWindowPos)")
+    [void]$failOutput.AppendLine("  or blocking calls (ProcessExist, RunWait) under Critical `"On`" can exceed")
+    [void]$failOutput.AppendLine("  Windows' 300ms LowLevelHooksTimeout, silently removing keyboard hooks (#303).")
+    [void]$failOutput.AppendLine("  Fix: release Critical before calling heavy functions, or suppress with:")
+    [void]$failOutput.AppendLine("    HeavyFunc()  ; lint-ignore: critical-heavy")
+    $grouped = $chIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Caller)() calls $($issue.Callee)() inside Critical `u{2014} $($issue.Reason)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_critical_heavy_calls"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1562,7 +1760,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (callback_signatures, critical_leaks, critical_sections, producer_error_boundary, callback_invocation_arity, guard_try_finally, paint_resize_ordering, profiler_balance)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (callback_signatures, critical_leaks, critical_sections, producer_error_boundary, callback_invocation_arity, guard_try_finally, paint_resize_ordering, profiler_balance, critical_heavy_calls)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
