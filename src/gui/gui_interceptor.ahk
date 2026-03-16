@@ -358,7 +358,7 @@ _INT_F_Down(*) {
         return
 
     gAnim_FPSEnabled := !gAnim_FPSEnabled
-    GUI_Repaint()
+    GUI_Repaint()  ; lint-ignore: critical-heavy — hotkey handler, Critical required
 }
 
 ; ========================= SHADER CYCLING =========================

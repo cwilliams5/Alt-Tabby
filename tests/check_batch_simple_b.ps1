@@ -1020,7 +1020,8 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'dead-function', 'dead-config', 'dead-global', 'dead-param',
     'error-boundary',
     'map-delete',
-    'guard-try-finally'
+    'guard-try-finally',
+    'critical-heavy'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
 
 # Scan all src/ and test .ahk files

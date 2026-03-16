@@ -305,13 +305,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
                 if (!gGUI_InGraceCallback)  ; Skip if inside grace callback (one-shot auto-deleted)
                     SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
-                _GUI_ShowOverlayWithFrozen()
+                _GUI_ShowOverlayWithFrozen()  ; lint-ignore: critical-heavy — hotkey handler, Critical required (#303 mitigations: 3 RACE FIX abort points)
             } else if (gGUI_OverlayVisible) {
                 ; When animation frame loop is running, it will paint the next frame
                 ; with the updated selection (tween already started by MoveSelectionFrozen).
                 ; Skip redundant synchronous repaint to avoid double-painting.
                 if (cfg.PerfAnimationType = "None")
-                    GUI_Repaint()
+                    GUI_Repaint()  ; lint-ignore: critical-heavy — hotkey handler, Critical required
             }
         }
         Profiler.Leave() ; @profile
@@ -351,7 +351,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 _GUI_ActivateFromFrozen()
             } else if (gGUI_OverlayVisible) {
                 ; Normal case: hide FIRST (feels snappy), then activate
-                GUI_HideOverlay()
+                GUI_HideOverlay()  ; lint-ignore: critical-heavy — hotkey handler, Critical required
                 _GUI_ActivateFromFrozen()
             } else {
                 ; Edge case: grace period expired but GUI not shown yet
@@ -634,7 +634,7 @@ _GUI_ApplyFilter(label) {
     ; Let GUI_Repaint handle resize atomically — it paints at the new dimensions
     ; first, then SetClip + SetWindowPos + Commit in one DComp batch. Calling
     ; GUI_ResizeToRows separately causes a stale frame (old content at new size).
-    GUI_Repaint()
+    GUI_Repaint()  ; lint-ignore: critical-heavy — filter apply, Critical needed for atomic resize+paint
     Critical "Off"
     Profiler.Leave() ; @profile
 }

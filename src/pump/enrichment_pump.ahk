@@ -444,7 +444,7 @@ _Pump_PruneAllCaches() {
     if (_Pump_ProcNameCache.Count > 0) {
         deadPids := []
         for pid, _ in _Pump_ProcNameCache {
-            if (!ProcessExist(pid))
+            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy — pump process has no keyboard hooks
                 deadPids.Push(pid)
         }
         for _, pid in deadPids
@@ -454,7 +454,7 @@ _Pump_PruneAllCaches() {
     if (_Pump_FailedPidCache.Count > 0) {
         deadPids := []
         for pid, _ in _Pump_FailedPidCache {
-            if (!ProcessExist(pid))
+            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy — pump process has no keyboard hooks
                 deadPids.Push(pid)
         }
         for _, pid in deadPids
