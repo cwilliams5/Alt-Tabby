@@ -590,8 +590,10 @@ _GUIPump_DeferredRetry() {
         } else {
         }
     } catch as e {
-        global LOG_PATH_PUMP
-        try LogAppend(LOG_PATH_PUMP, "RETRY error: " e.Message)
+        if (cfg.DiagPumpLog) {
+            global LOG_PATH_PUMP
+            try LogAppend(LOG_PATH_PUMP, "RETRY error: " e.Message)
+        }
     }
 }
 
