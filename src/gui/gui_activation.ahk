@@ -11,6 +11,7 @@
 ; Reset atomically via gGUI_Pending := _GUI_NewPendingState().
 ; Phase progression: "" -> "polling" -> "waiting" -> "flushing" -> ""
 global gGUI_Pending := _GUI_NewPendingState()
+global gStats_CrossWorkspace := 0
 
 _GUI_NewPendingState() {
     return {

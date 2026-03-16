@@ -384,6 +384,20 @@ _Anim_ApplyWindowAlpha() {
     DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", alpha, "uint", 2)  ; LWA_ALPHA=2
 }
 
+; Prepare opacity state for the show-fade sequence.
+; animated=true: add WS_EX_LAYERED, set alpha=0, opacity=0.0 (tween drives it up)
+; animated=false: set opacity=1.0 (no fade)
+Anim_PrepareShowFade(animated) {
+    global gAnim_OverlayOpacity, gGUI_BaseH
+    if (animated) {
+        Anim_AddLayered()
+        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
+        gAnim_OverlayOpacity := 0.0
+    } else {
+        gAnim_OverlayOpacity := 1.0
+    }
+}
+
 ; Add WS_EX_LAYERED for fade animation. Called at fade start.
 Anim_AddLayered() {
     global gGUI_BaseH, GWL_EXSTYLE, WS_EX_LAYERED

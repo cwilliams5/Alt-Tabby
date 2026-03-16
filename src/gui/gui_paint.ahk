@@ -177,9 +177,7 @@ GUI_Repaint() {
         ; Suppress stale hover during resize — hover row was computed against
         ; OLD overlay geometry so action buttons would render at wrong position.
         ; WM_MOUSEMOVE will recalculate correctly after resize completes.
-        global gGUI_HoverRow, gGUI_HoverBtn
-        gGUI_HoverRow := 0
-        gGUI_HoverBtn := ""
+        GUI_InvalidateHoverPosition()
         ; Shrink: resize HWND before paint.  During STA pump, old content is
         ; shown clipped by the smaller HWND — no stale-pixel exposure.
         if (!isGrowing && phW > 0 && phH > 0)
