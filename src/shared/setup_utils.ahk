@@ -1174,14 +1174,10 @@ Update_ApplyCore(opts) {
 ; Apply update: rename current exe, move new exe, relaunch
 ; Wrapper for auto-update flow - uses Update_ApplyCore with appropriate options
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
-    global g_PumpPID, g_GuiPID, g_ConfigEditorPID, g_BlacklistEditorPID
+    global g_PumpPID, g_GuiPID
 
-    ; Gracefully close any open editors before the force-kill sweep.
-    ; Editors have unsaved-changes prompts on WM_CLOSE — sending it first
-    ; gives the user a chance to save. Without this, the force sweep in
-    ; Update_ApplyCore silently kills editors via taskkill /F.
-    _Update_CloseEditors()
-
+    ; Editor graceful close is handled inside ProcessUtils_KillAltTabby (force=true)
+    ; via title-based discovery — works in both elevated and non-elevated paths.
     Update_ApplyCore({
         sourcePath: newExePath,
         targetPath: targetExePath,
@@ -1192,40 +1188,6 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         cleanupSourceOnFailure: true,
         killPids: {gui: g_GuiPID, pump: g_PumpPID}
     })
-}
-
-; Send WM_CLOSE to editor windows and wait briefly for them to close.
-; This allows unsaved-changes prompts to appear before the update's force-kill sweep.
-_Update_CloseEditors() {
-    global g_ConfigEditorPID, g_BlacklistEditorPID
-
-    editorsClosed := true
-    for pid in [g_ConfigEditorPID, g_BlacklistEditorPID] {
-        if (!pid || !ProcessExist(pid))
-            continue
-        editorsClosed := false
-        try {
-            hwnd := WinExist("ahk_pid " pid)
-            if (hwnd)
-                PostMessage(0x0010, 0, 0, , "ahk_id " hwnd)  ; WM_CLOSE
-        }
-    }
-
-    if (editorsClosed)
-        return
-
-    ; Wait up to 3s for editors to close (user may be saving)
-    deadline := A_TickCount + 3000
-    while (A_TickCount < deadline) {
-        allGone := true
-        if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
-            allGone := false
-        if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
-            allGone := false
-        if (allGone)
-            return
-        Sleep(200)
-    }
 }
 
 ; Called on startup to clean up old exe from previous update
@@ -1371,6 +1333,33 @@ _Update_MergeStats(srcPath, targetPath) {
         }
     }
 
+    ; Detect reverse merge: target previously merged TO source (e.g., A→B then B→A).
+    ; Without this, the first B→A merge re-adds A's values that B already includes.
+    reverseMerge := false
+    if (!previouslyMerged) {
+        srcInstallId := ""
+        srcDir := ""
+        SplitPath(srcPath, , &srcDir)
+        srcConfigPath := srcDir "\config.ini"
+        if (FileExist(srcConfigPath))
+            try srcInstallId := IniRead(srcConfigPath, "Setup", "InstallationId", "")
+
+        if (srcInstallId != "") {
+            try {
+                targetLastMergedToId := IniRead(targetPath, "Merged", "LastMergedToId", "")
+                if (targetLastMergedToId = srcInstallId)
+                    reverseMerge := true
+            }
+        }
+        if (!reverseMerge) {
+            try {
+                targetLastMergedTo := IniRead(targetPath, "Merged", "LastMergedTo", "")
+                if (PathsEqual(targetLastMergedTo, srcPath))
+                    reverseMerge := true
+            }
+        }
+    }
+
     if (previouslyMerged) {
         ; Delta merge: only add stats accumulated since last merge
         hasNewStats := false
@@ -1413,6 +1402,38 @@ _Update_MergeStats(srcPath, targetPath) {
                         IniWrite(targetVal + delta, targetPath, "Lifetime", key)
                     }
                 }
+            }
+        }
+    } else if (reverseMerge) {
+        ; Reverse merge: target previously merged TO source (A→B, now B→A).
+        ; Source's values include target's contribution from the forward merge.
+        ; Use target's Snap values to determine what target contributed, then
+        ; only add source's accumulation beyond that contribution.
+        ; Example: A=100, B=0. A→B: B=100, A.Snap=100. B earns 50: B=150.
+        ;   B→A: delta = B.current(150) - A.Snap(100) = 50. A = 100+50 = 150. Correct.
+        for key in STATS_LIFETIME_KEYS {
+            try {
+                srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+                targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                if (maxKeys.Has(key)) {
+                    if (srcVal > targetVal)
+                        IniWrite(srcVal, targetPath, "Lifetime", key)
+                } else {
+                    ; Target's Snap = what target contributed to source during forward merge
+                    targetSnap := Integer(IniRead(targetPath, "Merged", "Snap_" key, "0"))
+                    delta := srcVal - targetSnap
+                    if (delta > 0)
+                        IniWrite(targetVal + delta, targetPath, "Lifetime", key)
+                }
+            }
+        }
+
+        ; Update target's Snap to post-merge values so the next forward merge
+        ; (target→source again) uses correct baselines
+        for key in STATS_LIFETIME_KEYS {
+            try {
+                newTargetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                IniWrite(newTargetVal, targetPath, "Merged", "Snap_" key)
             }
         }
     } else {
