@@ -131,7 +131,9 @@ float4 PSMain(PSInput input) : SV_Target {
         float2 qp = pp;
 
         pp = float2(h21((float2)f2), h21((float2)(0.01 + f2)));
-        pp = pow(4. * pp * (1. - pp), (float2)4);
+        float2 pp_base = 4. * pp * (1. - pp);
+        float2 pp_sq = pp_base * pp_base;
+        pp = pp_sq * pp_sq; // pow(x,4)
 
         float2 pp2 = float2(h21((float2)f3), h21((float2)(0.01 + f3)));
         float fr = frac(t_anim);

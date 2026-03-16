@@ -134,7 +134,8 @@ float3 lights(float3 p, float3 rd, float d, Hit h) {
     float shad = 0.1 + 0.9 * shadow(p, float3(6, 3, -10));
     float ao_fac = 0.3 + 0.7 * ao_val;
     float rim = sat(0.1 + 0.9 * dot(ld * float3(-1, 0, -1), n)) * 0.3;
-    float spec = pow(sat(dot(rd, reflect(ld, n))), 10.0) * spe;
+    float sp = sat(dot(rd, reflect(ld, n))); float sp2 = sp*sp; float sp4 = sp2*sp2;
+    float spec = (sp4 * sp4 * sp2) * spe; // pow(x,10)
     float3 lightCol = float3(1.85, 0.5, 0.08);
     float3 lit = (diff * shad * ao_fac + (rim + spec) * ao_val) * c * lightCol;
     return lerp(lit, lightCol, S(0.7, 1.0, 1.0 + dot(rd, n)) * 0.1);

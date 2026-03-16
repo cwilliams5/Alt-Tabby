@@ -99,7 +99,8 @@ float map(float3 p, float timeRotC, float timeRotS) {
 float3 firePalette(float i) {
     float T = 1400.0 + 1300.0 * i;
     float3 L = float3(7.4, 5.6, 4.4);
-    L = pow(L, (float3)5.0) * (exp(1.43876719683e5 / (T * L)) - 1.0);
+    float3 L2 = L * L; float3 L5 = L2 * L2 * L; // pow(L,5)
+    L = L5 * (exp(1.43876719683e5 / (T * L)) - 1.0);
     return 1.0 - exp(-5e8 / L);
 }
 

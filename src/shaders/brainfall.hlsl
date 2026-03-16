@@ -97,7 +97,8 @@ float4 PSMain(PSInput input) : SV_Target {
     f /= sum;
 
     col = float3(1.0, 0.0, 0.5) * smoothstep(1.37, 1.5, f);
-    col += float3(0.0, 1.0, 0.5) * pow(smoothstep(1.0, 1.54, f), 10.0);
+    float ss = smoothstep(1.0, 1.54, f); float ss2 = ss*ss; float ss4 = ss2*ss2;
+    col += float3(0.0, 1.0, 0.5) * (ss4 * ss4 * ss2); // pow(x,10)
     col += float3(0.20, 0.20, 0.20) * smoothstep(0.0, 4.59, f - 0.12);
 
     col = PBRNeutralToneMapping(col);
