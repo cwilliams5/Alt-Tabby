@@ -83,7 +83,7 @@ Split by file group (run in parallel):
 - **GUI support** — `src/gui/gui_overlay.ahk`, `gui_pump.ahk`, `gui_workspace.ahk`, `gui_win.ahk`, `gui_monitor.ahk`
 - **Shared infrastructure** — `src/shared/window_list.ahk`, `blacklist.ahk`, `ipc_pipe.ahk`, `stats.ahk`
 
-Use `query_timers.ps1` to cross-reference — timer callbacks are the primary interrupt source for non-hotkey Critical sections.
+Use `query_timers.ps1` to cross-reference — timer callbacks are the primary interrupt source for non-hotkey Critical sections. Use `query_mutations.ps1 <globalName>` to see which functions mutate a given global — reveals whether all writers are inside Critical sections without reading full files.
 
 ## Validation
 

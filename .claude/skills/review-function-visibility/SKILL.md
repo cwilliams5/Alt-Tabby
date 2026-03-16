@@ -22,6 +22,7 @@ Enter planning mode. Audit function visibility boundaries for cleanup opportunit
 | `query_function_visibility.ps1 <funcName>` | Where defined, public/private, all callers |
 | `query_interface.ps1 <file>` | Public/private function ratios for a file |
 | `query_impact.ps1 <funcName>` | Blast radius of making a function public (downstream callers/readers) |
+| `query_includes.ps1` | Include tree — verify cross-file boundaries when assessing visibility |
 
 ## What to Look For
 

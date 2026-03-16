@@ -79,7 +79,7 @@ Split by area for parallel scanning:
 
 Exclude `src/lib/` (third-party code).
 
-Use `query_interface.ps1` to compare module public surfaces — similar API shapes across files can reveal DRY violations or misplaced responsibilities.
+Use `query_interface.ps1` to compare module public surfaces — similar API shapes across files can reveal DRY violations or misplaced responsibilities. Use `query_function.ps1 <funcName>` to read function bodies when evaluating DRY violations without loading full files. Use `query_callchain.ps1 <funcName> -Reverse` to trace callers when checking whether misplaced logic is called from the expected module or from elsewhere.
 
 ## Validation
 

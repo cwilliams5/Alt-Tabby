@@ -78,7 +78,7 @@ When analyzing multiple dumps for the same bug:
 
 ## Event Reference
 
-See `docs/USING_RECORDER.md` for the full event reference table with field descriptions and analysis patterns. Do NOT maintain a separate event list here — read the doc at analysis time.
+Use `query_events.ps1 <name_or_code>` for structured event lookups — shows field meanings (d1-d4) and emitter functions. Use `query_events.ps1` with no args for the full index. See `docs/USING_RECORDER.md` for analysis patterns and worked examples.
 
 ## Reporting
 

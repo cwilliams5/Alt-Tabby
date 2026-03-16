@@ -25,6 +25,7 @@ The manifest lists all files that write to each global (alphabetical, no file is
 | `query_interface.ps1 <file>` | What a file exports (public functions + globals) |
 | `query_function_visibility.ps1 <funcName>` | Where defined, public/private, all callers |
 | `query_function.ps1 <funcName>` | Extract full function body without loading entire file |
+| `query_mutations.ps1 <globalName>` | Detailed per-function mutation sites with assignment operators and values |
 
 ## What to Look For
 
