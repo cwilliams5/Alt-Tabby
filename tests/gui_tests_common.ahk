@@ -331,10 +331,6 @@ Win_GetScaleForWindow(hwnd) {
 global gMock_StoreItems := []
 global gMock_StoreItemsMap := Map()
 
-WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
-    return (workspaceName = currentWSName) || (workspaceName = "")
-}
-
 WL_GetDisplayList(opts := "") {
     global gMock_StoreItems, gMock_StoreItemsMap
     ; Filter by currentWorkspaceOnly if requested

@@ -761,10 +761,6 @@ WL_GetByHwnd(hwnd) {
     return gWS_Store.Get(hwnd, "")
 }
 
-WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
-    return (workspaceName = currentWSName) || (workspaceName = "")
-}
-
 WL_SetCurrentWorkspace(id, name := "") {
     Profiler.Enter("WL_SetCurrentWorkspace") ; @profile
     global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_MRUBumpOnly
