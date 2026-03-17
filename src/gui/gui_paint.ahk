@@ -395,7 +395,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick, _gPaint_SubCache
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
-    global gFX_GPUReady
+    global gFX_GPUReady, gD2D_BrushGeneration
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -475,7 +475,17 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
     ; Text shadow params (always enabled when GPU ready)
     shadowP := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
-    shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
+    static _shadowBrARGB := -1, _shadowBrCached := 0, _shadowBrGen := -1
+    if (shadowP.enabled) {
+        if (shadowP.argb != _shadowBrARGB || _shadowBrGen != gD2D_BrushGeneration) {
+            _shadowBrCached := D2D_GetCachedBrush(shadowP.argb)
+            _shadowBrARGB := shadowP.argb
+            _shadowBrGen := gD2D_BrushGeneration
+        }
+        shadowBr := _shadowBrCached
+    } else {
+        shadowBr := 0
+    }
     shadowEnabled := shadowP.enabled
     sOffX := shadowP.offX
     sOffY := shadowP.offY
@@ -756,7 +766,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, cachedLayout)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -765,7 +775,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (cfg.GUI_ShowFooter) {
-        _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr)
+        _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout)
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
@@ -881,8 +891,8 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
 
 ; ========================= SCROLLBAR =========================
 
-_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
-    global cfg
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, cachedLayout) {
+    global cfg, gD2D_BrushGeneration
     Profiler.Enter("_GUI_DrawScrollbar") ; @profile
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
         Profiler.Leave() ; @profile
@@ -895,8 +905,8 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
         return
     }
 
-    ; Use cached metrics (avoids per-frame Round() calls)
-    cl := GUI_GetCachedLayout(scale)
+    ; Use cached layout passed from caller (avoids redundant GUI_GetCachedLayout call)
+    cl := cachedLayout
     trackW := cl.sbTrackW
     marR := cl.sbMarR
 
@@ -915,11 +925,24 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
     y2 := y1 + thumbH
     yEnd := y + trackH
 
-    if (cfg.GUI_ScrollBarGutterEnabled) {
-        D2D_FillRoundRect(x, y, trackW, trackH, r, D2D_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB))
+    ; Static-cached scrollbar brushes (config-stable, re-cached on device loss)
+    static _sbGutterARGB := -1, _sbGutterBr := 0
+    static _sbThumbARGB := -1, _sbThumbBr := 0, _sbGen := -1
+    gutterARGB := cfg.GUI_ScrollBarGutterARGB
+    thumbARGB := cfg.GUI_ScrollBarThumbARGB
+    if (_sbGen != gD2D_BrushGeneration || gutterARGB != _sbGutterARGB || thumbARGB != _sbThumbARGB) {
+        _sbGutterBr := D2D_GetCachedBrush(gutterARGB)
+        _sbThumbBr := D2D_GetCachedBrush(thumbARGB)
+        _sbGutterARGB := gutterARGB
+        _sbThumbARGB := thumbARGB
+        _sbGen := gD2D_BrushGeneration
     }
 
-    thumbBr := D2D_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
+    if (cfg.GUI_ScrollBarGutterEnabled) {
+        D2D_FillRoundRect(x, y, trackW, trackH, r, _sbGutterBr)
+    }
+
+    thumbBr := _sbThumbBr
     if (y2 <= yEnd) {
         D2D_FillRoundRect(x, y1, trackW, thumbH, r, thumbBr)
     } else {
@@ -937,16 +960,17 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
 
 ; ========================= FOOTER =========================
 
-_GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
+_GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
+    global gD2D_BrushGeneration
     Profiler.Enter("_GUI_DrawFooter") ; @profile
 
     hasShadow := shadowP.enabled
     sOffX := shadowP.offX
     sOffY := shadowP.offY
 
-    ; Use cached metrics (avoids per-frame Round() calls)
-    cl := GUI_GetCachedLayout(scale)
+    ; Use cached layout passed from caller (avoids redundant GUI_GetCachedLayout call)
+    cl := cachedLayout
     fh := cl.footerH
     mx := cl.Mx
     my := cl.My
@@ -956,10 +980,23 @@ _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     fw := wPhys - 2 * mx
     fr := cl.footerBGRad
 
+    ; Static-cached footer brushes (config-stable, re-cached on device loss)
+    static _ftBgARGB := -1, _ftBgBr := 0
+    static _ftBdrARGB := -1, _ftBdrBr := 0, _ftGen := -1
+    bgARGB := cfg.GUI_FooterBGARGB
+    bdrARGB := cfg.GUI_FooterBorderARGB
+    if (_ftGen != gD2D_BrushGeneration || bgARGB != _ftBgARGB || bdrARGB != _ftBdrARGB) {
+        _ftBgBr := D2D_GetCachedBrush(bgARGB)
+        _ftBdrBr := D2D_GetCachedBrush(bdrARGB)
+        _ftBgARGB := bgARGB
+        _ftBdrARGB := bdrARGB
+        _ftGen := gD2D_BrushGeneration
+    }
+
     ; Draw footer background
-    D2D_FillRoundRect(fx, fy, fw, fh, fr, D2D_GetCachedBrush(cfg.GUI_FooterBGARGB))
+    D2D_FillRoundRect(fx, fy, fw, fh, fr, _ftBgBr)
     if (cfg.GUI_FooterBorderPx > 0) {
-        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), cl.footerBorderPx)
+        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, _ftBdrBr, cl.footerBorderPx)
     }
 
     ; Arrow dimensions
