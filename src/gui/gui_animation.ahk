@@ -26,7 +26,6 @@ global gAnim_HidePending := false     ; Hide-fade in progress
 global gAnim_DeferredTimerStart := false  ; Deferred frame loop start (STA pump safety, #175)
 global gAnim_SelPrevIndex := 0        ; Previous selection index (for slide Y calc)
 global gAnim_SelNewIndex := 0         ; New selection index (for slide Y calc)
-global gFX_AmbientTime := 0.0         ; Cumulative ms for ambient loops (Full mode)
 
 ; FPS debug counter state
 global FPS_SAMPLE_INTERVAL_MS := 500  ; How often to update the debug FPS readout
@@ -113,11 +112,9 @@ _Anim_CancelTween(name) {
 }
 
 Anim_CancelAll() {
-    global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending
+    global gAnim_Tweens, gAnim_HidePending
     gAnim_Tweens := Map()
-    FX_SaveShaderTime()           ; Capture shader carry time before ambient resets
-    gFX_AmbientTime := 0.0
-    FX_ResetMouseVelocity()
+    FX_EndSession()
     gAnim_HidePending := false
     _Anim_StopTimer()
 }
@@ -451,9 +448,8 @@ Anim_ForceCompleteHide() {
 
 _Anim_DoActualHide() {
     Profiler.Enter("_Anim_DoActualHide") ; @profile
-    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed
-    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
-    global gGUI_DisplayItems
+    global gGUI_OverlayVisible, gGUI_BaseH
+    global GUI_LOG_TRIM_EVERY_N_HIDES
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -461,21 +457,9 @@ _Anim_DoActualHide() {
         return
     }
 
-    ; Release deferred display items — kept alive during hide-fade so the
-    ; frame loop paints the frozen list while fading out (not the live MRU).
-    gGUI_DisplayItems := []
-
-    GUI_ClearHoverState()
-
-    ; Clear D2D swap chain for clean buffer on next Show.
-    ; Paint_ClearSurface handles the repaint guard + D2D error recovery.
-    Paint_ClearSurface()
-
-    try {
-        gGUI_Base.Hide()
-    }
-    gGUI_OverlayVisible := false
-    gGUI_Revealed := false
+    ; State machine handles hide cleanup (display items, hover, paint surface,
+    ; window hide, visibility flags).
+    GUI_CompleteHideState()
 
     ; Remove WS_EX_LAYERED and reset alpha so next Show gets fresh DWM blur
     _Anim_RemoveLayered()
