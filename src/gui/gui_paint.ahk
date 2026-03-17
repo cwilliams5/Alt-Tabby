@@ -586,6 +586,16 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         selExpandX := cachedLayout.selExpandX
         selExpandY := cachedLayout.selExpandY
 
+        ; Hoist cfg lookups used in selection + hover paths (like D2D_Res hoisting above)
+        cfgSelARGB := cfg.GUI_SelARGB
+        cfgSelBorderARGB := cfg.GUI_SelBorderARGB
+        cfgSelBorderW := cfg.GUI_SelBorderWidthPx
+        cfgHoverARGB := cfg.GUI_HoverARGB
+        cfgHovBorderARGB := cfg.GUI_HovBorderARGB
+        cfgHovBorderW := cfg.GUI_HovBorderWidthPx
+        cfgUseHoverSelEffect := cfg.GUI_UseHoverSelectionEffect
+        cfgSelIntensityHover := cfg.GUI_SelectionIntensityForHover
+
         ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
         ; The highlight is a background element — text/icons draw on top.
         ; When animation is active, the highlight Y is interpolated between prev and new positions.
@@ -614,15 +624,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                 ; Shader-based selection effect
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
-                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT, Rad)
+                    cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, 1.0, entranceT, Rad)
                 FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
             } else {
                 ; Simple D2D fill + border (the "None" path)
-                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
-                bw := cfg.GUI_SelBorderWidthPx
+                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfgSelARGB))
+                bw := cfgSelBorderW
                 if (bw > 0) {
                     half := bw / 2
-                    D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+                    D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, Rad, D2D_GetCachedBrush(cfgSelBorderARGB), bw)
                 }
             }
         }
@@ -631,6 +641,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
             cur := items[idx1]
+            curHwnd := cur.hwnd
+            curIcon := cur.iconHicon
+            curTitle := cur.title
+            curProc := cur.processName
             isSel := (idx1 = selIndex)
 
             ; Hover highlight (non-selected rows) — 4-way path
@@ -642,25 +656,25 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 if (gFX_HoverEffect.key != "" && gFX_GPUReady) {
                     ; Path 1: Independent hover shader
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, entranceT, Rad)
+                        cfgHoverARGB, cfgHovBorderARGB, cfgHovBorderW, entranceT, Rad)
                     FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
-                } else if (!cfg.GUI_UseHoverSelectionEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+                } else if (!cfgUseHoverSelEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                     ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, entranceT, Rad)
+                        cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, cfgSelIntensityHover, entranceT, Rad)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
                     ; Path 3: GPU flat fill + border
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
-                } else if ((cfg.GUI_HoverARGB >> 24) > 0 || cfg.GUI_HovBorderWidthPx > 0) {
+                } else if ((cfgHoverARGB >> 24) > 0 || cfgHovBorderW > 0) {
                     ; Path 4: CPU fallback fill + border
-                    hoverAlpha := cfg.GUI_HoverARGB >> 24
+                    hoverAlpha := cfgHoverARGB >> 24
                     if (hoverAlpha > 0)
-                        D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
-                    bw := cfg.GUI_HovBorderWidthPx
+                        D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfgHoverARGB))
+                    bw := cfgHovBorderW
                     if (bw > 0) {
                         half := bw / 2
-                        D2D_StrokeRoundRect(hoverX + half, hoverY + half, hoverW - bw, RowH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+                        D2D_StrokeRoundRect(hoverX + half, hoverY + half, hoverW - bw, RowH - bw, Rad, D2D_GetCachedBrush(cfgHovBorderARGB), bw)
                     }
                 }
             }
@@ -678,7 +692,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; #178: cur is a live store ref — iconHicon may be zeroed after window
             ; destruction.  Try the bitmap cache regardless so frozen display items
             ; keep their last-known icon.
-            iconDrawn := D2D_DrawCachedIcon(cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
+            iconDrawn := D2D_DrawCachedIcon(curHwnd, curIcon, ix, iy, ISize, &iconWasCacheHit)
             if (iconDrawn) {
                 if (iconWasCacheHit)
                     iconCacheHits += 1
@@ -699,14 +713,14 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             brColUse := isSel ? brColHi : brCol
 
             ; Text drawing (with optional shadow)
-            title := cur.title
-            sub := cur.processName
+            title := curTitle
+            sub := curProc
             if (sub = "") {
                 ; Lazy-cache: concat "Class: " only once per display cycle, not per-frame
-                sub := _gPaint_SubCache.Get(cur.hwnd, "")
+                sub := _gPaint_SubCache.Get(curHwnd, "")
                 if (sub = "") {
                     sub := "Class: " cur.class
-                    _gPaint_SubCache[cur.hwnd] := sub
+                    _gPaint_SubCache[curHwnd] := sub
                 }
             }
 
