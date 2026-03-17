@@ -71,7 +71,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float cursorDist = length(toCursor);
         if (cursorDist > 1.0) {
             float attraction = 20.0 * reactivity / max(cursorDist * 0.01, 1.0);
-            p.vel += normalize(toCursor) * attraction * timeDelta;
+            p.vel += toCursor / cursorDist * attraction * timeDelta;
         }
 
         float wanderTime = time * 0.5 + fi * 0.1;
@@ -96,7 +96,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float2 fromCursor = p.pos - iMouse;
         float distFromCursor = length(fromCursor);
         if (distFromCursor > 250.0) {
-            p.vel -= normalize(fromCursor) * (distFromCursor - 250.0) * 0.5 * timeDelta;
+            p.vel -= fromCursor / distFromCursor * (distFromCursor - 250.0) * 0.5 * timeDelta;
         }
 
         p.life += timeDelta / lifetime;
@@ -124,8 +124,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float2 delta = cellPos - p.pos;
             float distSq = dot(delta, delta);
             float radius = p.size;
-            float limit = radius * 4.0;
-            if (distSq > limit * limit) continue;
+            float radiusSq = radius * radius;
+            if (distSq > radiusSq * 16.0) continue;
 
             // Pulsing bioluminescence
             float pulseFreq = 2.0 + hash1((float)i * 13.7) * 3.0;
@@ -134,7 +134,6 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             pulse = pulse * pulse;
 
             // Dual-layer glow
-            float radiusSq = radius * radius;
             float innerGlow = exp(-distSq / (radiusSq * 0.3));
             float outerGlow = exp(-distSq / (radiusSq * 2.0));
             float glow = innerGlow * 0.8 + outerGlow * 0.4;

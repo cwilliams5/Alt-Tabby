@@ -93,10 +93,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float distSq = dot(delta, delta);
             float pulse = 1.0 + 0.15 * sin(p.life * 12.0 + (float)i * 2.0);
             float radius = p.size * pulse * (1.0 - p.life * 0.3);
-            float limit = radius * 2.5;
-            if (distSq > limit * limit) continue;
-
             float radiusSq = radius * radius;
+            if (distSq > radiusSq * 6.25) continue;
             float glow = exp(-distSq / (radiusSq * 0.5));
             float fadeIn = smoothstep(0.0, 0.1, p.life);
             float fadeOut = smoothstep(1.0, 0.3, p.life);
