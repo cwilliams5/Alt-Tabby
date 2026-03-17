@@ -13,7 +13,6 @@ global gGUI_OverlayH := 0      ; Alias → same as gGUI_BaseH (single-window com
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
 global gGUI_CachedVisibleRows := -1   ; Cached result of GUI_GetVisibleRows; -1 = stale
 global gGUI_StealFocus := false      ; Effective steal-focus (cfg OR Mica)
-global gGUI_FocusBeforeShow := 0     ; Hwnd of foreground window before overlay took focus
 
 ; D2D factories and device pipeline (process-global, survive render target recreation)
 global gD2D_Factory := 0       ; ID2D1Factory1

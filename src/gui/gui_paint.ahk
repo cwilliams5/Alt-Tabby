@@ -336,7 +336,7 @@ GUI_Repaint() {
 _GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Revealed, cfg
     global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
-    global gGUI_StealFocus, gGUI_FocusBeforeShow
+    global gGUI_StealFocus
 
     Profiler.Enter("_GUI_RevealBoth") ; @profile
 
@@ -364,7 +364,7 @@ _GUI_RevealBoth() {
 
     try {
         if (gGUI_StealFocus) {
-            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            ; gGUI_FocusBeforeShow already captured by _GUI_ShowOverlayWithFrozen
             DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
             DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)
         } else {
