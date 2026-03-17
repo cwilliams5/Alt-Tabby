@@ -956,14 +956,16 @@ _WS_EnqueueIfNeeded(row) {
     }
     ; Note: refresh-on-focus is handled by WL_EnqueueIconRefresh, not here
 
+    wakeIcon := false
+    wakeProc := false
+
     if (needsIconWork && row.present) {
         if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
             hwnd := row.hwnd + 0
             if (!gWS_IconQueueDedup.Has(hwnd)) {
                 gWS_IconQueue.Push(hwnd)
                 gWS_IconQueueDedup[hwnd] := true
-                try IconPump_EnsureRunning()  ; Wake timer from idle pause
-                try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
+                wakeIcon := true
             }
         }
     }
@@ -974,16 +976,27 @@ _WS_EnqueueIfNeeded(row) {
         if (!gWS_PidQueueDedup.Has(pid)) {
             gWS_PidQueue.Push(pid)
             gWS_PidQueueDedup[pid] := true
-            try ProcPump_EnsureRunning()  ; Wake timer from idle pause
-            try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
+            wakeProc := true
         }
     }
     Critical "Off"
+
+    ; Wake pumps outside Critical — EnsureRunning has its own Critical
+    ; section whose "Off" would prematurely end ours (#395)
+    if (wakeIcon) {
+        try IconPump_EnsureRunning()
+        try GUIPump_EnsureRunning()
+    }
+    if (wakeProc) {
+        try ProcPump_EnsureRunning()
+        if (!wakeIcon)
+            try GUIPump_EnsureRunning()
+    }
 }
 
 ; Enqueue hwnd for icon enrichment without row-level checks.
 ; Used by pump re-enqueue path where the caller has already validated eligibility.
-; Safe to call when already inside Critical (AHK's Critical is re-entrant).
+; Safe to nest inside caller's Critical — no EnsureRunning calls here.
 WL_EnqueueIconDirect(hwnd) {
     global gWS_IconQueue, gWS_IconQueueDedup
     hwnd := hwnd + 0
@@ -1022,14 +1035,21 @@ WL_EnqueueIconRefresh(hwnd) {
 
     ; RACE FIX: Wrap in Critical - check-then-insert must be atomic
     ; (same pattern as _WS_EnqueueIfNeeded and WL_PopIconBatch)
+    wakeIcon := false
     Critical "On"
     if (!gWS_IconQueueDedup.Has(hwnd)) {
         gWS_IconQueue.Push(hwnd)
         gWS_IconQueueDedup[hwnd] := true
-        try IconPump_EnsureRunning()  ; Wake timer from idle pause
-        try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
+        wakeIcon := true
     }
     Critical "Off"
+
+    ; Wake pumps outside Critical — EnsureRunning has its own Critical
+    ; section whose "Off" would prematurely end ours (#395)
+    if (wakeIcon) {
+        try IconPump_EnsureRunning()
+        try GUIPump_EnsureRunning()
+    }
     return true
 }
 
