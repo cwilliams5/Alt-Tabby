@@ -29,9 +29,11 @@ float4 PSMain(PSInput input) : SV_Target
     ray.z = 1.0;
 
     float offset = time * 0.5;
-    float speed2 = (cos(offset) + 1.0) * 2.0;
+    float s_off, c_off;
+    sincos(offset, s_off, c_off);
+    float speed2 = (c_off + 1.0) * 2.0;
     float speed = speed2 + 0.1;
-    offset += sin(offset) * 0.96;
+    offset += s_off * 0.96;
     offset *= 2.0;
 
     float3 col = (float3)0;
