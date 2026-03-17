@@ -144,6 +144,20 @@ _Anim_UpdateTweens(now := 0) {
     return activeCount
 }
 
+; ========================= DEFERRED START =========================
+
+; Called by GUI_Repaint's finally block after the reentrancy guard drops.
+; If Anim_EnsureTimer() was called during paint (STA pump dispatched a show
+; sequence that started a tween), the start was deferred to avoid blocking
+; the paint. This consumes that deferral. (#175)
+Anim_ConsumeDeferredStart() {
+    global gAnim_DeferredTimerStart
+    if (gAnim_DeferredTimerStart) {
+        gAnim_DeferredTimerStart := false
+        Anim_EnsureTimer()
+    }
+}
+
 ; ========================= FRAME LOOP =========================
 
 Anim_EnsureTimer() {
