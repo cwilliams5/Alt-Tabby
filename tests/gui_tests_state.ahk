@@ -26,6 +26,7 @@ RunGUITests_State() {
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps, gStats_Cancellations
     global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, gStats_MonitorToggles
     global gINT_AltIsDown, gMock_AltPhysicallyDown, gMock_RecoverLostAltUpCalls  ; #303
+    global gGUI_InGraceCallback
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -366,6 +367,7 @@ RunGUITests_State() {
 
     ; Overlay should NOT have shown - grace timer should have aborted
     GUI_AssertEq(gGUI_OverlayVisible, false, "Grace timer correctly aborted (state was IDLE)")
+    GUI_AssertEq(gGUI_InGraceCallback, false, "Grace callback guard cleared after state-mismatch abort")
 
     ; ----- Test: Grace timer race - ShowOverlay aborts cleanly when state changed to IDLE -----
     GUI_Log("Test: Grace timer race - ShowOverlay aborts with force-hide")
@@ -382,6 +384,7 @@ RunGUITests_State() {
     ; OverlayVisible must be false after abort
     GUI_AssertEq(gGUI_OverlayVisible, false, "Race fix: overlay not visible after late grace fire")
     GUI_AssertEq(gGUI_State, "IDLE", "Race fix: state still IDLE after late grace fire")
+    GUI_AssertEq(gGUI_InGraceCallback, false, "Grace callback guard cleared after late-fire abort")
     ; Mock GUI windows must not be visible (force-hide cleans up in-flight Show)
     GUI_AssertEq(gGUI_Base.visible, false, "Race fix: gGUI_Base not visible after abort")
     GUI_AssertEq(gGUI_Overlay.visible, false, "Race fix: gGUI_Overlay not visible after abort")
@@ -679,6 +682,7 @@ RunGUITests_State() {
     ; Recovery is deferred to a fresh timer thread to avoid corrupting AHK's timer state.
     _GUI_GraceTimerFired()
     GUI_AssertEq(gGUI_OverlayVisible, false, "#303 L2: overlay never shown")
+    GUI_AssertEq(gGUI_InGraceCallback, false, "Grace callback guard cleared after lost-Alt recovery")
     ; Recovery is deferred (-1ms timer) — wait for it to fire
     Sleep(50)
     GUI_AssertEq(gGUI_State, "IDLE", "#303 L2: state recovered to IDLE")
@@ -700,6 +704,7 @@ RunGUITests_State() {
     GUI_AssertEq(gGUI_State, "ACTIVE", "#303 normal: state stays ACTIVE (Alt held)")
     GUI_AssertEq(gGUI_OverlayVisible, true, "#303 normal: overlay shown")
     GUI_AssertTrue(gMock_RecoverLostAltUpCalls.Length = 0, "#303 normal: no recovery called")
+    GUI_AssertEq(gGUI_InGraceCallback, false, "Grace callback guard cleared after normal show")
 
     ; ----- Test: Watchdog stops when leaving ACTIVE via ALT_UP -----
     GUI_Log("Test: #303 Watchdog stops on normal ALT_UP")
