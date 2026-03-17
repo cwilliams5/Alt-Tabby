@@ -394,6 +394,14 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 ; ========================= GRACE TIMER =========================
 
 _GUI_GraceTimerFired() {
+    ; RACE FIX: Set guard flag BEFORE any code that could yield. Hotkeys that fire
+    ; during _GUI_ShowOverlayWithFrozen (via STA pump or before gGUI_OverlayVisible
+    ; is set) check this flag to skip SetTimer(_GUI_GraceTimerFired, 0) — calling
+    ; SetTimer(fn, 0) on an already-fired one-shot corrupts timer dispatch (#303).
+    ; try/finally guarantees cleanup on all exit paths (pattern: gPaint_RepaintInProgress).
+    global gGUI_InGraceCallback
+    gGUI_InGraceCallback := true
+    try {
     Profiler.Enter("_GUI_GraceTimerFired") ; @profile
     ; Hold Critical only for the atomic state check — NOT for the heavy D2D paint.
     ; Previous: Critical covered the entire show+paint sequence. D2D COM calls pump
@@ -432,6 +440,9 @@ _GUI_GraceTimerFired() {
     }
     Critical "Off"
     Profiler.Leave() ; @profile
+    } finally {
+        gGUI_InGraceCallback := false
+    }
 }
 
 ; ========================= ACTIVE-STATE WATCHDOG (#303) =========================
