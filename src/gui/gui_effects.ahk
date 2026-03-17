@@ -34,6 +34,7 @@ global gFX_MouseVelX := 0.0         ; Smoothed velocity X (px/sec)
 global gFX_MouseVelY := 0.0         ; Smoothed velocity Y (px/sec)
 global gFX_MouseSpeed := 0.0        ; Magnitude of velocity (px/sec)
 global gFX_MousePrevValid := false   ; False until first valid sample
+global gFX_AmbientTime := 0.0         ; Cumulative ms for ambient loops (Full mode)
 
 ; Initialize GPU effects. Call after gD2D_RT is valid.
 ; Returns true on success, false if effects unavailable.
@@ -900,8 +901,17 @@ _FX_ResolveConfiguredShaders() {
     }
 }
 
-; Save shader carry time before gFX_AmbientTime resets.
+; End-of-session cleanup: save shader carry time, reset ambient clock,
+; reset mouse velocity. Ordering matters — save BEFORE reset.
 ; Called from Anim_CancelAll (gui_animation.ahk) on overlay hide.
+FX_EndSession() {
+    global gFX_AmbientTime
+    FX_SaveShaderTime()
+    gFX_AmbientTime := 0.0
+    FX_ResetMouseVelocity()
+}
+
+; Save shader carry time before gFX_AmbientTime resets.
 FX_SaveShaderTime() {
     global gFX_ShaderTime, gFX_AmbientTime
     sessionSec := gFX_AmbientTime / 1000.0

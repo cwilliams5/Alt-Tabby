@@ -268,6 +268,8 @@ Paint_LogTrim() {
 }
 Paint_LogStartSession() {
 }
+Paint_ClearSurface() {
+}
 
 ; Animation mocks (gui_animation.ahk not included in tests)
 Anim_StartTween(name, from, to, durationMs, easingFunc) {

@@ -663,6 +663,28 @@ _GUI_ResetSelectionToMRU(listRef := "") {
     return gGUI_Sel
 }
 
+; Complete hide after fade animation finishes. Called from _Anim_DoActualHide.
+; Clears display items (kept alive during fade for painting), hover state,
+; paint surface, hides window, and resets visibility flags.
+GUI_CompleteHideState() {
+    global gGUI_DisplayItems, gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed
+
+    ; Release deferred display items — kept alive during hide-fade so the
+    ; frame loop paints the frozen list while fading out (not the live MRU).
+    gGUI_DisplayItems := []
+
+    GUI_ClearHoverState()
+
+    ; Clear D2D swap chain for clean buffer on next Show.
+    Paint_ClearSurface()
+
+    try {
+        gGUI_Base.Hide()
+    }
+    gGUI_OverlayVisible := false
+    gGUI_Revealed := false
+}
+
 ; Helper to abort a show sequence (hide windows and reset state flags).
 ; Called when state changes to non-ACTIVE during _GUI_ShowOverlayWithFrozen.
 _GUI_AbortShowSequence() {
