@@ -34,7 +34,6 @@ float3 Oilnoise(float2 pos, float3 RGB)
     for (float i = 0.0; i < OC; i++)
     {
         pos = mul(rot30, pos);
-        q = pos * s + t;
         q = pos * s + aPos + t;
         q = cos(q);
 

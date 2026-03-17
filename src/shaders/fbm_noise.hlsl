@@ -43,17 +43,13 @@ float noise_fbm(float2 p) {
     return h;
 }
 
-float outline(float2 p, float eps) {
-    float f = noise_fbm(p - float2(0.0, 0.0));
-
+float outline(float2 p, float eps, float center) {
     float ft = noise_fbm(p - float2(0.0, eps));
     float fl = noise_fbm(p - float2(eps, 0.0));
     float fb = noise_fbm(p + float2(0.0, eps));
     float fr = noise_fbm(p + float2(eps, 0.0));
 
-    float gg = saturate(abs(4. * f - ft - fr - fl - fb));
-
-    return gg;
+    return saturate(abs(4.0 * center - ft - fr - fl - fb));
 }
 
 float4 PSMain(PSInput input) : SV_Target {
@@ -69,10 +65,10 @@ float4 PSMain(PSInput input) : SV_Target {
                           float3(0.50, 0.75, 0.35), a1),
                           float3(0.00, 0.00, 0.02), a2);
 
-    cc += float3(0.0, 0.2, 1.0) * outline(p, 0.0005);
-    cc += float3(1.0, 1.0, 1.0) * outline(p, 0.0025);
+    cc += float3(0.0, 0.2, 1.0) * outline(p, 0.0005, f);
+    cc += float3(1.0, 1.0, 1.0) * outline(p, 0.0025, f);
 
-    cc += 0.5 * float3(0.1, 0.0, 0.2) * noise_fbm(p);
+    cc += 0.5 * float3(0.1, 0.0, 0.2) * f;
     cc += 0.25 * float3(0.3, 0.4, 0.6) * noise_fbm(2.0 * p);
 
     return AT_PostProcess(cc);

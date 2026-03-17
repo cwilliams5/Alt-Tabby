@@ -79,8 +79,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float2 delta = cellPos - p.pos;
             float distSq = dot(delta, delta);
             float radius = p.size * (1.0 - p.life * 0.5);
-            float limit = radius * 1.5;
-            if (distSq > limit * limit) continue;
+            float radiusSq = radius * radius;
+            if (distSq > radiusSq) continue;
             float dist = sqrt(distSq);
 
             float glow = smoothstep(radius, 0.0, dist);
