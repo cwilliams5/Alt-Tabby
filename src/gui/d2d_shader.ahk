@@ -1164,8 +1164,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         if (cb != csLastCb) {
             NumPut("ptr", cb, csCbBuf)
             csLastCb := cb
+            ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf, "int")
         }
-        ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf, "int")
 
         ; CSSetUnorderedAccessViews (vtable 68): UAV at slot 0
         static csUavBuf := Buffer(A_PtrSize, 0)
