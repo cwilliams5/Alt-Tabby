@@ -66,7 +66,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float fireR = fbm(fireUV_R);
     float flameR = smoothstep(0.15, 0.0, dRight - fireR * 0.15) * (1.0 - smoothstep(0.0, 0.2, dRight));
 
-    float flame = max(max(flameB, flameT), max(flameL, flameR)) * fill;
+    float rawFlame = max(max(flameB, flameT), max(flameL, flameR));
+    float flame = rawFlame * fill;
 
     // Fire palette — white core → yellow → orange → red → dark
     float3 fireCol;
@@ -90,7 +91,7 @@ float4 PSMain(PSInput input) : SV_Target {
     a = max(a, flame * 0.6 * t * intensity * selIntensity);
 
     // Outer fire glow — flames extend beyond border
-    float outerFire = max(max(flameB, flameT), max(flameL, flameR));
+    float outerFire = rawFlame;
     float outerGlow = smoothstep(12.0 * selGlow, 0.0, dist) * (1.0 - fill) * outerFire * 0.5;
     col += float3(1.0, 0.4, 0.05) * outerGlow * t * intensity * selIntensity;
     a = max(a, outerGlow * t * intensity * selIntensity);

@@ -107,8 +107,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             if (distSq > radiusSq * 16.0) continue;
 
             // Core + glow
-            float core = exp(-distSq / (radiusSq * 0.3));
-            float glow = exp(-distSq / (radiusSq * 2.0));
+            float normDist = distSq / radiusSq;
+            float core = exp(-normDist * 3.333);
+            float glow = exp(-normDist * 0.5);
             float brightness = core * 0.8 + glow * 0.3;
 
             // Fade in/out

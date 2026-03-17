@@ -108,10 +108,10 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float thickness = 2.0 + smoothstep(0.0, 500.0, p.size) * 4.0;
 
             // Triple-layer glow
-            float thickSq = thickness * thickness;
-            float core = exp(-distSq / thickSq);
-            float inner = exp(-distSq / (thickSq * 6.0));
-            float outer = exp(-distSq / (thickSq * 20.0));
+            float norm = distSq / (thickness * thickness);
+            float core = exp(-norm);
+            float inner = exp(-norm * 0.16667);
+            float outer = exp(-norm * 0.05);
 
             float glow = core * 1.0 + inner * 0.4 + outer * 0.15;
             glow *= fade;

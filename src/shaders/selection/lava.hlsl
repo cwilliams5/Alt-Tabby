@@ -62,7 +62,6 @@ float4 PSMain(PSInput input) : SV_Target {
     // Lava palette: bright orange cracks, dark red cells
     float3 hotCol = float3(1.0, 0.6, 0.1);   // bright orange
     float3 warmCol = float3(0.8, 0.2, 0.05);  // dark red
-    float3 coolCol = float3(0.15, 0.04, 0.02); // near-black
 
     float3 lavaCol = lerp(hotCol, warmCol, cellFade);
     lavaCol = lerp(lavaCol, hotCol * 1.5, crack); // cracks glow hot

@@ -51,8 +51,9 @@ float4 PSMain(PSInput input) : SV_Target {
     pulse *= borderZone;
 
     // Color: pulses have different hues that shift over time
-    float hueA = frac(time * 0.05);
-    float hueB = frac(time * 0.05 + 0.5);
+    float timeFrac = time * 0.05;
+    float hueA = frac(timeFrac);
+    float hueB = frac(timeFrac + 0.5);
     float3 colA = hue2rgb(hueA);
     float3 colB = hue2rgb(hueB);
     float3 pulseCol = lerp(colA, colB, step(dA, dB));
