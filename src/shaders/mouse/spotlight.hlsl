@@ -84,8 +84,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float penumbra = smoothstep(noisyRadius * 1.4, noisyRadius * 0.8, ellipseDist);
 
     // Inverse-square falloff from light source (dimmer at edges of window)
-    float lightDist = sqrt(centerDist * centerDist + lightHeight * lightHeight);
-    float invSqFalloff = (lightHeight * lightHeight) / (lightDist * lightDist);
+    float lightDistSq = centerDist * centerDist + lightHeight * lightHeight;
+    float invSqFalloff = (lightHeight * lightHeight) / lightDistSq;
 
     // Caustic pattern — subtle undulating light concentrations
     float2 caustUV = pixelPos * 0.01 + float2(time * 0.08, time * -0.06);

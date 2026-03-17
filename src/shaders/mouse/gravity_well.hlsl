@@ -61,14 +61,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float lifetime = 2.0 + hash1(fi * 17.3) * 2.0;
 
         float2 toMouse = iMouse - p.pos;
-        float r = max(length(toMouse), 15.0);
+        float toMouseSq = dot(toMouse, toMouse);
+        float rSq = max(toMouseSq, 225.0);  // 225 = 15*15
 
         float G = 8000.0 * reactivity;
         float gravityMod = 1.0 / (1.0 + iMouseSpeed * 0.003);
-        float accelMag = G * gravityMod / (r * r);
+        float accelMag = G * gravityMod / rSq;
         accelMag = min(accelMag, 500.0);
 
-        float2 accel = normalize(toMouse) * accelMag;
+        float2 accel = toMouse * rsqrt(max(toMouseSq, 1.0)) * accelMag;
         p.vel += accel * timeDelta;
 
         p.vel *= (1.0 - 0.3 * timeDelta);
