@@ -203,8 +203,8 @@ Stats_FlushToDisk() {
     }
 
     ; Fallback: direct write (pump not connected or send failed)
-    _Stats_DirectWrite(statsPath, content)
-    gStats_Dirty := false
+    if (_Stats_DirectWrite(statsPath, content))
+        gStats_Dirty := false
     Profiler.Leave() ; @profile
 }
 
@@ -233,8 +233,8 @@ Stats_ForceFlushToDisk() {
     content .= "_FlushStatus=complete`n"
     Critical "Off"
 
-    _Stats_DirectWrite(STATS_INI_PATH, content)
-    gStats_Dirty := false
+    if (_Stats_DirectWrite(STATS_INI_PATH, content))
+        gStats_Dirty := false
 }
 
 ; Try to offload stats write to enrichment pump via IPC.
@@ -263,8 +263,10 @@ _Stats_DirectWrite(statsPath, content) {
         FileMove(tmpPath, statsPath, true)
         ; Success — remove backup
         try FileDelete(statsPath ".bak")
+        return true
     } catch as e {
         _Stats_LogError("stats flush failed: " e.Message)
+        return false
     }
 }
 
