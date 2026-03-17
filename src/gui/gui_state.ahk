@@ -11,6 +11,7 @@
 global gGUI_State := "IDLE"
 
 global gGUI_CurrentWSName := ""       ; Cached from gWS_Meta (updated by workspace flip callback)
+global gGUI_FocusBeforeShow := 0     ; Hwnd of foreground window before overlay took focus
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
 global gGUI_DisplayItems := []   ; Items being rendered (may be filtered by workspace mode)
@@ -736,6 +737,13 @@ _GUI_ShowOverlayWithFrozen() {
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
     gGUI_OverlayVisible := true
 
+    ; Capture foreground BEFORE resize — resize pumps the STA message loop,
+    ; which can dispatch _GUI_RevealBoth via reentrancy. If we captured after
+    ; resize (old location), the overlay could already be foreground, saving
+    ; its own hwnd as the restore target.
+    if (gGUI_StealFocus)
+        gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+
     ; NOTE: Do NOT set gGUI_LiveItems := gGUI_DisplayItems here!
     ; gGUI_LiveItems must remain the unfiltered source of truth for cross-session consistency.
     ; Paint function correctly uses gGUI_DisplayItems when in ACTIVE state.
@@ -792,7 +800,7 @@ _GUI_ShowOverlayWithFrozen() {
 
     try {
         if (gGUI_StealFocus) {
-            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            ; gGUI_FocusBeforeShow already captured above (before resize)
             ; Raw ShowWindow bypasses AHK's caption-aware size adjustment (WS_CAPTION grows the window)
             DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
             DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)

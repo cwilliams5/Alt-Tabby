@@ -25,7 +25,6 @@ gD2D_RT: gui_bgimage, gui_overlay, gui_paint
 gGUI_CurrentWSName: gui_activation, gui_state
 gGUI_DisplayItems: gui_data, gui_state
 gGUI_EventBuffer: gui_activation, gui_state
-gGUI_FocusBeforeShow: gui_paint, gui_state
 gGUI_LastRowsDesired: gui_paint, gui_state
 gGUI_LiveItems: gui_activation, gui_data
 gGUI_OverlayVisible: gui_overlay, gui_state
