@@ -59,6 +59,13 @@ Paint_LogStartSession() {
 ;      overwrites gD2D_BackBuffer, nested BeginDraw fails D2DERR_WRONG_STATE)
 ;   2. Inner try/finally — prevents guard from getting stuck if any D2D call throws
 
+; Called by D2D_DisposeResources when D2D device is lost/recreated.
+; Invalidates the lazy subtitle cache so stale entries aren't reused.
+Paint_InvalidateSubCache() {
+    global _gPaint_SubCache
+    _gPaint_SubCache := Map()
+}
+
 Paint_ClearSurface() {
     global gD2D_RT, gPaint_RepaintInProgress
     if (!gD2D_RT || gPaint_RepaintInProgress)
@@ -322,15 +329,7 @@ GUI_Repaint() {
 
     } finally {
         gPaint_RepaintInProgress := false
-        ; If a tween was started during this paint's STA pump (e.g., GRACE_FIRE
-        ; dispatched ShowOverlayWithFrozen which called Anim_StartTween), the
-        ; frame loop launch was deferred to avoid blocking this paint. Start it
-        ; now that the guard is clear. (#175)
-        global gAnim_DeferredTimerStart
-        if (gAnim_DeferredTimerStart) {
-            gAnim_DeferredTimerStart := false
-            Anim_EnsureTimer()
-        }
+        Anim_ConsumeDeferredStart()
     }
 }
 
