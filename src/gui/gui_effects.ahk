@@ -383,7 +383,7 @@ FX_PreRenderShaderLayers(w, h) {
     ambientSec := gFX_AmbientTime / 1000.0
 
     for _, layer in gFX_ShaderLayers {
-        if (layer.key = "")
+        if (layer.key = "" || layer.opacity <= 0.0)
             continue
 
         ; Compute effective time: (ambient / 1000) * speed + offset + carry
@@ -426,7 +426,7 @@ FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
     }
 
     for _, layer in gFX_ShaderLayers {
-        if (layer.key = "")
+        if (layer.key = "" || layer.opacity <= 0.0)
             continue
         pBitmap := Shader_GetBitmap(layer.renderKey)
         if (pBitmap)
@@ -444,7 +444,7 @@ FX_PreRenderMouseEffect(w, h) {
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow, cfg
     global gFX_MousePrevX, gFX_MousePrevY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
 
-    if (gFX_MouseEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+    if (gFX_MouseEffect.key = "" || gFX_MouseEffect.opacity <= 0.0 || !gShader_Ready || !gFX_GPUReady) {
         Profiler.Leave() ; @profile
         return
     }
@@ -524,7 +524,7 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
     Profiler.Enter("FX_DrawMouseEffect") ; @profile
     global gD2D_RT, gFX_MouseEffect, gShader_Ready
 
-    if (gFX_MouseEffect.key = "" || !gShader_Ready) {
+    if (gFX_MouseEffect.key = "" || gFX_MouseEffect.opacity <= 0.0 || !gShader_Ready) {
         Profiler.Leave() ; @profile
         return
     }
@@ -1263,9 +1263,15 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
         ; Draw border on top (outside clip layer so it's not masked)
         bw := cfg.GUI_HovBorderWidthPx
         if (bw > 0) {
+            static _hovCachedBorderARGB := 0, _hovCachedBorderBrush := 0
+            borderARGB := cfg.GUI_HovBorderARGB
+            if (borderARGB != _hovCachedBorderARGB || !_hovCachedBorderBrush) {
+                _hovCachedBorderBrush := D2D_GetCachedBrush(borderARGB)
+                _hovCachedBorderARGB := borderARGB
+            }
             half := bw / 2
             D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, rad,
-                D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+                _hovCachedBorderBrush, bw)
         }
     } else {
         gD2D_RT.DrawImage(pBitmap)

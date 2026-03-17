@@ -695,9 +695,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             sub := cur.processName
             if (sub = "") {
                 ; Lazy-cache: concat "Class: " only once per display cycle, not per-frame
-                if (_gPaint_SubCache.Has(cur.hwnd))
-                    sub := _gPaint_SubCache[cur.hwnd]
-                else {
+                sub := _gPaint_SubCache.Get(cur.hwnd, "")
+                if (sub = "") {
                     sub := "Class: " cur.class
                     _gPaint_SubCache[cur.hwnd] := sub
                 }
