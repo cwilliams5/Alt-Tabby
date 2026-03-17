@@ -40,7 +40,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float sa, ca; sincos(angle, sa, ca);
             p.pos = iMouse + float2(ca, sa) * spawnDist;
 
-            float2 radial = normalize(p.pos - iMouse);
+            float2 radial = float2(ca, sa);
             float2 tangent = float2(-radial.y, radial.x);
             float orbitalSpeed = 60.0 + seed3 * 80.0;
             p.vel = tangent * orbitalSpeed;
@@ -103,11 +103,10 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float2 delta = cellPos - p.pos;
             float distSq = dot(delta, delta);
             float radius = p.size;
-            float limit = radius * 4.0;
-            if (distSq > limit * limit) continue;
+            float radiusSq = radius * radius;
+            if (distSq > radiusSq * 16.0) continue;
 
             // Core + glow
-            float radiusSq = radius * radius;
             float core = exp(-distSq / (radiusSq * 0.3));
             float glow = exp(-distSq / (radiusSq * 2.0));
             float brightness = core * 0.8 + glow * 0.3;

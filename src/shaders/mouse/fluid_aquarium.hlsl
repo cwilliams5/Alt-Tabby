@@ -80,7 +80,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float2 pushDir = iMouseVel / max(iMouseSpeed, 1.0);
         c.vel += pushDir * falloff * iMouseSpeed * 3.0 * reactivity * timeDelta;
         if (dist > 1.0)
-            c.vel += normalize(fromMouse) * falloff * iMouseSpeed * 2.0 * reactivity * timeDelta;
+            c.vel += fromMouse / dist * falloff * iMouseSpeed * 2.0 * reactivity * timeDelta;
     }
 
     // --- AMBIENT TURBULENCE (keeps fog alive) ---

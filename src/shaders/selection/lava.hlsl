@@ -33,8 +33,8 @@ float2 voronoi(float2 p) {
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 px = input.uv * resolution;
-    float2 rc = selRect.xy + selRect.zw * 0.5;
     float2 hs = selRect.zw * 0.5;
+    float2 rc = selRect.xy + hs;
     float rad = rowRadius > 0.0 ? rowRadius : min(hs.x, hs.y) * 0.15;
     float dist = roundedRectSDF(px, rc, hs, rad);
     float fill = smoothstep(1.0, -1.0, dist);

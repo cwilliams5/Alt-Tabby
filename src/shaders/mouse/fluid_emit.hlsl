@@ -73,7 +73,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float2 pushDir = iMouseVel / max(iMouseSpeed, 1.0);
         c.vel += pushDir * falloff * iMouseSpeed * 0.5 * reactivity * timeDelta;
         if (dist > 1.0)
-            c.vel += normalize(fromMouse) * falloff * iMouseSpeed * 0.2 * reactivity * timeDelta;
+            c.vel += fromMouse / dist * falloff * iMouseSpeed * 0.2 * reactivity * timeDelta;
     }
 
     // --- BUOYANCY (smoke rises — negative Y = up in screen coords) ---

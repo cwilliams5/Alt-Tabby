@@ -10,8 +10,8 @@ float3 hue2rgb(float h) {
 float4 PSMain(PSInput input) : SV_Target {
     float2 pixelPos = input.uv * resolution;
 
-    float2 rectCenter = selRect.xy + selRect.zw * 0.5;
     float2 halfSize = selRect.zw * 0.5;
+    float2 rectCenter = selRect.xy + halfSize;
     float radius = rowRadius > 0.0 ? rowRadius : min(halfSize.x, halfSize.y) * 0.15;
 
     float dist = roundedRectSDF(pixelPos, rectCenter, halfSize, radius);

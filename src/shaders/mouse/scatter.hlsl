@@ -73,7 +73,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float repelForce = (1.0 - cursorDist / repelRadius);
             repelForce = repelForce * repelForce * repelForce;
             float pushStrength = (500.0 + iMouseSpeed * 2.5) * reactivity;
-            p.vel += normalize(fromCursor) * repelForce * pushStrength * timeDelta;
+            p.vel += fromCursor / cursorDist * repelForce * pushStrength * timeDelta;
         }
 
         float2 home = homePos(fi, resolution);
@@ -81,7 +81,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float homeDist = length(toHome);
         if (homeDist > 1.0) {
             float pullStrength = 15.0 + homeDist * 0.1;
-            p.vel += normalize(toHome) * pullStrength * timeDelta;
+            p.vel += toHome / homeDist * pullStrength * timeDelta;
         }
 
         float2 noisePos = p.pos * 0.002 + float2(time * 0.1, time * 0.08);
@@ -122,11 +122,11 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float2 delta = cellPos - p.pos;
             float distSq = dot(delta, delta);
             float radius = p.size;
-            float limit = radius * 3.5;
-            if (distSq > limit * limit) continue;
+            float radiusSq = radius * radius;
+            if (distSq > radiusSq * 12.25) continue;
 
             // Soft glow
-            float glow = exp(-distSq / (radius * radius * 0.6));
+            float glow = exp(-distSq / (radiusSq * 0.6));
 
             // Subtle shimmer
             float shimmer = 0.8 + 0.2 * sin(time * 2.0 + (float)i * 4.7);

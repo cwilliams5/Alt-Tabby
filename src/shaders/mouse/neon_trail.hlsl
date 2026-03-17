@@ -48,13 +48,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             }
 
             // Minimum distance check
-            float minDist = 1e20;
+            float minDistSq = 1e20;
             for (uint j = 0; j < maxParticles; j++) {
                 if (particles[j].life >= 1.0) continue;
-                float d = length(iMouse - particles[j].pos);
-                if (d < minDist) minDist = d;
+                float2 dd = iMouse - particles[j].pos;
+                float dSq = dot(dd, dd);
+                if (dSq < minDistSq) minDistSq = dSq;
             }
-            if (minDist < 4.0) return;
+            if (minDistSq < 16.0) return;
 
             Particle np;
             np.pos = iMouse;
