@@ -303,6 +303,7 @@ _D2D_SetEllipsisTrimming(tf) {
 ; Dispose all D2D resources. COM wrappers auto-release via __Delete.
 D2D_DisposeResources() {
     global gD2D_Res, gD2D_ResScale, gGdip_ResScale, gD2D_BrushCache, gGdip_IconCache
+    global _gPaint_SubCache
 
     ; Clear named resources — COM wrapper __Delete releases each object
     gD2D_Res := Map()
@@ -314,6 +315,9 @@ D2D_DisposeResources() {
 
     ; Clear icon cache — D2D bitmap wrappers auto-release
     _D2D_ClearIconCache()
+
+    ; Clear paint subtitle cache (hwnd → "Class: ..." strings)
+    _gPaint_SubCache := Map()
 }
 
 ; ========================= ICON CACHE =========================

@@ -22,6 +22,7 @@ global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
 global gShader_StateDirty := true ; dirty flag: D3D11 common state needs re-binding
 global gShader_BatchMode := false  ; when true, defer RT/SRV unbind to Shader_EndBatch
+global _gShader_GdipToken := 0    ; GDI+ startup token (for shutdown on cleanup)
 
 ; Mark D3D11 common pipeline state as needing re-binding.
 ; Call after D2D operations that share the device context (e.g., BeginDraw).
@@ -1387,6 +1388,13 @@ Shader_Cleanup() {
 
     gShader_Ready := false
     gShader_FrameCount := 0
+
+    ; Shut down GDI+ if it was initialized for texture loading
+    global _gShader_GdipToken
+    if (_gShader_GdipToken) {
+        DllCall("gdiplus\GdiplusShutdown", "ptr", _gShader_GdipToken)
+        _gShader_GdipToken := 0
+    }
 }
 
 ; ========================= GDI+ INIT =========================
@@ -1394,10 +1402,14 @@ Shader_Cleanup() {
 ; One-shot GDI+ startup for texture loading. The main D2D pipeline doesn't use GDI+,
 ; but we need it here to decode PNG files into pixel data for D3D11 textures.
 _Shader_InitGdiplus() {
+    global _gShader_GdipToken
+    if (_gShader_GdipToken)
+        return _gShader_GdipToken
     si := Buffer(24, 0)  ; GdiplusStartupInput (x64)
     NumPut("uint", 1, si, 0)  ; GdiplusVersion = 1
     token := 0
     DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si, "ptr", 0)
+    _gShader_GdipToken := token
     return token
 }
 

@@ -26,6 +26,7 @@ gAnim_HidePending: gui_animation, gui_overlay
 gD2D_RT: gui_bgimage, gui_overlay, gui_paint
 gFX_AmbientTime: gui_animation, gui_effects
 gGUI_CurrentWSName: gui_activation, gui_state
+_gPaint_SubCache: gui_gdip, gui_paint
 gGUI_DisplayItems: gui_animation, gui_data, gui_state
 gGUI_EventBuffer: gui_activation, gui_state
 gGUI_FocusBeforeShow: gui_paint, gui_state
