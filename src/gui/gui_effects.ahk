@@ -657,7 +657,10 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
         static selBmpWrap := {ptr: 0}  ; reusable COM wrapper (avoids per-frame object alloc)
         ; Clip shader output to RowRadius rounded rect
         clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
-        if (cfg.GUI_BGShaderAsSelectionSize = "Resize") {
+        static _selResizeMode := -1
+        if (_selResizeMode = -1)
+            _selResizeMode := (cfg.GUI_BGShaderAsSelectionSize = "Resize")
+        if (_selResizeMode) {
             ; Resize mode: shader rendered at selW×selH — draw full texture into selection rect
             NumPut("float", Float(selX), "float", Float(selY),
                    "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
@@ -1275,7 +1278,10 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
         static hovBmpWrap := {ptr: 0}  ; reusable COM wrapper (avoids per-frame object alloc)
         ; Clip shader output to RowRadius rounded rect
         clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
-        if (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
+        static _hovResizeMode := -1
+        if (_hovResizeMode = -1)
+            _hovResizeMode := (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize")
+        if (_hovResizeMode) {
             NumPut("float", Float(selX), "float", Float(selY),
                    "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
             NumPut("float", 0.0, "float", 0.0,

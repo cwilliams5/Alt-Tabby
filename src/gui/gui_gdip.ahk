@@ -15,6 +15,7 @@ global gD2D_ResScale := 0.0      ; Current resource scale (invalidated on DPI ch
 ; COM wrappers auto-release via __Delete when evicted.
 global gD2D_BrushCache := Map()
 global D2D_BRUSH_CACHE_MAX := 100
+global gD2D_BrushGeneration := 0
 
 ; Icon bitmap cache: hwnd → {hicon: number, bitmap: ID2D1Bitmap wrapper}
 ; Avoids re-converting HICON to D2D bitmap on every repaint.
@@ -303,6 +304,8 @@ _D2D_SetEllipsisTrimming(tf) {
 ; Dispose all D2D resources. COM wrappers auto-release via __Delete.
 D2D_DisposeResources() {
     global gD2D_Res, gD2D_ResScale, gGdip_ResScale, gD2D_BrushCache, gGdip_IconCache
+    global gD2D_BrushGeneration
+
     ; Clear named resources — COM wrapper __Delete releases each object
     gD2D_Res := Map()
     gD2D_ResScale := 0.0
@@ -310,6 +313,7 @@ D2D_DisposeResources() {
 
     ; Clear dynamic brush cache
     gD2D_BrushCache := Map()
+    gD2D_BrushGeneration += 1
 
     ; Clear icon cache — D2D bitmap wrappers auto-release
     _D2D_ClearIconCache()
