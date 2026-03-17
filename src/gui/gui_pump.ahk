@@ -253,13 +253,15 @@ _GUIPump_CollectTick() {
         pids := WL_PopPidBatch(32)
         if (pids.Length > 0) {
             ; Find hwnds with these PIDs that aren't already in the batch
-            pidSet := Map()
+            static pidSet := Map() ; lint-ignore: static-in-timer
+            pidSet.Clear()
             for _, pid in pids
                 pidSet[pid] := true
             ; Get hwnds from store by PID
             pidHwnds := WL_GetHwndsByPids(pidSet)
             ; Merge, deduplicating
-            hwndSet := Map()
+            static hwndSet := Map() ; lint-ignore: static-in-timer
+            hwndSet.Clear()
             for _, h in hwnds
                 hwndSet[h] := true
             for _, h in pidHwnds {

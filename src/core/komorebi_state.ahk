@@ -29,8 +29,8 @@
 
 ; Get ring elements safely (returns empty array on failure)
 KSafe_Elements(ring) {
-    if (ring is Map && ring.Has("elements")) {
-        el := ring["elements"]
+    if (ring is Map) {
+        el := ring.Get("elements", "")
         if (el is Array)
             return el
     }
@@ -39,15 +39,15 @@ KSafe_Elements(ring) {
 
 ; Get ring focused index safely (returns -1 on failure)
 _KSafe_Focused(ring) {
-    if (ring is Map && ring.Has("focused"))
-        return ring["focused"]
+    if (ring is Map)
+        return ring.Get("focused", -1)
     return -1
 }
 
 ; Get string property safely (returns "" on failure)
 _KSafe_Str(obj, key) {
-    if (obj is Map && obj.Has(key)) {
-        val := obj[key]
+    if (obj is Map) {
+        val := obj.Get(key, "")
         if (val is String)
             return val
         return String(val)
@@ -57,8 +57,8 @@ _KSafe_Str(obj, key) {
 
 ; Get int property safely (returns 0 on failure)
 _KSafe_Int(obj, key) {
-    if (obj is Map && obj.Has(key)) {
-        val := obj[key]
+    if (obj is Map) {
+        val := obj.Get(key, 0)
         if (val is Integer)
             return val
         try return Integer(val)
@@ -69,8 +69,8 @@ _KSafe_Int(obj, key) {
 ; ========================= RING ACCESSORS =========================
 
 _KSub_GetMonitorsRing(stateObj) {
-    if (stateObj is Map && stateObj.Has("monitors"))
-        return stateObj["monitors"]
+    if (stateObj is Map)
+        return stateObj.Get("monitors", "")
     return ""
 }
 
@@ -85,8 +85,8 @@ KSub_GetFocusedMonitorIndex(stateObj) {
 }
 
 _KSub_GetWorkspacesRing(monObj) {
-    if (monObj is Map && monObj.Has("workspaces"))
-        return monObj["workspaces"]
+    if (monObj is Map)
+        return monObj.Get("workspaces", "")
     return ""
 }
 
@@ -144,44 +144,33 @@ _KSub_WorkspaceHasHwnd(wsObj, hwnd) {
         return false
 
     ; Check containers ring
-    if (wsObj.Has("containers")) {
-        containers := wsObj["containers"]
+    if (containers := wsObj.Get("containers", 0)) {
         for _, cont in KSafe_Elements(containers) {
             if !(cont is Map)
                 continue
-            if (cont.Has("windows")) {
-                for _, win in KSafe_Elements(cont["windows"]) {
-                    if (win is Map && win.Has("hwnd") && win["hwnd"] = hwnd)
-                        return true
-                }
-            }
-            ; Single window container
-            if (cont.Has("window")) {
-                winObj := cont["window"]
-                if (winObj is Map && winObj.Has("hwnd") && winObj["hwnd"] = hwnd)
+            for _, win in KSafe_Elements(cont.Get("windows", 0)) {
+                if (win is Map && win.Get("hwnd", 0) = hwnd)
                     return true
             }
+            ; Single window container
+            winObj := cont.Get("window", 0)
+            if (winObj is Map && winObj.Get("hwnd", 0) = hwnd)
+                return true
         }
     }
 
     ; Check monocle_container
-    if (wsObj.Has("monocle_container")) {
-        mono := wsObj["monocle_container"]
-        if (mono is Map) {
-            if (mono.Has("hwnd") && mono["hwnd"] = hwnd)
+    mono := wsObj.Get("monocle_container", 0)
+    if (mono is Map) {
+        if (mono.Get("hwnd", 0) = hwnd)
+            return true
+        winObj := mono.Get("window", 0)
+        if (winObj is Map && winObj.Get("hwnd", 0) = hwnd)
+            return true
+        ; Monocle may have windows ring
+        for _, win in KSafe_Elements(mono.Get("windows", 0)) {
+            if (win is Map && win.Get("hwnd", 0) = hwnd)
                 return true
-            if (mono.Has("window")) {
-                winObj := mono["window"]
-                if (winObj is Map && winObj.Has("hwnd") && winObj["hwnd"] = hwnd)
-                    return true
-            }
-            ; Monocle may have windows ring
-            if (mono.Has("windows")) {
-                for _, win in KSafe_Elements(mono["windows"]) {
-                    if (win is Map && win.Has("hwnd") && win["hwnd"] = hwnd)
-                        return true
-                }
-            }
         }
     }
 
@@ -194,37 +183,32 @@ _KSub_GetFocusedHwndFromWsObj(wsObj) {
     if !(wsObj is Map)
         return 0
 
-    if (wsObj.Has("containers")) {
-        containersRing := wsObj["containers"]
+    if (containersRing := wsObj.Get("containers", 0)) {
         contArr := KSafe_Elements(containersRing)
         focusedContIdx := _KSafe_Focused(containersRing)
         if (focusedContIdx >= 0 && focusedContIdx < contArr.Length) {
             contObj := contArr[focusedContIdx + 1]
-            if (contObj is Map && contObj.Has("windows")) {
-                windowsRing := contObj["windows"]
+            if (contObj is Map && (windowsRing := contObj.Get("windows", 0))) {
                 winArr := KSafe_Elements(windowsRing)
                 focusedWinIdx := _KSafe_Focused(windowsRing)
                 if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
                     return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
             }
-            if (contObj is Map && contObj.Has("window"))
-                return _KSafe_Int(contObj["window"], "hwnd")
+            if (contObj is Map && (winObj := contObj.Get("window", 0)))
+                return _KSafe_Int(winObj, "hwnd")
         }
     }
 
-    if (wsObj.Has("monocle_container")) {
-        mono := wsObj["monocle_container"]
-        if (mono is Map) {
-            if (mono.Has("windows")) {
-                windowsRing := mono["windows"]
-                winArr := KSafe_Elements(windowsRing)
-                focusedWinIdx := _KSafe_Focused(windowsRing)
-                if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
-                    return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
-            }
-            if (mono.Has("window"))
-                return _KSafe_Int(mono["window"], "hwnd")
+    mono := wsObj.Get("monocle_container", 0)
+    if (mono is Map) {
+        if (windowsRing := mono.Get("windows", 0)) {
+            winArr := KSafe_Elements(windowsRing)
+            focusedWinIdx := _KSafe_Focused(windowsRing)
+            if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
+                return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
         }
+        if (winObj := mono.Get("window", 0))
+            return _KSafe_Int(winObj, "hwnd")
     }
     return 0
 }
