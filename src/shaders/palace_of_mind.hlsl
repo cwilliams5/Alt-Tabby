@@ -62,10 +62,16 @@ float dist(float3 p) {
     float s = 7.0;
     p *= s;
     p.yz = rot(p.yz, 0.76);
+    // Hoist loop-invariant trig: angles depend only on t and sz, not loop variable
+    float sinOffset = (0.25 + 0.1 * sz) * sin(t * (0.5 + sz));
+    float s1, c1; sincos(t * (0.7 + sz), s1, c1);
+    float2x2 m1 = float2x2(c1, -s1, s1, c1);
+    float s2, c2; sincos(1.3 * t + sz, s2, c2);
+    float2x2 m2 = float2x2(c2, -s2, s2, c2);
     for (int i = 0; i < 4; i++) {
-        p = abs(p) - 0.4 + (0.25 + 0.1 * sz) * sin(t * (0.5 + sz));
-        p.xy = rot(p.xy, t * (0.7 + sz));
-        p.yz = rot(p.yz, 1.3 * t + sz);
+        p = abs(p) - 0.4 + sinOffset;
+        p.xy = mul(m1, p.xy);
+        p.yz = mul(m2, p.yz);
     }
 
     float d1 = closs(p, float3(0.06, 0.06, 0.06));
