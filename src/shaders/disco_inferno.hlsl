@@ -107,7 +107,7 @@ float noise_val(float2 st) {
 
 float light_val(float2 pos, float size, float radius, float inner_fade, float outer_fade) {
     float len = length(pos / size);
-    return pow(saturate(1.0 - pow(saturate(len - radius), 1.0 / inner_fade)), 1.0 / outer_fade);
+    return pow(1.0 - pow(saturate(len - radius), 1.0 / inner_fade), 1.0 / outer_fade);
 }
 
 float flare(float angle, float alpha, float t) {

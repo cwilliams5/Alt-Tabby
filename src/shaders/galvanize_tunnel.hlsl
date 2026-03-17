@@ -74,10 +74,13 @@ float worley(float2 p) {
 }
 
 float fworley(float2 p) {
-    return sqrt(sqrt(sqrt(
-        worley(p * 32.0 + 4.3 + time * 0.250) *
-        sqrt(worley(p * 64.0 + 5.3 + time * -0.125)) *
-        sqrt(sqrt(worley(p * -128.0 + 7.3))))));
+    // Restructured: 6 sqrt → 3 log2 + 1 exp2 (saves 2 SFU cycles)
+    // Original: sqrt(sqrt(sqrt(w1 * sqrt(w2) * sqrt(sqrt(w3)))))
+    //         = w1^0.125 * w2^0.0625 * w3^0.03125
+    float w1 = worley(p * 32.0 + 4.3 + time * 0.250);
+    float w2 = worley(p * 64.0 + 5.3 + time * -0.125);
+    float w3 = worley(p * -128.0 + 7.3);
+    return exp2(0.125 * log2(w1) + 0.0625 * log2(w2) + 0.03125 * log2(w3));
 }
 
 // Kalibox (Kali / Fractalforums.com)

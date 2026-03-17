@@ -33,11 +33,14 @@ float4 PSMain(PSInput input) : SV_Target {
     float z = frac(dot(fragCoord, sin(fragCoord))) - 0.5;
     float3 col = (float3)0;
     float4 p;
+    // Hoist loop-invariant normalizes: fragCoord, r, uv are per-pixel constants
+    float3 rayDir = normalize(float3(fragCoord - 0.7 * r, r.y));
+    float3 viewDir = normalize(float3(uv, 1.0));
 
     [loop]
     for (float i = 0.0; i < 77.0; i++) {
         // Ray direction
-        p = float4(z * normalize(float3(fragCoord - 0.7 * r, r.y)), 0.1 * t);
+        p = float4(z * rayDir, 0.1 * t);
         p.z += t;
 
         float4 q = p;
@@ -55,7 +58,6 @@ float4 PSMain(PSInput input) : SV_Target {
 
         // Estimate lighting
         float3 pos = p.xyz;
-        float3 viewDir = normalize(float3(uv, 1.0));
         float3 n = estimateNormal(pos);
         float3 reflectDir = reflect(viewDir, n);
 

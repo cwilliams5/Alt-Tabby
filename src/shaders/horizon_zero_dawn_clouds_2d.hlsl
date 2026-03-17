@@ -169,8 +169,9 @@ float4 PSMain(PSInput input) : SV_Target
     }
 
     cloudColor += CLOUD_AMBIENT;
-    // beer's law + powder sugar
-    cloudColor = exp(-cloudColor) * (1. - exp(-cloudColor * 2.)) * 2.;
+    // beer's law + powder sugar — exp(-2x) = exp(-x)^2, saves 1 exp
+    float ex = exp(-cloudColor);
+    cloudColor = ex * (1.0 - ex * ex) * 2.0;
     cloudColor *= cloudShape;
 
     float3 skyCol = lerp(float3(.1, .5, .9), float3(.1, .1, .9), uv.y);

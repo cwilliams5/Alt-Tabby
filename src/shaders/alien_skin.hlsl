@@ -74,7 +74,7 @@ float fbm(float2 p, int mx) {
     }
 
     float hd = h / d;
-    return lerp(hd, -0.5 * hd, sqrt(sqrt(vnoise(0.9*op))));
+    return lerp(hd, -0.5 * hd, pow(vnoise(0.9*op), 0.25));
 }
 
 float warp(float2 p) {
