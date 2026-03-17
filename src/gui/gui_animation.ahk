@@ -391,6 +391,11 @@ _Anim_ApplyWindowAlpha() {
         alpha := 0
     if (alpha > 255)
         alpha := 255
+    ; Skip Win32 call when alpha unchanged from last frame
+    static prevAlpha := -1
+    if (alpha = prevAlpha)
+        return
+    prevAlpha := alpha
     DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", alpha, "uint", 2)  ; LWA_ALPHA=2
 }
 

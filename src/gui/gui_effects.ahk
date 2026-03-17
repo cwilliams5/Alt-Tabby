@@ -25,9 +25,9 @@ global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
 global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
 global gFX_HoverEffect      ; Hover effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
-gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
-gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
+gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
 global gFX_MousePrevX := 0.0        ; Previous frame mouse X
 global gFX_MousePrevY := 0.0        ; Previous frame mouse Y
 global gFX_MouseVelX := 0.0         ; Smoothed velocity X (px/sec)
@@ -197,9 +197,9 @@ FX_GPU_Dispose() {
     ; Release shader resources
     gFX_ShaderTime := Map()
     gFX_ShaderLayers := []
-    gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
-    gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
+    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+    gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
     Shader_Cleanup()
 }
 
@@ -396,7 +396,10 @@ FX_PreRenderShaderLayers(w, h) {
 
         try {
             Shader_PreRender(layer.renderKey, w, h, effectiveTime, layer.darkness, layer.desat, layer.opacity)
+            ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawShaderLayers)
+            layer._bitmap := Shader_GetBitmap(layer.renderKey)
         } catch as e {
+            layer._bitmap := 0
             global LOG_PATH_SHADER
             errDetail := "Shader ERR [" layer.renderKey "]: " e.Message " @ " e.What
             if (e.HasProp("Extra") && e.Extra != "")
@@ -428,7 +431,8 @@ FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
     for _, layer in gFX_ShaderLayers {
         if (layer.key = "" || layer.opacity <= 0.0)
             continue
-        pBitmap := Shader_GetBitmap(layer.renderKey)
+        ; Use bitmap cached during pre-render (avoids Map+try lookup per layer)
+        pBitmap := layer._bitmap
         if (pBitmap)
             gD2D_RT.DrawImage(pBitmap)
     }
@@ -501,7 +505,10 @@ FX_PreRenderMouseEffect(w, h) {
         Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime,
             gFX_MouseEffect.darkness, gFX_MouseEffect.desat, gFX_MouseEffect.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
+        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawMouseEffect)
+        gFX_MouseEffect._bitmap := Shader_GetBitmap(gFX_MouseEffect.key)
     } catch as e {
+        gFX_MouseEffect._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
             errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
@@ -529,7 +536,8 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
         return
     }
 
-    pBitmap := Shader_GetBitmap(gFX_MouseEffect.key)
+    ; Use bitmap cached during pre-render (avoids Map+try lookup)
+    pBitmap := gFX_MouseEffect._bitmap
     if (pBitmap)
         gD2D_RT.DrawImage(pBitmap)
     Profiler.Leave() ; @profile
@@ -609,7 +617,10 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0, rowRadius * 1.0)
+        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawSelectionEffect)
+        gFX_SelectionEffect._bitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
     } catch as e {
+        gFX_SelectionEffect._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
             errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
@@ -633,7 +644,8 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
         return
     }
 
-    pBitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
+    ; Use bitmap cached during pre-render (avoids Map+try lookup)
+    pBitmap := gFX_SelectionEffect._bitmap
     if (!pBitmap) {
         Profiler.Leave() ; @profile
         return
@@ -641,6 +653,7 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
 
     if (gFX_SelectionEffect.isBGShader) {
         static srcRect := Buffer(16), tgtPt := Buffer(8), dstRect := Buffer(16)
+        static selBmpWrap := {ptr: 0}  ; reusable COM wrapper (avoids per-frame object alloc)
         ; Clip shader output to RowRadius rounded rect
         clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
         if (cfg.GUI_BGShaderAsSelectionSize = "Resize") {
@@ -649,7 +662,8 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
                    "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
             NumPut("float", 0.0, "float", 0.0,
                    "float", Float(selW), "float", Float(selH), srcRect)
-            gD2D_RT.DrawBitmap({ptr: pBitmap}, dstRect, 1.0, 1, srcRect)
+            selBmpWrap.ptr := pBitmap
+            gD2D_RT.DrawBitmap(selBmpWrap, dstRect, 1.0, 1, srcRect)
         } else {
             ; Clip mode: shader rendered at full size — crop to selection rect
             NumPut("float", Float(selX), "float", Float(selY),
@@ -812,19 +826,19 @@ _FX_ResolveConfiguredShaders() {
                 darkness: cfg.MouseEffect_Darkness,
                 desat: cfg.MouseEffect_Desaturation,
                 speed: cfg.MouseEffect_Speed,
-                reactivity: cfg.MouseEffect_Reactivity}
+                reactivity: cfg.MouseEffect_Reactivity, _bitmap: 0}
             ; Set reactivity on the shader registry entry if already registered
             if (gShader_Registry.Has(mouseKey))
                 gShader_Registry[mouseKey].reactivity := cfg.MouseEffect_Reactivity
         } else {
-            gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
+            gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
         }
     } else {
-        gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
+        gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
     }
 
     ; Resolve selection effect — BG-as-selection overrides dedicated selection shaders
-    static _emptySelEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    static _emptySelEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
     if (!cfg.GUI_UseSelectionEffect) {
         gFX_SelectionEffect := _emptySelEffect
     } else if (cfg.GUI_UseBGShaderAsSelection) {
@@ -835,7 +849,7 @@ _FX_ResolveConfiguredShaders() {
                 darkness: cfg.GUI_SelectionDarkness,
                 desat: cfg.GUI_SelectionDesaturation,
                 speed: cfg.GUI_SelectionSpeed,
-                isBGShader: true}
+                isBGShader: true, _bitmap: 0}
         } else {
             gFX_SelectionEffect := _emptySelEffect
         }
@@ -848,7 +862,7 @@ _FX_ResolveConfiguredShaders() {
                     darkness: cfg.GUI_SelectionDarkness,
                     desat: cfg.GUI_SelectionDesaturation,
                     speed: cfg.GUI_SelectionSpeed,
-                    isBGShader: false}
+                    isBGShader: false, _bitmap: 0}
                 if (gShader_Registry.Has(selKey)) {
                     gShader_Registry[selKey].selGlow := cfg.GUI_SelectionGlow
                     gShader_Registry[selKey].selIntensity := cfg.GUI_SelectionIntensity
@@ -862,7 +876,7 @@ _FX_ResolveConfiguredShaders() {
     }
 
     ; Resolve hover effect — mirrors selection resolve with hover-specific config
-    static _emptyHovEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    static _emptyHovEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
     if (!cfg.GUI_UseHoverSelectionEffect) {
         gFX_HoverEffect := _emptyHovEffect
     } else if (cfg.GUI_UseBGShaderAsHoverSelection) {
@@ -873,7 +887,7 @@ _FX_ResolveConfiguredShaders() {
                 darkness: cfg.GUI_HoverSelectionDarkness,
                 desat: cfg.GUI_HoverSelectionDesaturation,
                 speed: cfg.GUI_HoverSelectionSpeed,
-                isBGShader: true}
+                isBGShader: true, _bitmap: 0}
         } else {
             gFX_HoverEffect := _emptyHovEffect
         }
@@ -886,7 +900,7 @@ _FX_ResolveConfiguredShaders() {
                     darkness: cfg.GUI_HoverSelectionDarkness,
                     desat: cfg.GUI_HoverSelectionDesaturation,
                     speed: cfg.GUI_HoverSelectionSpeed,
-                    isBGShader: false}
+                    isBGShader: false, _bitmap: 0}
                 if (gShader_Registry.Has(hovSelKey)) {
                     gShader_Registry[hovSelKey].selGlow := cfg.GUI_HoverSelectionGlow
                     gShader_Registry[hovSelKey].selIntensity := 1.0
@@ -1063,7 +1077,7 @@ FX_CycleMouseEffect() {
 
     if (currentIdx = 0) {
         gFX_MouseEffect := {key: "", name: "", opacity: 0.30, darkness: gFX_MouseEffect.darkness,
-            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity}
+            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity, _bitmap: 0}
     } else {
         newKey := MOUSE_SHADER_KEYS[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
@@ -1072,7 +1086,7 @@ FX_CycleMouseEffect() {
             gShader_Registry[newKey].reactivity := gFX_MouseEffect.reactivity
         gFX_MouseEffect := {key: newKey, name: MOUSE_SHADER_NAMES[currentIdx + 1],
             opacity: gFX_MouseEffect.opacity, darkness: gFX_MouseEffect.darkness,
-            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity}
+            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity, _bitmap: 0}
         ; Init time state for the new shader (keyed by name for mouse/selection)
         _FX_InitShaderTimeForKey(newKey)
     }
@@ -1114,7 +1128,7 @@ FX_CycleSelectionEffect() {
         gFX_SelectionEffect := {key: "", name: "",
             opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
             desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed,
-            isBGShader: false}
+            isBGShader: false, _bitmap: 0}
     } else {
         newKey := keys[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
@@ -1122,7 +1136,7 @@ FX_CycleSelectionEffect() {
         gFX_SelectionEffect := {key: newKey, name: names[currentIdx + 1],
             opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
             desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed,
-            isBGShader: useBG}
+            isBGShader: useBG, _bitmap: 0}
         if (!useBG && gShader_Registry.Has(newKey)) {
             gShader_Registry[newKey].selGlow := cfg.GUI_SelectionGlow
             gShader_Registry[newKey].selIntensity := cfg.GUI_SelectionIntensity
@@ -1213,7 +1227,10 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0, rowRadius * 1.0)
+        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawHoverEffect)
+        gFX_HoverEffect._bitmap := Shader_GetBitmap(gFX_HoverEffect.key)
     } catch as e {
+        gFX_HoverEffect._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
             errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
@@ -1236,7 +1253,8 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
         return
     }
 
-    pBitmap := Shader_GetBitmap(gFX_HoverEffect.key)
+    ; Use bitmap cached during pre-render (avoids Map+try lookup)
+    pBitmap := gFX_HoverEffect._bitmap
     if (!pBitmap) {
         Profiler.Leave() ; @profile
         return
@@ -1244,6 +1262,7 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
 
     if (gFX_HoverEffect.isBGShader) {
         static hov_srcRect := Buffer(16), hov_tgtPt := Buffer(8), hov_dstRect := Buffer(16)
+        static hovBmpWrap := {ptr: 0}  ; reusable COM wrapper (avoids per-frame object alloc)
         ; Clip shader output to RowRadius rounded rect
         clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
         if (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
@@ -1251,7 +1270,8 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
                    "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
             NumPut("float", 0.0, "float", 0.0,
                    "float", Float(selW), "float", Float(selH), hov_srcRect)
-            gD2D_RT.DrawBitmap({ptr: pBitmap}, hov_dstRect, 1.0, 1, hov_srcRect)
+            hovBmpWrap.ptr := pBitmap
+            gD2D_RT.DrawBitmap(hovBmpWrap, hov_dstRect, 1.0, 1, hov_srcRect)
         } else {
             NumPut("float", Float(selX), "float", Float(selY),
                    "float", Float(selX + selW), "float", Float(selY + selH), hov_srcRect)
@@ -1309,7 +1329,7 @@ FX_CycleHoverEffect() {
         gFX_HoverEffect := {key: "", name: "",
             opacity: cfg.GUI_HoverSelectionOpacity, darkness: cfg.GUI_HoverSelectionDarkness,
             desat: cfg.GUI_HoverSelectionDesaturation, speed: cfg.GUI_HoverSelectionSpeed,
-            isBGShader: false}
+            isBGShader: false, _bitmap: 0}
     } else {
         newKey := keys[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
@@ -1317,7 +1337,7 @@ FX_CycleHoverEffect() {
         gFX_HoverEffect := {key: newKey, name: names[currentIdx + 1],
             opacity: cfg.GUI_HoverSelectionOpacity, darkness: cfg.GUI_HoverSelectionDarkness,
             desat: cfg.GUI_HoverSelectionDesaturation, speed: cfg.GUI_HoverSelectionSpeed,
-            isBGShader: useBG}
+            isBGShader: useBG, _bitmap: 0}
         if (!useBG && gShader_Registry.Has(newKey)) {
             gShader_Registry[newKey].selGlow := cfg.GUI_HoverSelectionGlow
             gShader_Registry[newKey].selIntensity := 1.0

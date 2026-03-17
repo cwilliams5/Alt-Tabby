@@ -558,6 +558,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         i := 0
         yRow := y
 
+        ; Pre-check column existence once per paint (avoids HasOwnProp per-row per-col)
+        if (cols.Length > 0) {
+            sample := items[start0 + 1]
+            for _, col in cols
+                col._exists := sample.HasOwnProp(col.key)
+        }
+
         ; Use cached layout metrics (computed once per scale change above)
         titleY := cachedLayout.titleY
         titleH := cachedLayout.titleH
@@ -586,6 +593,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         selW := wPhys - 2 * Mx + selExpandX * 2
         selH := RowH
         selX := Mx - selExpandX
+
+        ; Hoist entrance animation value (used by both selection and hover shader paths)
+        entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
+
         if (selIndex > 0 && selIndex <= count) {
             ; Compute the "snap" Y (where the selection IS in the current layout)
             baseSelY := Anim_CalcSelY(selIndex, scrollTop, contentTopY, RowH, count, selExpandY)
@@ -602,7 +613,6 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             global gFX_SelectionEffect
             if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                 ; Shader-based selection effect
-                entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
                     cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT, Rad)
                 FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
@@ -631,15 +641,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 hoverW := wPhys - 2 * Mx + selExpandX * 2
                 if (gFX_HoverEffect.key != "" && gFX_GPUReady) {
                     ; Path 1: Independent hover shader
-                    hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, hoverEntranceT, Rad)
+                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, entranceT, Rad)
                     FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (!cfg.GUI_UseHoverSelectionEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                     ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
-                    hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, hoverEntranceT, Rad)
+                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, entranceT, Rad)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
                     ; Path 3: GPU flat fill + border
@@ -706,18 +714,14 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
                 _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
                 for _, col in cols {
-                    val := ""
-                    if (cur.HasOwnProp(col.key))
-                        val := cur.%col.key%
+                    val := col._exists ? cur.%col.key% : ""
                     _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
                 D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
                 for _, col in cols {
-                    val := ""
-                    if (cur.HasOwnProp(col.key))
-                        val := cur.%col.key%
+                    val := col._exists ? cur.%col.key% : ""
                     D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
                 }
             }
@@ -752,10 +756,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         tPO_Footer := QPC() - t1
 
-    ; Inner shadow — config-driven depth and opacity
-    if (gFX_GPUReady && cfg.GUI_UseInnerShadow && cfg.GUI_InnerShadowAlpha > 0) {
-        shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
-        FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+    ; Inner shadow — config-driven depth and opacity (cached — config-stable)
+    static _isEnabled := -1, _isAlpha := 0, _isDepthPx := 0
+    if (_isEnabled = -1) {
+        _isEnabled := cfg.GUI_UseInnerShadow
+        _isAlpha := cfg.GUI_InnerShadowAlpha
+        _isDepthPx := cfg.GUI_InnerShadowDepthPx
+    }
+    if (gFX_GPUReady && _isEnabled && _isAlpha > 0) {
+        FX_GPU_DrawInnerShadow(wPhys, hPhys, Round(_isDepthPx * scale), _isAlpha)
     }
 
     ; FPS debug overlay (toggled by F key)
@@ -801,38 +810,47 @@ GUI_GetActionBtnMetrics(scale) {
 }
 
 ; Draw a single action button and update btnX position
-; Parameters:
-;   &btnX     - ByRef x position (decremented after drawing)
-;   btnY      - y position
-;   size      - button size in pixels
-;   rad       - corner radius in pixels
-;   scale     - DPI scale factor
-;   btnName   - button identifier ("close", "kill", "blacklist")
-;   showProp  - config property name for show toggle (e.g., "GUI_ShowCloseButton")
-;   bgProp    - config property prefix for colors (e.g., "GUI_CloseButton")
-;   glyph     - text/glyph to draw
-;   borderPx  - border thickness (from config)
-;   gap       - gap between buttons in pixels
-_GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
-    global gGUI_HoverBtn, cfg, gD2D_Res
+_GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, bc, gap, tfAction) {
+    global gGUI_HoverBtn
 
-    if (!cfg.%showProp%)
+    if (!bc.show)
         return
 
-    hovered := (gGUI_HoverBtn = btnName)
-    bgCol := hovered ? cfg.%bgProp "BGHoverARGB"% : cfg.%bgProp "BGARGB"%
-    txCol := hovered ? cfg.%bgProp "TextHoverARGB"% : cfg.%bgProp "TextARGB"%
+    hovered := (gGUI_HoverBtn = bc.name)
+    bgCol := hovered ? bc.bgHov : bc.bg
+    txCol := hovered ? bc.txHov : bc.tx
 
     D2D_FillRoundRect(btnX, btnY, size, size, rad, D2D_GetCachedBrush(bgCol))
-    if (borderPx > 0) {
-        D2D_StrokeRoundRect(btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, D2D_GetCachedBrush(cfg.%bgProp "BorderARGB"%), Round(borderPx * scale))
+    if (bc.borderPx > 0) {
+        D2D_StrokeRoundRect(btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, D2D_GetCachedBrush(bc.border), Round(bc.borderPx * scale))
     }
-    D2D_DrawTextCentered(glyph, btnX, btnY, size, size, D2D_GetCachedBrush(txCol), gD2D_Res["tfAction"])
+    D2D_DrawTextCentered(bc.glyph, btnX, btnY, size, size, D2D_GetCachedBrush(txCol), tfAction)
     btnX := btnX - (size + gap)
 }
 
 _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
-    global gGUI_HoverBtn, cfg
+    global gGUI_HoverBtn, cfg, gD2D_Res
+
+    ; Pre-build button configs once (config-stable — process restarts on config change)
+    ; Eliminates per-frame dynamic property concat + lookup (3 buttons × ~5 dynamic accesses)
+    static btnCfg := 0, tfAction := 0
+    if (!btnCfg) {
+        tfAction := gD2D_Res["tfAction"]
+        btnCfg := [
+            {name: "close", show: cfg.GUI_ShowCloseButton,
+             bg: cfg.GUI_CloseButtonBGARGB, bgHov: cfg.GUI_CloseButtonBGHoverARGB,
+             tx: cfg.GUI_CloseButtonTextARGB, txHov: cfg.GUI_CloseButtonTextHoverARGB,
+             border: cfg.GUI_CloseButtonBorderARGB, glyph: cfg.GUI_CloseButtonGlyph, borderPx: cfg.GUI_CloseButtonBorderPx},
+            {name: "kill", show: cfg.GUI_ShowKillButton,
+             bg: cfg.GUI_KillButtonBGARGB, bgHov: cfg.GUI_KillButtonBGHoverARGB,
+             tx: cfg.GUI_KillButtonTextARGB, txHov: cfg.GUI_KillButtonTextHoverARGB,
+             border: cfg.GUI_KillButtonBorderARGB, glyph: cfg.GUI_KillButtonGlyph, borderPx: cfg.GUI_KillButtonBorderPx},
+            {name: "blacklist", show: cfg.GUI_ShowBlacklistButton,
+             bg: cfg.GUI_BlacklistButtonBGARGB, bgHov: cfg.GUI_BlacklistButtonBGHoverARGB,
+             tx: cfg.GUI_BlacklistButtonTextARGB, txHov: cfg.GUI_BlacklistButtonTextHoverARGB,
+             border: cfg.GUI_BlacklistButtonBorderARGB, glyph: cfg.GUI_BlacklistButtonGlyph, borderPx: cfg.GUI_BlacklistButtonBorderPx}
+        ]
+    }
 
     metrics := GUI_GetActionBtnMetrics(scale)
     size := metrics.size
@@ -843,14 +861,8 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
 
-    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "close",
-        "GUI_ShowCloseButton", "GUI_CloseButton", cfg.GUI_CloseButtonGlyph, cfg.GUI_CloseButtonBorderPx, gap)
-
-    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "kill",
-        "GUI_ShowKillButton", "GUI_KillButton", cfg.GUI_KillButtonGlyph, cfg.GUI_KillButtonBorderPx, gap)
-
-    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "blacklist",
-        "GUI_ShowBlacklistButton", "GUI_BlacklistButton", cfg.GUI_BlacklistButtonGlyph, cfg.GUI_BlacklistButtonBorderPx, gap)
+    for _, bc in btnCfg
+        _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, bc, gap, tfAction)
 }
 
 ; ========================= SCROLLBAR =========================
