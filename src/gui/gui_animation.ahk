@@ -111,6 +111,14 @@ _Anim_CancelTween(name) {
         gAnim_Tweens.Delete(name)
 }
 
+Anim_BeginHideFade(hWnd) {
+    global gAnim_HidePending
+    gAnim_HidePending := true
+    Anim_AddLayered()
+    DllCall("SetLayeredWindowAttributes", "ptr", hWnd, "uint", 0, "uchar", 255, "uint", 2)
+    Anim_StartTween("hideFade", 1.0, 0.0, 60, Anim_EaseOutQuad)
+}
+
 Anim_CancelAll() {
     global gAnim_Tweens, gAnim_HidePending
     gAnim_Tweens := Map()
