@@ -130,12 +130,7 @@ GUI_HideOverlay() {
     ; Animated hide-fade: start opacity tween, defer actual hide
     ; _Anim_OnHideFadeComplete() will call _Anim_DoActualHide() when done
     if (cfg.PerfAnimationType != "None" && gGUI_Revealed) {
-        gAnim_HidePending := true
-        ; Add WS_EX_LAYERED so SetLayeredWindowAttributes can fade the entire
-        ; DWM composition (content + acrylic + shadow) as one unit.
-        Anim_AddLayered()
-        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 255, "uint", 2)
-        Anim_StartTween("hideFade", 1.0, 0.0, 60, Anim_EaseOutQuad)
+        Anim_BeginHideFade(gGUI_BaseH)
         Profiler.Leave() ; @profile
         return
     }
