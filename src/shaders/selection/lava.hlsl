@@ -27,7 +27,8 @@ float2 voronoi(float2 p) {
         if (d < md) { md2 = md; md = d; }
         else if (d < md2) { md2 = d; }
     }
-    return float2(sqrt(md), sqrt(md2) - sqrt(md)); // cell dist, edge dist
+    float sqrtMd = sqrt(md);
+    return float2(sqrtMd, sqrt(md2) - sqrtMd); // cell dist, edge dist
 }
 
 float4 PSMain(PSInput input) : SV_Target {

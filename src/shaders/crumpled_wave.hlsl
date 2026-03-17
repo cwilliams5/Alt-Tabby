@@ -4,7 +4,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 uv = (2.0 * fragCoord - resolution.xy) / min(resolution.x, resolution.y);
 
     for (float i = 1.0; i < 8.0; i++) {
-        uv.y += i * 0.1 / i *
+        uv.y += 0.1 *
             sin(uv.x * i * i + time * 0.5) * sin(uv.y * i * i + time * 0.5);
     }
 
