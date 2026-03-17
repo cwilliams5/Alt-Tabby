@@ -639,7 +639,10 @@ _WEH_ProcessBatch() {
                 result := _WEH_UpdateExisting(hwnd, locSnapshot.Has(hwnd))
                 if (result = -1)
                     ineligibleHwnds.Push(hwnd)
-                else if (IsObject(result)) {
+                else if (result = 0) {
+                    ; No fields changed — still alive, needs Z/icon processing
+                    updatedHwnds.Push(hwnd)
+                } else if (IsObject(result)) {
                     batchPatches[hwnd] := result
                     updatedHwnds.Push(hwnd)
                 }
@@ -856,6 +859,25 @@ _WEH_UpdateExisting(hwnd, hasLocationChange := true) {
     if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked)) {
         Profiler.Leave() ; @profile
         return -1
+    }
+
+    ; PERF: Early-out when nothing changed — avoids Object allocation, Map insertion,
+    ; _WS_ApplyPatch iteration, and gWS_FieldClass lookups for no-change events.
+    ; LOCATIONCHANGE fires ~100+/sec during normal desktop use; most produce no field changes.
+    if (title == row.title && isCloaked = row.isCloaked && isMin = row.isMinimized && isVisible = row.isVisible) {
+        if (!hasLocationChange) {
+            Profiler.Leave() ; @profile
+            return 0  ; No change
+        }
+        ; Location change: check if monitor actually changed
+        hMon := Win_GetMonitorHandle(hwnd)
+        if (hMon = row.monitorHandle) {
+            Profiler.Leave() ; @profile
+            return 0  ; No change
+        }
+        ; Monitor changed — build minimal patch with only monitor fields
+        Profiler.Leave() ; @profile
+        return { monitorHandle: hMon, monitorLabel: Win_GetMonitorLabel(hMon) }
     }
 
     ; PERF: Only probe monitor on LOCATIONCHANGE — NAMECHANGE can't move a window.

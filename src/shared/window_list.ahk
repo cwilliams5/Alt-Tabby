@@ -370,7 +370,7 @@ WL_UpsertWindow(records, source := "") {
         _WS_MarkDirty()  ; Structural change (new windows or sort-affecting fields via upsert)
     }
     if (added || updated) {
-        _WS_BumpRev("UpsertWindow:" . source)
+        _WS_BumpRev("UpsertWindow", source)
     }
     ; RACE FIX: Update peak windows inside Critical - producers can interrupt after release
     if (added > 0)
@@ -493,7 +493,7 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
         _WS_MarkDirty(result.mruOnly, result.mruOnly ? hwnd : 0)
     }
     if (changed) {
-        _WS_BumpRev("UpdateFields:" . source)
+        _WS_BumpRev("UpdateFields", source)
     }
     ; Return row when requested to avoid redundant GetByHwnd lookups
     if (returnRow) {
@@ -547,7 +547,7 @@ WL_BatchUpdateFields(patches, source := "") {
         _WS_MarkDirty(batchMruOnly, batchMruOnly ? batchBumpedHwnd : 0)
     }
     if (changedCount > 0)
-        _WS_BumpRev("BatchUpdateFields:" . source)
+        _WS_BumpRev("BatchUpdateFields", source)
 
     Critical "Off"
     Profiler.Leave() ; @profile
@@ -777,13 +777,13 @@ WL_FlushChurnLog() {
 ; Atomic revision bump - prevents race conditions when multiple producers bump rev
 ; NOTE: No Critical "Off" — callers hold Critical and "Off" here would leak their state.
 ; Critical "On" is kept for the rare caller without Critical (e.g., EndScan).
-_WS_BumpRev(source) {
+_WS_BumpRev(prefix, detail := "") {
     Critical "On"
     global cfg, gWS_Rev
     gWS_Rev += 1
     Stats_BumpLifetimeStat("TotalWindowUpdates")
     if (cfg.DiagChurnLog)
-        _WS_DiagBump(source)
+        _WS_DiagBump(detail != "" ? prefix ":" detail : prefix)
 }
 
 WL_GetByHwnd(hwnd) {
