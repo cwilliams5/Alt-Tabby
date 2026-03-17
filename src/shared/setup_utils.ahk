@@ -331,6 +331,16 @@ _ProcessGetExitCode(pid) {
 ; TASK SCHEDULER (ADMIN MODE)
 ; ============================================================
 
+; Escape XML-special characters in a string for safe embedding in XML elements.
+; Prevents malformed XML when paths contain & (legal in Windows directory/user names).
+_XmlEscape(str) {
+    str := StrReplace(str, "&", "&amp;")
+    str := StrReplace(str, "<", "&lt;")
+    str := StrReplace(str, ">", "&gt;")
+    str := StrReplace(str, '"', "&quot;")
+    return str
+}
+
 ; Create a scheduled task with highest privileges (UAC-free admin)
 ; Includes InstallationId in description for identification
 ; Returns false if user cancels due to existing task conflict
@@ -376,7 +386,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     xml := '<?xml version="1.0" encoding="UTF-16"?>'
     xml .= '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
     xml .= '<RegistrationInfo>'
-    xml .= '<Description>' taskDesc '</Description>'
+    xml .= '<Description>' _XmlEscape(taskDesc) '</Description>'
     xml .= '</RegistrationInfo>'
     xml .= '<Principals><Principal id="Author">'
     xml .= '<LogonType>InteractiveToken</LogonType>'
@@ -393,7 +403,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     xml .= '<WakeToRun>false</WakeToRun>'
     xml .= '</Settings>'
     xml .= '<Actions><Exec>'
-    xml .= '<Command>"' exePath '"</Command>'
+    xml .= '<Command>"' _XmlEscape(exePath) '"</Command>'
     xml .= '</Exec></Actions>'
     xml .= '</Task>'
 
