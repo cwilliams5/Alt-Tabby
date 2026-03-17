@@ -18,7 +18,8 @@ float4 PSMain(PSInput input) : SV_Target {
     // Fill: subtle vertical gradient on top of user color
     float fill = smoothstep(1.0, -1.0, dist);
     float gradientT = saturate((pixelPos.y - selRect.y) / max(selRect.w, 1.0));
-    float3 fillCol = selColor.rgb + float3(0.05, 0.05, 0.08) * (1.0 - gradientT);
+    float3 gradientTint = float3(0.05, 0.05, 0.08) * (1.0 - gradientT);
+    float3 fillCol = selColor.rgb + gradientTint;
 
     // Border
     float borderMask = smoothstep(borderWidth + 1.0, borderWidth, abs(dist));
@@ -38,7 +39,6 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Shadow layer
-    col += float3(0.0, 0.0, 0.0);
     a += shadow * t * intensity;
 
     // Fill layer
@@ -47,7 +47,7 @@ float4 PSMain(PSInput input) : SV_Target {
     a = max(a, fillA);
 
     // Gradient tint scaled by intensity
-    col += float3(0.05, 0.05, 0.08) * (1.0 - gradientT) * fill * selIntensity * 0.5;
+    col += gradientTint * fill * selIntensity * 0.5;
 
     // Border layer
     float borderA = borderMask * borderColor.a * t * intensity;

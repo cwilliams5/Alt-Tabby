@@ -134,8 +134,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             pulse = pulse * pulse;
 
             // Dual-layer glow
-            float innerGlow = exp(-distSq / (radiusSq * 0.3));
-            float outerGlow = exp(-distSq / (radiusSq * 2.0));
+            float normDist = distSq / radiusSq;
+            float innerGlow = exp(-normDist * 3.333);
+            float outerGlow = exp(-normDist * 0.5);
             float glow = innerGlow * 0.8 + outerGlow * 0.4;
             glow *= pulse;
 

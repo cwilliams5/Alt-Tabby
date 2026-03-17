@@ -41,7 +41,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float fillA = fill * t * intensity;
     float3 baseFill = lerp(selColor.rgb, plasmaCol * selColor.a, 0.55 * selIntensity);
     col = baseFill * fillA;
-    a = max(selColor.a, 0.6) * fill * t * intensity;
+    a = max(selColor.a, 0.6) * fillA;
 
     // Outer plasma glow
     float outerGlow = smoothstep(10.0 * selGlow, 0.0, dist) * (1.0 - fill) * 0.25;
