@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/github/license/cwilliams5/Alt-Tabby" alt="License">
 </p>
 
-A fast, deeply customizable Alt-Tab replacement for Windows. Built with AutoHotkey v2, designed for power users who want responsive window switching, GPU-accelerated visuals, and deep integration with tiling window managers like [Komorebi](https://github.com/LGUG2Z/komorebi).
+A fast, deeply customizable Alt-Tab replacement for Windows. Built with AutoHotkey v2, designed for power users who want responsive window switching, GPU-accelerated visuals, and deep integration with the [Komorebi](https://github.com/LGUG2Z/komorebi) tiling window manager.
 
 <!-- Screenshots/GIFs coming soon -->
 
