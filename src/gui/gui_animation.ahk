@@ -257,6 +257,7 @@ _Anim_FrameLoop() {
     useCompositorClock := (gAnim_pWaitForClock != 0 && gAnim_QuitEvent != 0)
     useWaitable := (gD2D_WaitableHandle != 0)
     autoFPS := (cfg.PerfAnimationFPS = "Auto" || cfg.PerfAnimationFPS = "auto")
+    animType := cfg.PerfAnimationType  ; PERF: hoist — config stable during overlay lifetime
 
     ; Pre-allocate compositor clock handles buffer (1 app handle: quit event)
     if (useCompositorClock) {
@@ -319,7 +320,6 @@ _Anim_FrameLoop() {
         hasShaders := FX_HasActiveShaders()
 
         ; Update ambient animations (Full mode, or any mode with active shaders)
-        animType := cfg.PerfAnimationType  ; PERF: cache config read
         if (gGUI_OverlayVisible && (animType = "Full" || hasShaders))
             FX_UpdateAmbient(gAnim_FrameDt)
 

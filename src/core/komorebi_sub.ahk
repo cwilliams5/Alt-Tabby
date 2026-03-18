@@ -1284,6 +1284,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
     global cfg, gFR_Enabled, FR_EV_KSUB_MRU_STALE
 
+    logEnabled := cfg.DiagKomorebiLog  ; PERF: cache — read ~12 times throughout
+
     if !(stateObj is Map) {
         Profiler.Leave() ; @profile
         return
@@ -1324,12 +1326,12 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         }
     }
 
-    if (cfg.DiagKomorebiLog)
+    if (logEnabled)
         KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" focusedWsIdx " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
     ; Update current workspace if state disagrees with cached value
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
         try WL_SetCurrentWorkspace("", currentWsName)
@@ -1341,7 +1343,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     if (lightMode) {
         if (!skipWorkspaceUpdate) {
             KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
         }
         if (currentWsName != "") {
@@ -1353,7 +1355,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                 if (focusedHwnd != actualFg) {
                     if (gFR_Enabled)
                         FR_Record(FR_EV_KSUB_MRU_STALE, focusedHwnd, actualFg)
-                    if (cfg.DiagKomorebiLog)
+                    if (logEnabled)
                         KSub_DiagLog("ProcessFullState[light]: MRU skip (stale) ksub=" focusedHwnd " fg=" actualFg)
                 } else {
                     ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
@@ -1362,9 +1364,9 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                     global gWEH_LastFocusHwnd
                     if (focusedHwnd != gWEH_LastFocusHwnd) {
                         try WL_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
-                        if (cfg.DiagKomorebiLog)
+                        if (logEnabled)
                             KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
-                    } else if (cfg.DiagKomorebiLog) {
+                    } else if (logEnabled) {
                         KSub_DiagLog("ProcessFullState[light]: MRU skip (WEH match) hwnd=" focusedHwnd)
                     }
                 }
@@ -1477,13 +1479,13 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
 
     ; Update/insert ALL windows from komorebi state
     if (!IsSet(gWS_Store)) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
         Profiler.Leave() ; @profile
         return
     }
 
-    if (cfg.DiagKomorebiLog)
+    if (logEnabled)
         KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
     ; Capture MRU tick early to preserve timing (before batch collection)
@@ -1547,7 +1549,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             }
         }
     }
-    if (cfg.DiagKomorebiLog)
+    if (logEnabled)
         KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
 
     ; Update MRU for the focused window on the current workspace.
@@ -1565,7 +1567,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     if (!skipWorkspaceUpdate) {
         ; State is reliable — cache focused hwnds for ALL workspaces
         KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("ProcessFullState: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
 
         ; DON'T clear suppression here. During rapid workspace switches, clearing
@@ -1584,7 +1586,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                 batchPatches[focusedHwnd].lastActivatedTick := mruTick
             else
                 batchPatches[focusedHwnd] := { lastActivatedTick: mruTick }
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("ProcessFullState: batched MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
         }
     }
@@ -1627,7 +1629,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; Apply all updates in a single batch (one Critical section, one rev bump)
     if (batchPatches.Count > 0) {
         result := WL_BatchUpdateFields(batchPatches, "komorebi_fullstate")
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
     }
     Profiler.Leave() ; @profile

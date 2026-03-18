@@ -449,17 +449,18 @@ FX_PreRenderMouseEffect(w, h) {
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow, cfg
     global gFX_MousePrevX, gFX_MousePrevY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
 
-    if (gFX_MouseEffect.key = "" || gFX_MouseEffect.opacity <= 0.0 || !gShader_Ready || !gFX_GPUReady) {
+    me := gFX_MouseEffect  ; PERF: cache global reference — avoids repeated name lookup
+    if (me.key = "" || me.opacity <= 0.0 || !gShader_Ready || !gFX_GPUReady) {
         Profiler.Leave() ; @profile
         return
     }
 
     ; --- Compute mouse velocity (CPU-side, per frame) ---
     ambientSec := gFX_AmbientTime / 1000.0
-    baseTime := ambientSec * gFX_MouseEffect.speed
-    t := gFX_ShaderTime.Get(gFX_MouseEffect.key, 0)
+    baseTime := ambientSec * me.speed
+    t := gFX_ShaderTime.Get(me.key, 0)
     if (t)
-        baseTime := (t.offset + t.carry + ambientSec) * gFX_MouseEffect.speed
+        baseTime := (t.offset + t.carry + ambientSec) * me.speed
 
     static prevTime := 0.0
     dtSec := (prevTime > 0) ? baseTime - prevTime : 0.0
@@ -503,16 +504,16 @@ FX_PreRenderMouseEffect(w, h) {
 
     tBefore := QPC()
     try {
-        Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime,
-            gFX_MouseEffect.darkness, gFX_MouseEffect.desat, gFX_MouseEffect.opacity,
+        Shader_PreRender(me.key, w, h, baseTime,
+            me.darkness, me.desat, me.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
         ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawMouseEffect)
-        gFX_MouseEffect._bitmap := Shader_GetBitmap(gFX_MouseEffect.key)
+        me._bitmap := Shader_GetBitmap(me.key)
     } catch as e {
-        gFX_MouseEffect._bitmap := 0
+        me._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
-            errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
+            errDetail := "Mouse shader ERR [" me.key "]: " e.Message " @ " e.What
             ToolTip(errDetail)
             static clearTT := () => ToolTip()
             SetTimer(clearTT, -5000)
@@ -553,14 +554,15 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime
     global gShader_Registry, cfg
 
-    if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+    se := gFX_SelectionEffect  ; PERF: cache global reference — avoids repeated name lookup
+    if (se.key = "" || !gShader_Ready || !gFX_GPUReady) {
         Profiler.Leave() ; @profile
         return
     }
 
     ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
     ; Single .Get() lookup + guarded mutation (config-stable values)
-    if (!gFX_SelectionEffect.isBGShader && (entry := gShader_Registry.Get(gFX_SelectionEffect.key, 0))) {
+    if (!se.isBGShader && (entry := gShader_Registry.Get(se.key, 0))) {
         static _selLastGlow := -1, _selLastInt := -1.0
         if (cfg.GUI_SelectionGlow != _selLastGlow || cfg.GUI_SelectionIntensity != _selLastInt) {
             entry.selGlow := cfg.GUI_SelectionGlow
@@ -572,10 +574,10 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
     ambientSec := gFX_AmbientTime / 1000.0
     baseTime := ambientSec
-    t := gFX_ShaderTime.Get(gFX_SelectionEffect.key, 0)
+    t := gFX_ShaderTime.Get(se.key, 0)
     if (t)
         baseTime := t.offset + t.carry + ambientSec
-    baseTime *= gFX_SelectionEffect.speed
+    baseTime *= se.speed
 
     ; Decompose ARGB → premultiplied float4 RGBA (cached — config-stable values)
     static _selLastARGB := -1, _selR := 0.0, _selG := 0.0, _selB := 0.0, _selA := 0.0
@@ -599,32 +601,32 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
     ; BG-as-selection Resize mode: render at selection rect size so the shader fills the rect
     renderW := w, renderH := h
-    if (gFX_SelectionEffect.isBGShader && cfg.GUI_BGShaderAsSelectionSize = "Resize") {
+    if (se.isBGShader && cfg.GUI_BGShaderAsSelectionSize = "Resize") {
         renderW := Max(Round(selW), 1)
         renderH := Max(Round(selH), 1)
     }
 
     ; BG shaders don't read isHovered from the cbuffer, so apply it as opacity multiplier.
     ; Selection: isHovered=1.0 → opacity unchanged. Hover: isHovered=0.5 → half opacity.
-    effectOpacity := gFX_SelectionEffect.opacity
-    if (gFX_SelectionEffect.isBGShader)
+    effectOpacity := se.opacity
+    if (se.isBGShader)
         effectOpacity *= isHovered
 
     try {
-        Shader_PreRender(gFX_SelectionEffect.key, renderW, renderH, baseTime,
-            gFX_SelectionEffect.darkness, gFX_SelectionEffect.desat, effectOpacity,
+        Shader_PreRender(se.key, renderW, renderH, baseTime,
+            se.darkness, se.desat, effectOpacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0, rowRadius * 1.0)
         ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawSelectionEffect)
-        gFX_SelectionEffect._bitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
+        se._bitmap := Shader_GetBitmap(se.key)
     } catch as e {
-        gFX_SelectionEffect._bitmap := 0
+        se._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
-            errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
+            errDetail := "Selection shader ERR [" se.key "]: " e.Message " @ " e.What
             ToolTip(errDetail)
             static clearTT := () => ToolTip()
             SetTimer(clearTT, -5000)

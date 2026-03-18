@@ -136,7 +136,8 @@ GUI_Repaint() {
     ; Use frozen display items when ACTIVE or during hide-fade animation
     ; (hide fade still paints fading frames with the frozen list, not live MRU)
     global gAnim_HidePending
-    items := (gGUI_State = "ACTIVE" || gAnim_HidePending) ? gGUI_DisplayItems : gGUI_LiveItems
+    isActive := (gGUI_State = "ACTIVE")  ; PERF: cache — used multiple times below
+    items := (isActive || gAnim_HidePending) ? gGUI_DisplayItems : gGUI_LiveItems
 
     ; Snapshot selection for this paint frame. STA message pump reentrancy
     ; during COM calls (BeginDraw, EndDraw, DwmFlush) can dispatch hotkey
@@ -145,7 +146,7 @@ GUI_Repaint() {
     paintSel := gGUI_Sel
 
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
-    if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
+    if (isActive && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
         gGUI_ScrollTop := paintSel - 1
     }
 

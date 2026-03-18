@@ -163,13 +163,17 @@ VSOut VSMain(uint id : SV_VertexID) {
 ; cacheName: unique name for cache file (e.g., "vs_VSMain", "ps_digital_rain").
 _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
     global cfg
+    diagLog := cfg.DiagShaderLog  ; PERF: cache — read 3 times below
     ; Check bytecode cache first
+    ; PERF: _Shader_HashSource returns the UTF-8 encoded HLSL via outSrcBuf/outSrcLen
+    ; so we can reuse it for D3DCompile (avoids double-encoding ~10KB HLSL)
     cacheKey := cacheName ? cacheName : entryPoint
-    hash := _Shader_HashSource(hlsl, entryPoint, target)
+    srcBuf := 0, srcLen := 0
+    hash := _Shader_HashSource(hlsl, entryPoint, target, &srcBuf, &srcLen)
     if (hash) {
         cached := _Shader_CacheRead(cacheKey, hash)
         if (cached) {
-            if (cfg.DiagShaderLog)
+            if (diagLog)
                 _Shader_Log("Compile " cacheKey ": cache HIT (" cached.Size " bytes)")
             return cached
         }
@@ -181,10 +185,13 @@ _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
         return 0
 
     ; D3DCompile expects ANSI/UTF-8 source, not UTF-16.
-    cbNeeded := StrPut(hlsl, "UTF-8")
-    srcBuf := Buffer(cbNeeded)
-    StrPut(hlsl, srcBuf, "UTF-8")
-    srcLen := cbNeeded - 1  ; exclude null terminator
+    ; PERF: Reuse UTF-8 buffer from _Shader_HashSource when available
+    if (!srcBuf || !srcLen) {
+        cbNeeded := StrPut(hlsl, "UTF-8")
+        srcBuf := Buffer(cbNeeded)
+        StrPut(hlsl, srcBuf, "UTF-8")
+        srcLen := cbNeeded - 1  ; exclude null terminator
+    }
 
     pBlob := 0
     pErrors := 0
@@ -200,14 +207,14 @@ _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
         try {
             pErrStr := ComCall(3, pErrors, "ptr")  ; GetBufferPointer
             errLen := ComCall(4, pErrors, "uptr")   ; GetBufferSize
-            if (pErrStr && errLen && cfg.DiagShaderLog)
+            if (pErrStr && errLen && diagLog)
                 _Shader_Log("Compile errors: " StrGet(pErrStr, errLen, "UTF-8"))
             ComCall(2, pErrors)
         }
     }
 
     if (hr < 0 || !pBlob) {
-        if (cfg.DiagShaderLog)
+        if (diagLog)
             _Shader_Log("Compile FAILED hr=" Format("{:#x}", hr))
         return 0
     }
@@ -227,7 +234,7 @@ _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
     ; Write to cache (fire-and-forget)
     if (hash) {
         _Shader_CacheWrite(cacheKey, hash, bytecode)
-        if (cfg.DiagShaderLog)
+        if (diagLog)
             _Shader_Log("Compile " cacheKey ": cache MISS, compiled + wrote " bytecode.Size " bytes")
     }
 
@@ -238,33 +245,59 @@ _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
 
 ; Compute MD5 hash of (hlsl + entryPoint + target) via Windows CNG (bcrypt.dll).
 ; Returns a 16-byte Buffer, or 0 on failure.
-_Shader_HashSource(hlsl, entryPoint, target) {
-    ; Concatenate with null separators to avoid collisions
-    combined := hlsl "`n" entryPoint "`n" target
-    cbNeeded := StrPut(combined, "UTF-8")
-    srcBuf := Buffer(cbNeeded)
-    StrPut(combined, srcBuf, "UTF-8")
-    srcLen := cbNeeded - 1
+; Also returns the UTF-8 encoded HLSL buffer via &outSrcBuf/&outSrcLen for reuse
+; by _Shader_Compile (avoids double-encoding the ~10KB HLSL source).
+_Shader_HashSource(hlsl, entryPoint, target, &outSrcBuf := 0, &outSrcLen := 0) {
+    ; PERF: Encode HLSL to UTF-8 once — reused by caller for D3DCompile
+    cbNeeded := StrPut(hlsl, "UTF-8")
+    outSrcBuf := Buffer(cbNeeded)
+    StrPut(hlsl, outSrcBuf, "UTF-8")
+    outSrcLen := cbNeeded - 1
 
-    hAlg := 0
-    hr := DllCall("bcrypt\BCryptOpenAlgorithmProvider",
-        "ptr*", &hAlg, "str", "MD5", "ptr", 0, "uint", 0, "int")
-    if (hr < 0 || !hAlg)
-        return 0
+    ; PERF: Cache BCrypt algorithm provider — MD5 providers are reusable across calls
+    static hAlg := 0
+    if (!hAlg) {
+        hr := DllCall("bcrypt\BCryptOpenAlgorithmProvider",
+            "ptr*", &hAlg, "str", "MD5", "ptr", 0, "uint", 0, "int")
+        if (hr < 0 || !hAlg) {
+            hAlg := 0
+            return 0
+        }
+    }
 
     hHash := 0
     hr := DllCall("bcrypt\BCryptCreateHash",
         "ptr", hAlg, "ptr*", &hHash, "ptr", 0, "uint", 0, "ptr", 0, "uint", 0, "uint", 0, "int")
-    if (hr < 0 || !hHash) {
-        DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
+    if (hr < 0 || !hHash)
         return 0
-    }
 
+    ; PERF: Hash parts separately — avoids copying ~10KB HLSL into a concatenated string
+    static sepBuf := Buffer(1, 0)
+    NumPut("uchar", 10, sepBuf)  ; '\n' separator
     hr := DllCall("bcrypt\BCryptHashData",
-        "ptr", hHash, "ptr", srcBuf, "uint", srcLen, "uint", 0, "int")
+        "ptr", hHash, "ptr", outSrcBuf, "uint", outSrcLen, "uint", 0, "int")
+    if (hr >= 0)
+        hr := DllCall("bcrypt\BCryptHashData",
+            "ptr", hHash, "ptr", sepBuf, "uint", 1, "uint", 0, "int")
+    if (hr >= 0) {
+        epLen := StrPut(entryPoint, "UTF-8") - 1
+        epBuf := Buffer(epLen + 1)
+        StrPut(entryPoint, epBuf, "UTF-8")
+        hr := DllCall("bcrypt\BCryptHashData",
+            "ptr", hHash, "ptr", epBuf, "uint", epLen, "uint", 0, "int")
+    }
+    if (hr >= 0)
+        hr := DllCall("bcrypt\BCryptHashData",
+            "ptr", hHash, "ptr", sepBuf, "uint", 1, "uint", 0, "int")
+    if (hr >= 0) {
+        tgtLen := StrPut(target, "UTF-8") - 1
+        tgtBuf := Buffer(tgtLen + 1)
+        StrPut(target, tgtBuf, "UTF-8")
+        hr := DllCall("bcrypt\BCryptHashData",
+            "ptr", hHash, "ptr", tgtBuf, "uint", tgtLen, "uint", 0, "int")
+    }
     if (hr < 0) {
         DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
-        DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
         return 0
     }
 
@@ -272,7 +305,6 @@ _Shader_HashSource(hlsl, entryPoint, target) {
     hr := DllCall("bcrypt\BCryptFinishHash",
         "ptr", hHash, "ptr", digest, "uint", 16, "uint", 0, "int")
     DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
-    DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
 
     return (hr >= 0) ? digest : 0
 }
@@ -901,10 +933,8 @@ _Shader_LoadOneTexture(fileName) {
         ; Lock bits in BGRA format (PixelFormat32bppARGB = 0x26200A)
         ; GDI+ BitmapData struct: 32 bytes on x64
         bmpData := Buffer(32, 0)
-        ; Rect struct: {x, y, w, h} as int32s
+        ; Rect struct: {x, y, w, h} as int32s (x=0, y=0 via zero-init)
         lockRect := Buffer(16, 0)
-        NumPut("int", 0, lockRect, 0)
-        NumPut("int", 0, lockRect, 4)
         NumPut("int", imgW, lockRect, 8)
         NumPut("int", imgH, lockRect, 12)
 
@@ -1086,16 +1116,15 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         return false
     }
 
-    ; One-time log per shader name
+    entry := gShader_Registry[name]
+
+    ; One-time log per shader name (reuse entry from above)
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
         dbgRendered[name] := true
-        entry_ := gShader_Registry[name]
-        _Shader_Log("PreRender FIRST: " name " srvs=" entry_.srvs.Length " sampler=" gShader_Sampler " ps=" entry_.ps
+        _Shader_Log("PreRender FIRST: " name " srvs=" entry.srvs.Length " sampler=" gShader_Sampler " ps=" entry.ps
             . " darken=" darken " desat=" desaturate " opacity=" opacity
-            . " gridW=" entry_.gridW " gridH=" entry_.gridH " maxP=" entry_.effectiveParticles)
+            . " gridW=" entry.gridW " gridH=" entry.gridH " maxP=" entry.effectiveParticles)
     }
-
-    entry := gShader_Registry[name]
     if (!entry.ps) {
         Profiler.Leave() ; @profile
         return false
@@ -1168,8 +1197,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         }
 
         ; CSSetUnorderedAccessViews (vtable 68): UAV at slot 0
-        static csUavBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", entry.csUAV, csUavBuf)
+        static csUavBuf := Buffer(A_PtrSize, 0), csLastUav := 0
+        if (entry.csUAV != csLastUav) {
+            NumPut("ptr", entry.csUAV, csUavBuf)
+            csLastUav := entry.csUAV
+        }
         static csInitialCount := Buffer(4, 0), csInitDone := false
         if (!csInitDone) {
             NumPut("uint", 0xFFFFFFFF, csInitialCount)  ; -1 = don't reset append counter
@@ -1192,8 +1224,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor, "int")
 
     ; OMSetRenderTargets (vtable 33): count, ppRTVs, depthStencil
-    static rtvBuf := Buffer(A_PtrSize, 0)
-    NumPut("ptr", entry.rtv, rtvBuf)
+    static rtvBuf := Buffer(A_PtrSize, 0), lastRtv := 0
+    if (entry.rtv != lastRtv) {
+        NumPut("ptr", entry.rtv, rtvBuf)
+        lastRtv := entry.rtv
+    }
     ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0, "int")
 
     ; RSSetViewports (vtable 44)
@@ -1245,13 +1280,18 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8)
     nSrvs := entry.srvs.Length
     if (nSrvs > 0) {
-        static srvBuf := 0, srvBufN := 0
+        static srvBuf := 0, srvBufN := 0, lastSrvEntry := 0
         if (srvBufN != nSrvs) {
             srvBufN := nSrvs
             srvBuf := Buffer(A_PtrSize * nSrvs, 0)
+            lastSrvEntry := 0  ; Force rebuild on resize
         }
-        Loop nSrvs
-            NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
+        ; SRV pointers are stable per entry (textures don't change per frame) — skip rebuild
+        if (lastSrvEntry != ObjPtr(entry)) {
+            Loop nSrvs
+                NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
+            lastSrvEntry := ObjPtr(entry)
+        }
         ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf, "int")
     }
 
@@ -1322,8 +1362,8 @@ Shader_ReleaseInactive(activeNames) {
 ; Return the ID2D1Bitmap1 ptr for DrawImage. Returns 0 if not available.
 Shader_GetBitmap(name) {
     global gShader_Registry
-    try return gShader_Registry[name].bitmap
-    return 0
+    entry := gShader_Registry.Get(name, 0)
+    return entry ? entry.bitmap : 0
 }
 
 ; ========================= CLEANUP =========================

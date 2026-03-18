@@ -985,6 +985,7 @@ GUI_RobustActivate(hwnd) {
     global SW_RESTORE, HWND_TOP, HWND_TOPMOST, HWND_NOTOPMOST, cfg
     global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
     global gAnim_HidePending
+    global FR_EV_ACTIVATE_RESULT, gFR_Enabled  ; PERF: consolidated — was declared 3× in branches
 
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
     ; workspace management and can pull windows to the wrong workspace.
@@ -998,10 +999,8 @@ GUI_RobustActivate(hwnd) {
 
             ; Send dummy mouse input to bypass foreground lock (komorebi's trick)
             ; This satisfies Windows' requirement that the process has received recent input
-            inputSize := 40  ; sizeof(INPUT) on 64-bit
-            input := Buffer(inputSize, 0)
-            NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
-            DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
+            static input := Buffer(40, 0)  ; PERF: static — zero-init INPUT_MOUSE struct reused
+            DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", 40)
 
             if (gAnim_HidePending) {
                 ; During overlay fade-out: use HWND_TOP instead of the TOPMOST/NOTOPMOST
@@ -1033,7 +1032,6 @@ GUI_RobustActivate(hwnd) {
             ; VERIFY: Don't trust SetForegroundWindow return alone — it can return
             ; non-zero but still fail. Check the actual foreground window.
             actualFg := DllCall("user32\GetForegroundWindow", "ptr")
-            global FR_EV_ACTIVATE_RESULT, gFR_Enabled
             if (actualFg = hwnd) {
                 if (gFR_Enabled)
                     FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 1, actualFg)
@@ -1058,7 +1056,6 @@ GUI_RobustActivate(hwnd) {
             Profiler.Leave() ; @profile
             return false
         }
-        global FR_EV_ACTIVATE_RESULT
         if (gFR_Enabled)
             FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
@@ -1066,7 +1063,6 @@ GUI_RobustActivate(hwnd) {
         Profiler.Leave() ; @profile
         return false
     } catch as e {
-        global FR_EV_ACTIVATE_RESULT
         if (gFR_Enabled)
             FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
