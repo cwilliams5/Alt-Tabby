@@ -113,7 +113,7 @@ GUI_Repaint() {
     Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
-    global gPaint_LastPaintTick, gPaint_SessionPaintCount
+    global gPaint_LastPaintTick, gPaint_SessionPaintCount, _gPaint_SubCache
     global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
 
     ; ===== TIMING: Start =====
