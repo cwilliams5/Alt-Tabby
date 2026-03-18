@@ -243,22 +243,15 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
             ; Already in Program Files
             installSucceeded := true
         } else {
-            installOk := false
-            try {
-                Update_ApplyCore({
-                    sourcePath: A_ScriptFullPath,
-                    targetPath: targetPath,
-                    useLockFile: false,
-                    validatePE: false,
-                    copyMode: true,
-                    cleanupSourceOnFailure: false,
-                    relaunchAfter: false
-                })
-                installOk := true
-            } catch as e {
-                if (cfg.DiagLauncherLog)
-                    Launcher_Log("WIZARD PF install failed: " e.Message)
-            }
+            installOk := Update_ApplyCore({
+                sourcePath: A_ScriptFullPath,
+                targetPath: targetPath,
+                useLockFile: false,
+                validatePE: false,
+                copyMode: true,
+                cleanupSourceOnFailure: false,
+                relaunchAfter: false
+            })
             if (installOk && FileExist(targetPath)) {
                 exePath := targetPath
                 installedElsewhere := targetPath

@@ -336,8 +336,9 @@ Launcher_ReleaseMutexes() {
 ; Re-acquire both mutexes after a failed restart attempt.
 ; Called from launcher_tray admin toggle fallback path.
 Launcher_ReacquireMutexes() {
-    Launcher_AcquireMutex()
-    _Launcher_AcquireActiveMutex()
+    if (!Launcher_AcquireMutex() || !_Launcher_AcquireActiveMutex())
+        return false
+    return true
 }
 
 ; Handle WM_COPYDATA control signals from child processes

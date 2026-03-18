@@ -976,7 +976,7 @@ Update_ApplyCore(opts) {
                 modTime := FileGetTime(lockFile, "M")
                 if (DateDiff(A_Now, modTime, "Minutes") < 5) {
                     ThemeMsgBox("Another update is in progress. Please wait.", APP_NAME, "Icon!")
-                    return
+                    return false
                 }
                 FileDelete(lockFile)
             }
@@ -1015,7 +1015,7 @@ Update_ApplyCore(opts) {
                 if (lockFile != "")
                     try FileDelete(lockFile)
                 ThemeMsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
-                return
+                return false
             }
         }
 
@@ -1026,7 +1026,7 @@ Update_ApplyCore(opts) {
             if (lockFile != "")
                 try FileDelete(lockFile)
             ThemeMsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Iconx")
-            return
+            return false
         }
 
         ; Copy or move new exe to target location
@@ -1146,6 +1146,8 @@ Update_ApplyCore(opts) {
         if (lockFile != "")
             try FileDelete(lockFile)
 
+        return true
+
     } catch as e {
         ; Rollback - handle partial/corrupted targetPath from failed copy/move
         rollbackSuccess := false
@@ -1178,6 +1180,7 @@ Update_ApplyCore(opts) {
                 "Try renaming this file back to the original name.`n"
                 "If that fails, please reinstall Alt-Tabby.`n`n"
                 "Details: " e.Message, "Alt-Tabby Critical", "Iconx")
+        return false
     }
 }
 
@@ -1583,7 +1586,7 @@ Update_ContinueFromElevation() {
         }
 
         _Update_ApplyAndRelaunch(newExePath, targetExePath)
-        return true  ; Won't reach here if successful (ExitApp called)
+        return false  ; Only reached if Update_ApplyCore failed (success calls ExitApp)
     } catch {
         return false
     }
