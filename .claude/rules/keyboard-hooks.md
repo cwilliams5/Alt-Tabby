@@ -2,8 +2,8 @@
 
 ## Core Rules
 
-- **`SendMode("Event")` is mandatory** — AHK's default `SendInput` temporarily uninstalls all keyboard hooks. User keypresses during that window are lost forever.
-- **`Critical "On"` in all hotkey callbacks** — Without it, one callback can interrupt another mid-execution. Apply to: `_INT_Alt_Down/_INT_Alt_Up`, `_INT_Tab_Down/_INT_Tab_Up`, `_INT_Tab_Decide`, `_INT_Ctrl_Down`, `_INT_Escape_Down`, `GUI_OnInterceptorEvent`.
+- **`SendMode("Event")` is mandatory** — AHK's default `SendInput` temporarily uninstalls all keyboard hooks. User keypresses during that window are lost forever. Enforced by `send_patterns` check.
+- **`Critical "On"` in all hotkey callbacks** — Without it, one callback can interrupt another mid-execution. Enforced by `callback_critical` check.
 - **komorebic also uninstalls hooks** — `komorebic focus-named-workspace` uses SendInput internally. Fix: async activation with event buffering.
 
 ## Key Patterns

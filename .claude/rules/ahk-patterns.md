@@ -2,28 +2,10 @@
 
 ## Syntax Rules
 
-- Use direct function refs, not `Func("Name")` (v1 pattern)
 - String comparisons: use `StrCompare()` not `<`/`>` operators
 - `#Include` is compile-time only - cannot be conditional at runtime
 - Producers submit Map records; store converts to Objects internally via `WL_UpsertWindow()`. Use `rec["key"]` in producer code, `rec.key` in store/GUI code
 - `_WS_GetOpt()` helper handles both Map and plain Object options (polymorphic)
-
-## No Inline Globals in Switch Cases
-
-```ahk
-; WRONG - syntax error
-switch name {
-    case "Foo": global Foo; return Foo
-}
-
-; CORRECT - declare at function scope
-MyFunc(name) {
-    global Foo, Bar, Baz
-    switch name {
-        case "Foo": return Foo
-    }
-}
-```
 
 ## COM STA Message Pump Reentrancy
 
@@ -69,10 +51,6 @@ for _, hPipe in handles
 
 **Don't forget `Critical "Off"` at ALL exit points** including `continue` and early `return`.
 
-## Avoid Static Variables in Timer Callbacks
-
-Use tick-based timing instead of static counters that can leak state if timer is cancelled.
-
 ## One-Shot Timer Callback Corruption (CRITICAL)
 
 Running complex nested call chains (state machine transitions, `GUI_OnInterceptorEvent`, activation) inside a one-shot `SetTimer(func, -period)` callback permanently corrupts AHK v2's timer dispatch for that function. Future `SetTimer(func, -period)` calls silently fail. Discovered in #303.
@@ -102,19 +80,9 @@ In frequently-called functions (paint, input, per-window loops):
 - **Regex**: Pre-compile patterns at load time, not per-match (see `_Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 
-## Caller-Side Log Guards (CRITICAL)
+## Caller-Side Log Guards
 
-AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late — the string is already built:
-```ahk
-; WRONG - string built unconditionally, discarded when logging disabled
-GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
-
-; CORRECT - string never built when logging disabled
-if (cfg.DiagEventLog)
-    GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
-```
-
-Move variables computed **only for logging** inside the guard too. Keep the guard inside the log function as a safety net.
+AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late — the string is already built. Move variables computed **only for logging** inside the guard too. Enforced by `log_guards` check.
 
 ## #SingleInstance in Multi-Process Architecture
 
