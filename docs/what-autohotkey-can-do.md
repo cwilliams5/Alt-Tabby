@@ -89,6 +89,26 @@ One compiled `AltTabby.exe` serves 9 different runtime modes, selected by comman
 
 The launcher spawns the GUI and pump as child processes, tracks their PIDs, and coordinates lifecycle events (restart, config reload, editor launch). The mode flag is checked before `#Include` directives execute, so each mode only initializes the code paths it needs.
 
+### Event-Driven Producer Architecture
+
+The MainProcess runs 8 independent data producers in `src/core/`, each responsible for a different source of window information:
+
+| Producer | Role | Trigger |
+|----------|------|---------|
+| **WinEventHook** | Focus, show/hide, title changes, MRU ordering | Kernel callbacks via `SetWinEventHook` |
+| **Komorebi Sub** | Workspace assignments, focused window per workspace | Named pipe subscription |
+| **Komorebi State** | Full workspace state reconciliation | On-demand polling |
+| **WinEnum** | Complete window discovery | Startup, snapshot requests |
+| **MRU Lite** | MRU fallback if WinEventHook fails | Timer-based polling |
+| **IconPump** | Icon resolution (via EnrichmentPump subprocess) | Pipe IPC responses |
+| **ProcPump** | Process name resolution (via EnrichmentPump subprocess) | Pipe IPC responses |
+
+Producers are fault-isolated — if one fails at startup, the others continue. All write to a shared store through `WL_UpsertWindow()` and `WL_UpdateFields()`, with dirty tracking that classifies changes by impact (MRU-only, structural, cosmetic) to minimize downstream work.
+
+### 354 Configurable Settings
+
+The entire application is driven by a centralized config registry (`config_registry.ahk`) with 354 settings across 15 sections. Each entry declares its type, default, min/max bounds, and description. Validation, documentation generation, and editor UI are all registry-driven — adding a setting to one file propagates everywhere automatically.
+
 ---
 
 ## Named Pipe IPC
@@ -337,7 +357,7 @@ Event codes are small integers at record time. Human-readable names are resolved
 
 ---
 
-## 40,000 Lines of Tooling
+## 36,000 Lines of Tooling
 
 The project includes 86 static analysis checks (bundled into 12 parallel bundles), 17 semantic query tools, an ownership manifest for cross-file mutation tracking, and a test framework with unit, GUI, and live integration tests. The pre-gate runs all 86 checks in ~8 seconds and blocks the entire test suite if any check fails.
 
@@ -357,7 +377,7 @@ This tooling was built as part of an [AI-assisted development workflow](llm-deve
 | D3D11 COM vtable calls | 26 unique indices |
 | Static analysis checks | 86 |
 | Query tools | 17 |
-| Tooling code | ~40,000 lines |
+| Tooling code | ~36,000 lines |
 | Config settings | 350+ |
 | Alt+Tab detection | <5ms |
 | Pre-gate time | ~8 seconds |

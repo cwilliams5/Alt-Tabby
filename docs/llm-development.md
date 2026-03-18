@@ -133,12 +133,14 @@ Claude Code "skills" are markdown files that define reusable workflows. Each ski
 - [`/review-paint`](../.claude/skills/review-paint) — audit the rendering pipeline for resource leaks and race conditions
 - [`/review-criticals`](../.claude/skills/review-criticals) — verify Critical "On"/"Off" pairing across all code paths
 - [`/review-race-conditions`](../.claude/skills/review-race-conditions) — find check-then-act patterns missing atomicity
-- Plus 30+ more review skills for D3D, latency, dead code, resource leaks, shaders, professionalism, etc.
+- Plus 32 more review skills for D3D, latency, dead code, resource leaks, shaders, professionalism, etc.
 
 **Workflow skills** — multi-step processes with domain knowledge baked in:
 - [`/shader-convert`](../.claude/skills/shader-convert) — convert Shadertoy shaders to Alt-Tabby's HLSL format (with optional Playwright scraping)
 - [`/release`](../.claude/skills/release) — build, tag, and package a release
 - [`/profile`](../.claude/skills/profile) — run the profiler, capture flamecharts, analyze bottlenecks
+
+**By category:** 38 review, 12 workflow, 3 shader, 5 analysis/investigation.
 
 ### Context Budget Discovery
 
@@ -202,14 +204,14 @@ Modifications to the guardrail system itself are a primary review point. If the 
 ```
 tests/
   static_analysis.ps1          # Pre-gate orchestrator (parallel execution)
-  check_batch_directives.ps1   # 10 sub-checks: compiler directives, reachability
-  check_batch_functions.ps1    #  4 sub-checks: arity, dead code, undefined calls
-  check_batch_guards.ps1       #  9 sub-checks: Critical sections, callbacks, rendering
-  check_batch_guards_b.ps1     #    Secondary guards batch
+  check_batch_directives.ps1   # 12 sub-checks: compiler directives, reachability, include chains
+  check_batch_functions.ps1    #  5 sub-checks: arity, dead code, undefined calls, globals
+  check_batch_guards.ps1       # 10 sub-checks: Critical sections, callbacks, rendering
+  check_batch_guards_b.ps1     #  9 sub-checks: theme, logging, events, mutations
   check_batch_patterns.ps1     # 17 sub-checks: code patterns, logging, mutations
-  check_batch_simple.ps1       #  5 sub-checks: dead globals, timer lifecycle
-  check_batch_simple_b.ps1     #    Secondary simple batch
-  check_batch_tests.ps1        #  7 sub-checks: test validation, config coverage
+  check_batch_simple.ps1       #  6 sub-checks: dead globals, timer lifecycle, dead locals
+  check_batch_simple_b.ps1     # 15 sub-checks: config registry, IPC, encoding, coverage
+  check_batch_tests.ps1        #  8 sub-checks: test validation, config coverage
   check_warn.ps1               # AHK VarUnset warning detection
   check_skill_frontmatter.ps1  # Skill auto-discovery whitelist enforcement
 
@@ -235,7 +237,7 @@ ownership.manifest             # Cross-file mutation contracts
 | AHK source code | ~41,000 lines |
 | Static analysis checks | 86 (in 12 bundles: 8 batch + 2 standalone + 2 dual-duty query tools) |
 | Query tools | 17 |
-| Tooling code | ~40,000 lines |
+| Tooling code | ~36,000 lines |
 | Pre-gate execution time | ~8 seconds |
 | Check code | 12,700 lines |
 | Query tool code | 6,100 lines |
