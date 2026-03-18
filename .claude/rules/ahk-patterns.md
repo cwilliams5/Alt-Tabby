@@ -99,7 +99,7 @@ MyTimer() {
 In frequently-called functions (paint, input, per-window loops):
 - **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use
 - **D2D objects**: Cache brushes/fonts (see `D2D_GetCachedBrush`, `gD2D_Res`), never create+destroy per-call
-- **Regex**: Pre-compile patterns at load time, not per-match (see `Blacklist_Reload`)
+- **Regex**: Pre-compile patterns at load time, not per-match (see `_Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 
 ## Caller-Side Log Guards (CRITICAL)

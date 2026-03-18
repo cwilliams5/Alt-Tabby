@@ -9,7 +9,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `--gui-only` - MainProcess only (window data + overlay + producers)
 - `--config` / `--blacklist` - Editor GUIs
 
-**Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`
+**Internal modes:** `--pump`, `--wizard-continue`, `--enable-admin-task`, `--disable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`, `--install-to-pf`, `--testing-mode`
 
 **Editor flags:** `--force-native` (with --config): skip WebView2 detection, use native AHK editor
 
@@ -22,7 +22,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Key Files
 
-- `VERSION` - Single source for version (e.g., `0.6.0`)
+- `VERSION` - Single source for version (e.g., `0.9.2`)
 - `src/alt_tabby.ahk` - Unified entry point
 - `src/lib/` - Third-party libraries only (cjson, WebView2, Direct2D, etc.). NOT `src/shared/`.
 - `src/shared/window_list.ahk` - Core window data API (store, display list, dirty tracking)
@@ -53,8 +53,6 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Producer Observability
 
-States in display list meta: `"running"`, `"failed"`, `"disabled"`
-- `meta.producers`: `{ wineventHook, mruLite, komorebiSub, komorebiLite, iconPump, procPump }`
 - No automatic retry - if producer fails at startup, it stays failed
 
 ## Centralized Window Eligibility
@@ -140,7 +138,7 @@ Paint pipeline composites layers bottom-to-top in `_GUI_PaintOverlay`:
 6. **Inner Shadow + Hover** (D2D1 SoftRect chains)
 7. **Window List + text** (GDI+/D2D)
 
-Shader rendering: D3D11 pixel shaders compiled from HLSL→DXBC. Each layer renders to an intermediate texture, composited via `DrawImage` with per-layer opacity. Common cbuffer (112 bytes) provides `time`, `resolution`, `iMouse`, `selRect`, `selColor`, etc. — see `src/shaders/alt_tabby_common.hlsl`.
+Shader rendering: D3D11 pixel shaders compiled from HLSL→DXBC. Each layer renders to an intermediate texture, composited via `DrawImage` with per-layer opacity. Common cbuffer (144 bytes, 9×16-byte rows) provides `time`, `resolution`, `iMouse`, `selRect`, `selColor`, compute grid config, selection tuning, etc. — see `src/shaders/alt_tabby_common.hlsl`.
 
 Shader directories:
 - `src/shaders/` — background shaders (stackable layers)

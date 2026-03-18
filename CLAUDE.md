@@ -25,19 +25,19 @@ MyFunc() {
     if (type = IPC_MSG_SNAPSHOT) { ... }
 }
 ```
-**Enforcement:** The static analysis pre-gate (`check_globals.ps1`) catches missing declarations before tests run. `#Warn VarUnset, Off` remains as a safety net — it does NOT replace the checker.
+**Enforcement:** The static analysis pre-gate (`check_globals` sub-check in `check_batch_functions.ps1`) catches missing declarations before tests run. `#Warn VarUnset, Off` remains as a safety net — it does NOT replace the checker.
 
 ### Cross-File Global Visibility
 
 Variables set inside a function are NOT visible to other files, even with `global`. For globals that other files need:
 ```ahk
 ; FILE SCOPE declaration (outside any function)
-global StorePipeName
+global gMySharedValue
 
 ; Function sets the value
-_CL_InitializeDefaults() {
-    global StorePipeName
-    StorePipeName := "tabby_store_v1"
+MyInit() {
+    global gMySharedValue
+    gMySharedValue := "some_value"
 }
 ```
 

@@ -13,15 +13,15 @@
 **Workspace focus events:**
 - Trust EVENT content for new workspace name/index
 - DON'T trust state's `ring.focused` or per-workspace focus data — may be stale
-- Pass `skipWorkspaceUpdate=true` to ProcessFullState from notifications
+- Pass workspace-handled flag to `_KSub_ProcessFullState` from notifications
 
 **Move events:**
 - Window is already on TARGET workspace in state data
 - TARGET workspace focus indices ARE reliable; source workspace indices are not
-- Must update focused hwnd cache for target workspace BEFORE ProcessFullState runs
-- Push to clients AFTER ProcessFullState completes
+- Must update focused hwnd cache for target workspace BEFORE `_KSub_ProcessFullState` runs
+- Push to clients AFTER `_KSub_ProcessFullState` completes
 
-Use `KSafe_Str()`, `KSafe_Int()` for safe property access on event content.
+Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access on event content.
 
 ## MRU During Workspace Switches
 

@@ -5,7 +5,6 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **ChurnLog** → `tabby_store_error.log` — Window data rev incrementing rapidly when idle
 - **KomorebiLog** → `tabby_ksub_diag.log` — Workspace tracking, CurWS not updating
 - **AltTabTooltips** → On-screen tooltips — Overlay not appearing, wrong state transitions
-- **ViewerLog** (`DebugLog=true` in `[Viewer]`) → `tabby_viewer.log` — Viewer refresh issues
 - **EventLog** → `tabby_events.log` — Rapid Alt-Tab, events lost. Pattern: missing `Tab_Down` between `Alt_Down`/`Alt_Up` = lost Tab
 - **WinEventLog** → `tabby_weh_focus.log` — Focus tracking, bypass mode problems
 - **StoreLog** → `tabby_store_error.log` — MainProcess startup, blacklist loading
@@ -19,4 +18,4 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 
 - **FlightRecorder** → `recorder/fr_YYYYMMDD_HHMMSS.txt` — In-memory ring buffer (default 2000 events). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
 
-`_GUI_LogError()` always logs to `tabby_store_error.log` (no config flag). `_GUI_LogInfo()` respects `StoreLog`.
+`LogAppend(LOG_PATH_STORE, msg)` is the general logging function. Errors always log; info-level logging respects `DiagStoreLog`.
