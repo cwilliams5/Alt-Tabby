@@ -173,7 +173,8 @@ float4 get_lines_color(float2 p, float3 n, float timer, float2 timerSC) {
     float3 col2 = 0.5 * d3 * float3(0.3, 0.7, 0.98);
     col2 = clamp(col2, 0.0, 2.0);
 
-    col = col2 * 0.5 * (0.5 - 0.5 * cos((timer * 0.48 * 2.0))) + lerp(col, col2, 0.45 + 0.45 * cos((timer * 0.48 * 2.0)));
+    float _cosT096 = cos(timer * 0.96);
+    col = col2 * 0.5 * (0.5 - 0.5 * _cosT096) + lerp(col, col2, 0.45 + 0.45 * _cosT096);
 
     col = saturate(col);
 

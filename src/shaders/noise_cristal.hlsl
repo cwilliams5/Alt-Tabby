@@ -46,7 +46,7 @@ float3 Oilnoise(float2 pos, float3 RGB)
     }
 
     result = pow(result, 4.504);
-    return clamp(RGB / abs1d(dot(q, float2(-0.240, 0.000))) * .5 / result, (float3)0.0, (float3)1.0);
+    return saturate(RGB / abs1d(dot(q, float2(-0.240, 0.000))) * .5 / result);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

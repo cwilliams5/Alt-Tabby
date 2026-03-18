@@ -13,6 +13,11 @@ static float4 fc;
 static float tt, cd, sd, io, oa, td;
 static int es = 0, ec;
 
+// Hoisted loop-invariant rotation matrices (set in PSMain, used in mp/lattice)
+static float2x2 _rotTT;      // rot(tt * 0.1)
+static float2x2 _latRotPos;  // rot(latAn * DTR)
+static float2x2 _latRotNeg;  // rot(-latAn * DTR)
+
 float bx(float3 p, float3 s) {
     float3 q = abs(p) - s;
     return min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, (float3)0));
@@ -23,13 +28,11 @@ float smin_f(float a, float b, float k) {
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
-float3 lattice(float3 p, int iter, float an) {
-    float2x2 rotPos = rot(an * DTR);
-    float2x2 rotNeg = rot(-an * DTR);
+float3 lattice(float3 p, int iter) {
     for (int i = 0; i < iter; i++) {
-        p.xy = mul(rotPos, p.xy);
+        p.xy = mul(_latRotPos, p.xy);
         p.yz = abs(p.yz) - 1.0;
-        p.xz = mul(rotNeg, p.xz);
+        p.xz = mul(_latRotNeg, p.xz);
     }
     return p;
 }
@@ -37,10 +40,10 @@ float3 lattice(float3 p, int iter, float an) {
 float mp(float3 p) {
     // Mouse control removed — no mouse in Alt-Tabby
 
-    p.xz = mul(rot(tt * 0.1), p.xz);
-    p.xy = mul(rot(tt * 0.1), p.xy);
+    p.xz = mul(_rotTT, p.xz);
+    p.xy = mul(_rotTT, p.xy);
 
-    p = lattice(p, 9, 45.0 + cos(tt * 0.1) * 5.0);
+    p = lattice(p, 9);
 
     sd = bx(p, (float3)1) - 0.01;
 
@@ -96,6 +99,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
 
     tt = fmod(time + 25.0, 260.0);
+    // Hoist loop-invariant rotations: tt is constant across all march iterations
+    _rotTT = rot(tt * 0.1);
+    float _latAn = 45.0 + cos(tt * 0.1) * 5.0;
+    _latRotPos = rot(_latAn * DTR);
+    _latRotNeg = rot(-_latAn * DTR);
     g_uv = float2(fragCoord.x / resolution.x, fragCoord.y / resolution.y);
     g_uv -= 0.5;
     g_uv /= float2(resolution.y / resolution.x, 1.0);

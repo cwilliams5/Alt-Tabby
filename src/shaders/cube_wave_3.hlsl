@@ -16,10 +16,14 @@ float2x2 rot(float a) {
 
 static float gt;
 
+// Pre-computed constant rotation matrices
+static const float2x2 _rot0785 = float2x2(0.70738827, -0.70682518, 0.70682518, 0.70738827);  // rot(0.785)
+static const float2x2 _rotn625 = float2x2(0.81096312, 0.58509727, -0.58509727, 0.81096312);   // rot(-0.625)
+
 float2 T(float3 p) {
     p.xy = mul(rot(-gt), p.xy);
-    p.xz = mul(rot(0.785), p.xz);
-    p.yz = mul(rot(-0.625), p.yz);
+    p.xz = mul(_rot0785, p.xz);
+    p.yz = mul(_rotn625, p.yz);
     return p.xy;
 }
 

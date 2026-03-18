@@ -49,6 +49,9 @@ float2x2 rotate(float ang) {
     return float2x2(c, -s, s, c);
 }
 
+// Pre-computed constant rotation: rotate(0.1)
+static const float2x2 _rot01 = float2x2(0.99500417, -0.09983342, 0.09983342, 0.99500417);
+
 float3 glow(float v, float r, float3 col) {
     float ratio = r / v;
     float dist = ratio * ratio;
@@ -75,7 +78,7 @@ float4 PSMain(PSInput input) : SV_Target {
     n = fbm(p * 0.4);
     float3 col = glow(n, 0.2, c1);
 
-    n = fbm(mul(rotate(0.1), p * 0.2));
+    n = fbm(mul(_rot01, p * 0.2));
     c2 = glow(n, 0.3, c2);
 
     col = col * c2;

@@ -2,6 +2,11 @@ static float det = 0.001, t, boxhit;
 static float3 adv, boxp;
 static float2 gFragCoord;
 
+// Hoisted loop-invariant rotation matrices (set in PSMain, used in de)
+static float2x2 _rotT02, _rotT01, _rotT015;
+// rot(radians(90.0)): sin=1, cos=0 — constant
+static const float2x2 _rot90 = float2x2(0.0, 1.0, -1.0, 0.0);
+
 float2 glsl_mod(float2 x, float2 y) { return x - y * floor(x / y); }
 float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 
@@ -43,9 +48,9 @@ float box(float3 p, float3 l) {
 float de(float3 p) {
     boxhit = 0.0;
     float3 p2 = p - adv;
-    p2.xz = mul(rot(t * 0.2), p2.xz);
-    p2.xy = mul(rot(t * 0.1), p2.xy);
-    p2.yz = mul(rot(t * 0.15), p2.yz);
+    p2.xz = mul(_rotT02, p2.xz);
+    p2.xy = mul(_rotT01, p2.xy);
+    p2.yz = mul(_rotT015, p2.yz);
     float b = box(p2, (float3)1.0);
     p.xy -= path(p.z).xy;
     float s = sign(p.y);
@@ -54,7 +59,7 @@ float de(float3 p) {
     for (int i = 0; i < 5; i++) {
         p = abs(p) - 1.0;
         p.xz = mul(rot(radians(s * -45.0)), p.xz);
-        p.yz = mul(rot(radians(90.0)), p.yz);
+        p.yz = mul(_rot90, p.yz);
     }
     float f = -box(p, float3(5.0, 5.0, 10.0));
     float d = min(f, b);
@@ -95,6 +100,10 @@ float4 PSMain(PSInput input) : SV_Target {
     gFragCoord = fragCoord;
     float2 uv = (fragCoord - resolution * 0.5) / resolution.y;
     t = time * 7.0;
+    // Hoist loop-invariant rotations: t is constant across all march iterations
+    _rotT02 = rot(t * 0.2);
+    _rotT01 = rot(t * 0.1);
+    _rotT015 = rot(t * 0.15);
     float3 from = path(t);
     adv = path(t + 6.0 + sin(t * 0.1) * 3.0);
     float3 dir = normalize(float3(uv, 0.7));

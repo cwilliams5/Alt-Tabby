@@ -15,6 +15,18 @@ static const float3 HAIR_SHADOW_COLOR = float3(28, 0, 62) / 255.0;
 
 static const float PI = 3.14159265358979;
 
+// Pre-computed constant rotation matrices (avoid per-pixel sincos)
+static const float2x2 _rot_npi2 = float2x2(0.00000000, -1.00000000, 1.00000000, 0.00000000);  // rot(-PI*0.5)
+static const float2x2 _rot_n016 = float2x2(0.98722728, -0.15931821, 0.15931821, 0.98722728);  // rot(-0.16)
+static const float2x2 _rot_n157 = float2x2(0.00079633, -0.99999968, 0.99999968, 0.00079633);  // rot(-1.57)
+static const float2x2 _rot_p003 = float2x2(0.99955003, 0.02999550, -0.02999550, 0.99955003);  // rot(0.03)
+static const float2x2 _rot_n015 = float2x2(0.98877108, -0.14943813, 0.14943813, 0.98877108);  // rot(-0.15)
+static const float2x2 _rot_n272 = float2x2(-0.91243836, -0.40921417, 0.40921417, -0.91243836); // rot(-2.72)
+static const float2x2 _rot_n330 = float2x2(-0.98747977, 0.15774569, -0.15774569, -0.98747977); // rot(-3.3)
+static const float2x2 _rot_p013 = float2x2(0.99156189, 0.12963414, -0.12963414, 0.99156189);  // rot(0.13)
+static const float2x2 _rot_p064 = float2x2(0.80209576, 0.59719544, -0.59719544, 0.80209576);  // rot(0.64)
+static const float2x2 _rot_p005 = float2x2(0.99875026, 0.04997917, -0.04997917, 0.99875026);  // rot(0.05)
+
 #define sat(x) saturate(x)
 
 // ============= Utility Functions =============
@@ -57,7 +69,9 @@ float remap01(float val, float start, float stop) {
 }
 
 float3 erot(float3 p, float3 ax, float ro) {
-    return lerp(dot(ax, p) * ax, p, cos(ro)) + sin(ro) * cross(ax, p);
+    float sro, cro;
+    sincos(ro, sro, cro);
+    return lerp(dot(ax, p) * ax, p, cro) + sro * cross(ax, p);
 }
 
 float hash11(float p) {
@@ -223,8 +237,9 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
     } else {
         float z = sqrt(-p);
         float v = acos(q / (p * z * 2.0)) * 0.333333;
-        float m = cos(v);
-        float n = sin(v) * 1.732050808;
+        float n, m;
+        sincos(v, n, m);
+        n *= 1.732050808;
         float2 tt = saturate(float2(m + m, -n - m) * z - kx);
         float2 qx = d + (c + b * tt.x) * tt.x;
         float dx = dot2(qx), sx = cross2(c + 2.0 * b * tt.x, qx);
@@ -377,7 +392,7 @@ float fbm(float2 st, float n) {
 }
 
 float3 background(float2 uv) {
-    uv = mul(rot(-PI * 0.5), uv);
+    uv = mul(_rot_npi2, uv);
     uv = clog(uv);
     uv.x -= time * 0.1;
     uv /= PI;
@@ -395,7 +410,7 @@ float3 background(float2 uv) {
     col = lerp(col, float3(0.3, 0.6, 0.6), pcs4*pcs16 * 0.7);
     col = lerp(col, (float3)0, voronoi(uv * 10.0 + fa1 * 4.0) * 0.8);
 
-    col.yz = mul(rot(-0.16), col.yz);
+    col.yz = mul(_rot_n016, col.yz);
 
     return col;
 }
@@ -410,7 +425,7 @@ float sd_teeth(float2 coords,
                float x) {
     coords.y -= (t - 0.5) * width;
     coords.y = op_rem_lim(coords.y, spacing, width + spacing / 1.3);
-    coords = mul(rot(-1.57), coords);
+    coords = mul(_rot_n157, coords);
     fang_range *= spacing / width * 2.0;
     float off =
         fang_length * smoothstep(fang_range.x, fang_range.y, abs(t * 2.0 - 1.0));
@@ -423,7 +438,7 @@ float sd_teeth(float2 coords,
 float make_mouth(inout float4 final_color, float2 uv, ShaderParams p) {
     uv *= 1.15;
     uv.y -= -0.02;
-    uv = mul(rot(0.03), uv);
+    uv = mul(_rot_p003, uv);
     float poff = remap01(p.shift, -0.05, 0.05);
     float lip_off = remap01(p.shift, 0.0, 0.2);
 
@@ -463,7 +478,7 @@ float make_mouth(inout float4 final_color, float2 uv, ShaderParams p) {
     LayerFlat3(border - 0.004, BORDER_COLOR);
 
     float2 huv = uv - float2(0.06, -0.38 + poff * 0.4);
-    huv = mul(rot(-0.15), huv);
+    huv = mul(_rot_n015, huv);
     huv *= float2(0.3, 1.0);
     huv.y -= sqrt(pow2(huv.x) + 0.0001) * 0.5;
     float highlight =
@@ -614,7 +629,7 @@ float make_body(inout float4 final_color, float2 uv, ShaderParams p) {
     strokes = min(strokes, abs(bone_base) - 0.005);
     areas = max(areas, bone_base);
     float2 tuv = uv + float2(1.11, 0.345);
-    tuv = mul(rot(-2.72), tuv);
+    tuv = mul(_rot_n272, tuv);
     float edge = sd_trig_isosceles(tuv, float2(0.3, 0.2)) - 0.1;
     edge = max(edge, bone_base);
     areas = min(areas, edge);
@@ -622,7 +637,7 @@ float make_body(inout float4 final_color, float2 uv, ShaderParams p) {
     bone_base = sd_bezier(uv, a, b, c).x;
     strokes = min(strokes, abs(bone_base) - 0.005);
     tuv = uv + float2(-1.09, 0.47);
-    tuv = mul(rot(-3.3), tuv);
+    tuv = mul(_rot_n330, tuv);
     edge = sd_trig_isosceles(tuv, float2(0.3, 0.2)) - 0.1;
     edge = max(edge, bone_base);
     areas = min(areas, edge);
@@ -759,7 +774,7 @@ void make_hair_front(inout float4 final_color,
     highlight = max(highlight, uv.x + 0.7);
 
     float2 suv = uv - float2(2.26, 0.13);
-    suv = mul(rot(0.13), suv);
+    suv = mul(_rot_p013, suv);
     float right_hair_shadow = sd_hook(suv, 3.1, 0.19, -1.0);
     right_hair_shadow = max(right_hair_shadow, -dbody);
 
@@ -778,7 +793,7 @@ void make_hair_front(inout float4 final_color,
                  smoothstep(0.43, 1.94, base_bz.y) * 0.1;
     float2 huv = uv - float2(-3.21, 2.74);
     huv -= 0.1 * p.shift;
-    huv = mul(rot(0.64), huv);
+    huv = mul(_rot_p064, huv);
     skin_shadow = min(skin_shadow, sd_hook(huv, 3.43, -0.1, 1.0));
 
     hbase = abs(right_curl - 0.015) - 0.01;
@@ -894,7 +909,7 @@ float4 PSMain(PSInput input) : SV_Target {
     p.displacement = fbm(uv * 2.91, 2.0) * 0.42;
     p.stroke = fwidth(uv.y) * 0.5 + p.displacement * 0.05;
 
-    uv = mul(rot(0.05), uv);
+    uv = mul(_rot_p005, uv);
 
     float4 final_color = float4((float3)0.051, 1.0);
     final_color.rgb = background(uv);
