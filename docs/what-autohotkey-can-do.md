@@ -52,6 +52,16 @@ What that means concretely:
 
 The pipeline touches **26 unique COM vtable indices** across device creation, buffer management, shader binding, and draw dispatch. All marshaled through AHK's type system with `"ptr"`, `"uint"`, and `"int"` parameter annotations. A dedicated device abstraction ([`d2d_device.ahk`](../src/gui/d2d_device.ahk)) and type marshaling layer ([`d2d_types.ahk`](../src/gui/d2d_types.ahk)) handle COM interface initialization, device loss recovery, and the raw vtable pointer arithmetic that lets AHK call into DirectX and DXGI without any helper DLLs.
 
+### COM Refcount Management
+
+Every COM interface query in AHK is a manual reference-counting exercise. When walking interface chains — D3D11Device → IDXGIDevice → IDXGIAdapter — each `ComObjQuery` returns a wrapped pointer that AHK will Release on scope exit. Extracting the raw pointer with `ComObjValue()` for a new wrapper requires an immediate `ObjAddRef()` to prevent use-after-free when the original wrapper goes out of scope. ([`gui_overlay.ahk`](../src/gui/gui_overlay.ahk))
+
+This is the fundamental COM ownership pattern: `ComObjQuery → ComObjValue (extract raw ptr) → ObjAddRef (prevent premature release) → new typed wrapper`. Without the `ObjAddRef`, the original wrapper's scope-exit Release invalidates the pointer before the new wrapper can use it. C++ smart pointers handle this automatically; in AHK, every reference count is manual and every missed AddRef is a latent crash.
+
+### Device Loss Recovery
+
+When the GPU resets (driver update, monitor disconnect, TDR), every D3D11 and D2D resource is invalidated. The recovery path in `D2D_HandleDeviceLoss()` implements dependency-ordered teardown: effects (which depend on the render target) are disposed first, then D2D resources (brushes, fonts, icon cache), then the back buffer and render target, then DirectComposition visuals (child before parent), then the device itself, and finally the swap chain. Factories (`D2D1Factory`, `IDWriteFactory`) are *not* released — they're device-independent and survive the reset. After teardown, the entire pipeline is recreated in reverse order. Understanding COM object dependency graphs for safe teardown — from a scripting language. ([`gui_overlay.ahk`](../src/gui/gui_overlay.ahk))
+
 ### Bytecode Caching
 
 In development mode, shaders compile from HLSL source at runtime. To avoid recompiling unchanged shaders, each source is MD5-hashed (via Windows CNG: `BCryptOpenAlgorithmProvider` → `BCryptCreateHash` → `BCryptHashData` → `BCryptFinishHash`) and cached as `[16-byte hash][DXBC blob]` on disk. In compiled builds, pre-compiled DXBC bytecode ships as embedded resources — zero compilation overhead at startup.
@@ -387,11 +397,12 @@ Windows dark mode isn't a single API call. It's five layers, each targeting a di
 
 1. **`SetPreferredAppMode`** (uxtheme ordinal #135) — tells Windows this process wants dark mode. Must be called before any GUI is created or context menus render light regardless.
 2. **`AllowDarkModeForWindow`** (uxtheme ordinal #133) — enables dark mode per-window. Applied to each GUI after construction.
-3. **`DwmSetWindowAttribute`** with `DWMWA_USE_IMMERSIVE_DARK_MODE` (attribute 20) — darkens the title bar and window frame.
-4. **`SetWindowTheme`** with `"DarkMode_Explorer"` — re-themes individual controls (edit boxes, dropdowns, tree views) to use the dark variant of their visual style.
-5. **`WM_CTLCOLOR*` message handlers** — for controls where `SetWindowTheme` isn't enough, custom color handlers return cached GDI brushes for background and text colors.
+3. **`FlushMenuThemes`** (uxtheme ordinal #136) — forces context menus to repaint after a mode change. Without it, menus render in the old theme until the process exits. Three undocumented uxtheme ordinals total.
+4. **`DwmSetWindowAttribute`** with `DWMWA_USE_IMMERSIVE_DARK_MODE` (attribute 20) — darkens the title bar and window frame.
+5. **`SetWindowTheme`** with `"DarkMode_Explorer"` — re-themes individual controls (edit boxes, dropdowns, tree views) to use the dark variant of their visual style.
+6. **`WM_CTLCOLOR*` message handlers** — for controls where `SetWindowTheme` isn't enough, custom color handlers return cached GDI brushes for background and text colors.
 
-All five layers are called through `DllCall` — ordinal imports for the undocumented uxtheme functions, standard calls for DWM and user32.
+All six layers are called through `DllCall` — ordinal imports for the undocumented uxtheme functions, standard calls for DWM and user32.
 
 ### Beyond Dark Mode
 
@@ -441,6 +452,10 @@ The decision itself uses a two-timer pattern to resolve a race condition between
 Real-time window events (create, destroy, focus, minimize, show, hide, name change) come through `SetWinEventHook` called directly via `DllCall` with a 7-parameter callback created by `CallbackCreate`. Three narrow hook ranges (instead of one wide range) let the Windows kernel skip filtering — only relevant events reach the callback. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
 
 The callback is inline-optimized: event constants are hardcoded as literals instead of global variable lookups, eliminating 10 name resolutions per invocation on a path that fires hundreds of times per second.
+
+### Transparent Alt Observation via vkE8 Masking
+
+Alt is hooked as `~*Alt` (pass-through) to observe state without consuming the keypress. But Windows interprets a lone Alt release as "activate the menu bar." Fix: `Send("{Blind}{vkE8}")` emits virtual key code `0xE8` — an undefined/unassigned VK code that Windows silently ignores. This masks the Alt release from triggering menu activation while preserving the original keypress for other applications. An AHK-specific trick exploiting an undocumented gap in the virtual key table. ([`gui_interceptor.ahk`](../src/gui/gui_interceptor.ahk))
 
 ### Defense in Depth
 
@@ -531,6 +546,7 @@ A single compiled `.exe` with no installer, no registry entries, no external dep
 - **Task Scheduler integration:** Optional admin mode creates a scheduled task (`schtasks`) with `HighestAvailable` run level for UAC-free operation. InstallationId tracking prevents cross-directory task hijacking. The task creation path generates XML for `schtasks /Create` — user-controllable data (exe path, installation ID, description) is sanitized through `_XmlEscape()` before embedding, preventing XML injection that could modify task properties or create additional scheduled tasks. ([`setup_utils.ahk`](../src/shared/setup_utils.ahk))
 - **Version mismatch detection:** When launched from a different directory than an existing installation, the launcher compares semantic versions and handles three scenarios: current is *newer* → offer to update the installed copy; current is the *same version* → clearer "duplicate location" messaging; current is *older* → offer to launch the installed version instead. A `g_MismatchDialogShown` flag prevents the auto-update check from racing with the mismatch dialog. ([`launcher_install.ahk`](../src/launcher/launcher_install.ahk))
 - **Smart compilation:** The build script compares source file timestamps against the compiled exe and skips Ahk2Exe when nothing changed. Resource embedding handles icons, splash images, DXBC shader bytecode, HTML assets, and DLLs.
+- **File-based cross-elevation IPC:** When UAC elevation is needed for admin toggle, the launcher can't use named pipes or WM_COPYDATA (different privilege levels, no shared window). Instead: parent writes a tick-stamped lock file → launches elevated process → elevated instance overwrites the file with a result string (`"ok"`, `"cancelled"`, `"failed"`) → parent polls at 500ms intervals with 30-second timeout. The filesystem as a message channel — the only IPC mechanism that reliably crosses elevation boundaries without infrastructure. ([`launcher_tray.ahk`](../src/launcher/launcher_tray.ahk))
 
 ---
 
@@ -683,6 +699,9 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Monotonic MRU protection** — store mutations reject stale `lastActivatedTick` writes that are older than the current record value. Prevents concurrent producers (WinEventHook + Komorebi, running from different event sources at different latencies) from corrupting MRU ordering with out-of-order timestamps. ([`window_list.ahk`](../src/shared/window_list.ahk))
 - **Superseded focus check** — after a slow window probe (~10–50ms for `WinGetTitle` on hung apps), the WinEventHook re-checks whether a newer focus event arrived during the probe. If superseded, the stale upsert is skipped entirely — preventing slow probes from overwriting a more recent focus change with stale data. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
 - **TTL-based window removal** — windows that disappear from WinEnum but still pass `IsWindow()` are tracked with `missingSinceTick`. They're only removed after a 1200ms TTL, preventing false positives from transient visibility changes (e.g., a window briefly hidden during a workspace transition animation). Immediate removal caused flickering in the display list during workspace switches. ([`window_list.ahk`](../src/shared/window_list.ahk))
+- **Staggered timer startup** — Z-pump, validation, and housekeeping timers start with `-17ms`, `-37ms`, `-53ms` initial delays — prime numbers chosen to prevent timer thundering herd. Timers that would otherwise all fire on the first tick are spread across different initial phases, avoiding a startup CPU spike when 5+ timer callbacks coincide. ([`gui_main.ahk`](../src/gui/gui_main.ahk))
+- **Lightweight vs. full probe paths** — in-store windows skip immutable fields (class, PID) during WinEventHook updates, fetching only mutable title + visibility/cloaked/minimize state. New windows get the full probe with all fields. Avoids redundant cross-process `WinGetClass`/`WinGetPID` DllCalls on every batch — fields that can't change without window destruction. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
+- **Idle timer auto-pause with demand-wake** — the WinEventHook batch timer enters idle after 10 consecutive empty ticks (`SetTimer(fn, 0)`), consuming zero CPU when the system is quiet. When the WinEvent callback queues new events, it calls `Pump_EnsureRunning()` to restart the timer immediately. Sub-5ms wake from zero-cost idle. The same pattern is used by all 5 producer pumps via the shared `pump_utils.ahk` framework. ([`pump_utils.ahk`](../src/shared/pump_utils.ahk))
 
 ### Display List & Caching
 
@@ -697,6 +716,9 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Display list hwnd→record Map** — a parallel `gWS_DLCache_ItemsMap` maintains O(1) hwnd-keyed lookup alongside the ordered display list array. Operations like close/kill button clicks and workspace filtering use the Map instead of O(N) linear scans. ([`window_list.ahk`](../src/shared/window_list.ahk))
 - **Pre-computed hwndHex** — `Format("0x{:X}", hwnd)` is computed once at store record creation and stored as `hwndHex`. Every logging path, flight recorder dump, and diagnostic display reuses this pre-formatted string instead of calling `Format()` per reference.
 - **Object identity for MRU move-to-front** — the MRU update uses `==` (AHK object identity) instead of hwnd comparison when scanning the live items array. Object identity is atomic — no field access overhead — and safe against HWND aliasing if Windows recycles a handle across window lifetimes. ([`gui_activation.ahk`](../src/gui/gui_activation.ahk))
+- **Static return object reuse** — `_WS_ApplyPatch()` uses a `static` return object mutated in-place rather than creating a new object per call. The same 4-field result struct (`changed`, `sortDirty`, `contentDirty`, `mruOnly`) is reused across thousands of patch operations — amortizing AHK object construction cost to zero in the hottest store path. AHK objects are surprisingly expensive to construct; this pattern avoids it entirely. ([`window_list.ahk`](../src/shared/window_list.ahk))
+- **Field classification Map** — a single pre-computed `gWS_FieldClass` Map replaces three separate `Map.Has()` calls per field per patch. Each field is classified once at init (`"internal"`, `"sort"`, `"mruSort"`, `"content"`); the patch loop does one `Map.Get()` instead of three `Map.Has()` lookups — half the hash operations in the per-field-per-window-per-update hot path. ([`window_list.ahk`](../src/shared/window_list.ahk))
+- **Hwnd normalization** — all hwnd values are coerced to numeric via `hwnd := hwnd + 0` on ingestion. AHK's polymorphic types mean `"0x12345678"` (string) and `0x12345678` (number) are *different* Map keys. Without normalization, the same window can exist twice in the store under two different key types — a silent correctness bug invisible in strongly-typed languages but critical in AHK. ([`window_list.ahk`](../src/shared/window_list.ahk))
 
 ### Rendering Pipeline
 
@@ -802,6 +824,8 @@ The animation data is embedded as a PE resource in the compiled exe and decoded 
 
 GDI+ decodes each animation frame via `GdipImageSelectActiveFrame`. A configurable ring buffer (default 24 frames) pre-buffers ahead of playback, with each frame stored as a GDI+ bitmap backed by a DIB section pixel buffer (~4MB per frame at 1280x720). Old frames are evicted as new ones decode, keeping memory bounded. Frame timing is independent of the decode pipeline — playback runs at the animation's native framerate while decoding runs ahead to fill the buffer. The result is smooth animated splash playback from a scripting language, with no external media player dependency and no intermediate file I/O.
 
+The splash window itself uses `UpdateLayeredWindow` with `AC_SRC_ALPHA` for per-pixel alpha compositing — the splash floats transparently over the desktop with no window chrome. GDI+ composites each frame to a DIB section, then `UpdateLayeredWindow` blits the result with premultiplied alpha. A six-phase animation state machine orchestrates the display lifecycle: `in_fixed` (instant show) → `in_anim` (alpha fade-in) → `playing` (full opacity, frame decode running) → `out_anim` (alpha fade during final loop) → `out_fixed` (post-animation fade) → `restart` (loop or dismiss). Fade transitions are independently driven from frame decode — the display alpha and the WebP frame index are separate state, synchronized only at phase boundaries.
+
 ### WebP Image Processing
 
 Beyond the splash screen, a standalone WebP→PNG conversion pipeline ([`webp_utils.ahk`](../src/shared/webp_utils.ahk)) supports WebP background images in the config editors. The chain: load `libwebp` DLL via `DllCall("LoadLibrary")` (with multi-version fallback across `libwebp-7.dll`, `libwebp-2.dll`, `libwebp.dll`), `WebPGetInfo` to read dimensions, `WebPDecodeBGRA` to decode pixels into a raw buffer, then GDI+ bitmap creation from the pixel buffer + PNG encoding via `GdipSaveImageToFile`. In compiled builds, the DLLs (`libwebp` + `libsharpyuv`) are embedded as PE resources and extracted to `%TEMP%` at first use. A full image format processing pipeline driven entirely from AHK DllCalls.
@@ -820,6 +844,17 @@ Writes use an atomic temp-then-rename pattern: write to `.tmp`, rename to `.ini`
 
 Derived metrics (`AvgAltTabsPerHour`, `QuickSwitchPct`, `CancelRate`) are computed on-the-fly from raw counters rather than stored, avoiding stale aggregates. Non-critical stat bumps (cosmetic counters like blacklist skip count) accept potential data loss rather than adding Critical section overhead to hot paths.
 
+### Cross-Installation Stats Merging
+
+When a user copies Alt-Tabby to a new location or updates an existing installation, stats from the source and target must be merged without double-counting. The merge system ([`setup_utils.ahk`](../src/shared/setup_utils.ahk)) implements delta-based reconciliation:
+
+- **Per-installation snapshots** — `Merged.Snap_*` counters record each counter's value at the time of the last merge. The delta (current − snapshot) is what gets added to the target, not the raw total.
+- **Reverse-merge detection** — merges are tracked by both path AND `InstallationId` (survives directory renames). If installation A merges into B, and later B merges back into A, the system detects the reverse direction via ID matching and uses the correct per-installation snapshot.
+- **High-water-mark fields** — peak counters (e.g., max windows seen) use `Max()` instead of addition. Summing peaks would produce nonsensical values; the true peak is the maximum observed across either installation.
+- **Merge history metadata** — `LastMergedTo`, `LastMergedFrom`, `MergeCount` fields survive across sessions, preventing repeated merges from inflating counters.
+
+A distributed data merge problem — solved in a scripting language for a portable single-exe app with no database.
+
 ---
 
 ## 42,000 Lines of Tooling
@@ -831,7 +866,7 @@ Two checks deserve special mention for bringing language-level guarantees to a d
 - **Ownership manifest** — a machine-enforced ACL for global variables. Every global is either implicitly owned by its declaring file (only that file may mutate it), or explicitly listed in `ownership.manifest` with every authorized cross-file writer. The pre-gate rejects commits that introduce undeclared cross-file mutations. The manifest started at 25+ entries and was systematically reduced to 14 through deliberate refactoring — each reduction representing a coupling boundary that was eliminated. Stale entries are auto-removed. This is effectively Rust-style ownership semantics applied to a scripting language via static analysis.
 - **Function visibility enforcement** — AHK v2 has no access modifiers. The project enforces file-level encapsulation via convention: `_FuncName()` is private to the declaring file; `FuncName()` is public API. The pre-gate rejects cross-file calls to `_`-prefixed functions. 51 functions were privatized in a single pass, 14 dead functions removed (~430 lines). Public/private visibility in a language that has no concept of it, enforced by machine rather than discipline.
 
-Query tools fall into three categories: **data-flow analysis** (ownership, call graphs, impact, mutations, state), **code structure** (functions, visibility, interfaces, includes), and **domain inventories** (config, IPC, timers, messages, shaders, events, profiler coverage).
+Query tools fall into three categories: **data-flow analysis** (ownership, call graphs, impact, mutations, state), **code structure** (functions, visibility, interfaces, includes), and **domain inventories** (config, IPC, timers, messages, shaders, events, profiler coverage). A golden-output regression suite ([`verify_query.ps1`](../tools/verify_query.ps1)) pre-records tool outputs before internal refactors and verifies outputs are unchanged after — contract-enforcing regression testing for the tools themselves, with timing-line stripping before comparison. 20+ test cases covering all 17 tools. A companion benchmarker ([`bench_query.ps1`](../tools/bench_query.ps1)) measures per-tool execution time with configurable iteration counts.
 
 This tooling was built as part of an [AI-assisted development workflow](llm-development.md) — an experiment in what happens when you make the AI build its own guardrails.
 
