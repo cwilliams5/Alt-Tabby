@@ -86,7 +86,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Border
     float borderA = borderMask * borderColor.a * tI;
     float3 borderMix = lerp(borderColor.rgb, boltCol * 0.5, 0.3 * selIntensity);
-    col = lerp(col, borderMix, saturate(borderA));
+    col = lerp(col, borderMix, borderA);
     a = max(a, borderA);
 
     return AT_PostProcess(col, saturate(a));

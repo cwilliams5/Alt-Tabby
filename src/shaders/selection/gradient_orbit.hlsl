@@ -35,7 +35,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Border intensity varies — brightest at the "leading edge" of rotation
     float leadEdge = frac(rotation);
-    float dLead = min(abs(perim - leadEdge), min(abs(perim - leadEdge + 1.0), abs(perim - leadEdge - 1.0)));
+    float dl = perim - leadEdge;
+    float dLead = min(abs(dl), min(abs(dl + 1.0), abs(dl - 1.0)));
     float leadBright = smoothstep(0.3, 0.0, dLead);
 
     // Border glow — wider near the lead point
@@ -70,7 +71,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Main border stroke
     float3 borderMix = lerp(borderColor.rgb, gradCol * 0.6, 0.6 * selIntensity);
     float borderA = borderMask * borderColor.a * tI;
-    col = lerp(col, borderMix, saturate(borderA));
+    col = lerp(col, borderMix, borderA);
     a = max(a, borderA);
 
     return AT_PostProcess(col, saturate(a));

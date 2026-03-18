@@ -238,7 +238,7 @@ float3 render(float2 fragCoord) {
         rfl.y = abs(rfl.y);
         float fres_base = 1.0 - max(0.0, dot(-normal, rd));
         float fres_sq = fres_base * fres_base;
-        float fres = saturate(fres_sq * fres_sq * fres_base); // pow(x,5) Fresnel
+        float fres = fres_sq * fres_sq * fres_base; // pow(x,5) Fresnel
         col += sky(rfl) * fres * 0.9;
 
         float wh = min(pos.y + 0.5, 1.8); float wh2 = wh * wh; // pow(x,4)

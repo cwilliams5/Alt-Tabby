@@ -56,7 +56,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Prismatic border
     float3 borderCol3 = lerp(borderColor.rgb, prismatic, 0.7 * selIntensity);
     float borderA = borderMask * borderColor.a * tI;
-    col = lerp(col, borderCol3, saturate(borderA));
+    col = lerp(col, borderCol3, borderA);
     a = max(a, borderA);
 
     return AT_PostProcess(col, saturate(a));

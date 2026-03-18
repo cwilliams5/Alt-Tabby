@@ -33,12 +33,15 @@ float4 PSMain(PSInput input) : SV_Target {
     float perim = getPerimeter(px, selRect);
 
     // Two pulses orbiting at different speeds
-    float pulseA = frac(time * 0.25);
-    float pulseB = frac(time * 0.25 + 0.5); // opposite side
+    float timePhase = time * 0.25;
+    float pulseA = frac(timePhase);
+    float pulseB = frac(timePhase + 0.5); // opposite side
 
     // Wrapped distance from each pulse
-    float dA = min(abs(perim - pulseA), min(abs(perim - pulseA + 1.0), abs(perim - pulseA - 1.0)));
-    float dB = min(abs(perim - pulseB), min(abs(perim - pulseB + 1.0), abs(perim - pulseB - 1.0)));
+    float dlA = perim - pulseA;
+    float dA = min(abs(dlA), min(abs(dlA + 1.0), abs(dlA - 1.0)));
+    float dlB = perim - pulseB;
+    float dB = min(abs(dlB), min(abs(dlB + 1.0), abs(dlB - 1.0)));
 
     // Pulse glow — bright leading point with fading trail
     float glowA = smoothstep(0.20, 0.0, dA);
