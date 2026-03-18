@@ -199,6 +199,22 @@ Modifications to the guardrail system itself are a primary review point. If the 
 
 ---
 
+## Repeated Invocation
+
+Review skills benefit from being run multiple times. A single clean pass doesn't mean clean — convergence after N passes does.
+
+Two mechanisms explain why:
+
+**Attention saturation.** When the AI finds issues early in a review pass, those findings consume context and attention. There's a pull toward synthesis and wrap-up rather than continued scrutiny. The found issues become attractors — the AI pattern-matches on what it's already found rather than staying open to structurally different problems. Radiologists call this "satisfaction of search": finding one tumor makes you statistically less likely to find the second one on the same scan.
+
+**Path diversity.** LLM sampling means each run takes a different path through the search space. Which file gets read first, which function looks suspicious, which pattern gets grepped — these are soft decisions influenced by sampling, and they cascade. Reading file A first means file B is approached with A's patterns primed. Next run, starting with file C means seeing file B through completely different eyes. This isn't coin-flip randomness — it's exploring different branches of a search tree.
+
+The two effects compound. Each run has decent but incomplete coverage, and the coverage gaps are partially independent across runs. Run 1 finds issues A, B, C. Run 2 finds B, D, E. Run 3 finds A, E, F. You converge on full coverage through repetition in a way that a single "try harder" prompt can't replicate — because the bottleneck isn't effort, it's the path through the search space.
+
+**In practice:** `/review-race-conditions` took ~10 runs before consistently returning "none found" — each early run surfaced patterns the previous ones missed. `/review-shaders-open` has been run 20+ times and still finds new items, because it's generative rather than convergent. The convergent reviews (finite bug space, clear right/wrong) are where repeated invocation matters most: any single "none found" carries far less confidence than 10 runs agreeing.
+
+---
+
 ## Project Structure
 
 ```
@@ -237,13 +253,13 @@ ownership.manifest             # Cross-file mutation contracts
 | AHK source code | ~41,000 lines |
 | Static analysis checks | 86 (in 12 bundles: 8 batch + 2 standalone + 2 dual-duty query tools) |
 | Query tools | 17 |
-| Tooling code | ~36,000 lines |
+| Tooling code | ~42,000 lines |
 | Pre-gate execution time | ~8 seconds |
-| Check code | 12,700 lines |
-| Query tool code | 6,100 lines |
+| Check code | 12,900 lines |
+| Query tool code | 6,300 lines |
 | Test code (AHK) | 12,700 lines across 25 files |
 | Skills | 58 (2 auto-discoverable, 56 manual-invoke) |
-| Ownership manifest entries | 13 cross-file globals |
+| Ownership manifest entries | 12 cross-file globals |
 
 ---
 
