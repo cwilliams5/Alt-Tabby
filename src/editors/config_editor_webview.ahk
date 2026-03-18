@@ -402,60 +402,12 @@ _CEW_ForceReveal() {
 
 _CEW_OnFileBrowse(globalName) {
     global gCEW_WebView, gConfigIniPath
-
-    filter := "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff;*.webp)"
-    selected := FileSelect(1, , "Select Background Image", filter)
-    if (selected = "")
+    destPath := ConfigEditor_BrowseBackgroundImage(gConfigIniPath)
+    if (destPath = "")
         return
-
-    ; Determine resources directory (next to config.ini)
-    configDir := ""
-    if (gConfigIniPath != "")
-        SplitPath(gConfigIniPath, , &configDir)
-    else if (A_IsCompiled)
-        configDir := A_ScriptDir
-    else
-        configDir := A_ScriptDir "\.."
-
-    resDir := configDir "\resources"
-    if (!DirExist(resDir))
-        DirCreate(resDir)
-
-    SplitPath(selected, , , &ext)
-    ext := StrLower(ext)
-    destExt := ext
-
-    ; WebP → PNG conversion (via libwebp — GDI+ WebP support varies by Windows version)
-    if (ext = "webp") {
-        converted := _CEW_ConvertWebPToPNG(selected, resDir)
-        if (converted = "") {
-            ThemeMsgBox("Failed to convert WebP image. Please select a PNG or JPG instead.", "Conversion Error", "OK Icon!")
-            return
-        }
-        destExt := "png"
-        destPath := resDir "\alttabby-background." destExt
-        ; Remove old background files only AFTER successful conversion
-        loop files resDir "\alttabby-background.*"
-            if (A_LoopFileFullPath != converted)
-                FileDelete(A_LoopFileFullPath)
-        if (converted != destPath)
-            FileMove(converted, destPath, true)
-    } else {
-        destPath := resDir "\alttabby-background." destExt
-        FileCopy(selected, destPath, true)
-        ; Remove stale background files with different extensions
-        loop files resDir "\alttabby-background.*"
-            if (A_LoopFileFullPath != destPath)
-                FileDelete(A_LoopFileFullPath)
-    }
-
     ; Send path back to JS
     escaped := StrReplace(StrReplace(destPath, "\", "\\"), "'", "\'")
     try gCEW_WebView.ExecuteScript("setFilePath('" globalName "','" escaped "')")
-}
-
-_CEW_ConvertWebPToPNG(webpPath, outputDir) {
-    return WebP_ConvertToPNG(webpPath, outputDir)
 }
 
 ; Trigger JS save (which posts "save" message back, applying changes and destroying GUI)

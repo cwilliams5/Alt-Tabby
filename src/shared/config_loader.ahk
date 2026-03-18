@@ -314,7 +314,7 @@ _CL_SupplementIni(path) {
         content .= (i > 1 ? "`n" : "") . line
     }
 
-    _CL_WriteFileAtomic(path, content)
+    WriteFileAtomic(path, content)
 }
 
 ; Migrate renamed/combined config keys from older versions.
@@ -439,17 +439,18 @@ _CL_CleanupOrphanedKeys(path) {
         newContent .= (i > 1 ? "`n" : "") . line
     }
 
-    _CL_WriteFileAtomic(path, newContent)
+    WriteFileAtomic(path, newContent)
 }
 
 ; Write content atomically: write to temp file first, then replace original.
 ; On failure, cleans up temp and re-throws.
-_CL_WriteFileAtomic(path, content) {
+; encoding: file encoding (default "UTF-8", use "UTF-8-RAW" for no BOM)
+WriteFileAtomic(path, content, encoding := "UTF-8") {
     tempPath := path ".tmp"
     try {
         if (FileExist(tempPath))
             FileDelete(tempPath)
-        FileAppend(content, tempPath, "UTF-8")
+        FileAppend(content, tempPath, encoding)
         FileMove(tempPath, path, true)
     } catch as e {
         try FileDelete(tempPath)
@@ -603,14 +604,9 @@ _CL_EnsureArraySections(path, changes) {
     }
 
     ; Write back
-    tempPath := path ".tmp"
     try {
-        if (FileExist(tempPath))
-            FileDelete(tempPath)
-        FileAppend(content, tempPath, "UTF-8")
-        FileMove(tempPath, path, true)
+        WriteFileAtomic(path, content)
     } catch as e {
-        try FileDelete(tempPath)
         try LogAppend(LOG_PATH_STORE, "config merge write error: " e.Message " path=" path)
     }
 }
@@ -711,15 +707,9 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
     }
 
     ; Atomic write: temp file then move, so a crash mid-write can't lose the config
-    tempPath := path ".tmp"
     try {
-        if (FileExist(tempPath))
-            FileDelete(tempPath)
-        FileAppend(newContent, tempPath, "UTF-8")
-        ; Atomic overwrite: MoveFileEx with MOVEFILE_REPLACE_EXISTING on NTFS
-        FileMove(tempPath, path, true)
+        WriteFileAtomic(path, newContent)
     } catch as e {
-        try FileDelete(tempPath)
         global LOG_PATH_STORE
         LogAppend(LOG_PATH_STORE, "config write error: " e.Message " path=" path)
         return false
@@ -899,7 +889,7 @@ _CL_NormalizeArraySections(arraySections) {
             }
             content .= sectionText
         }
-        _CL_WriteFileAtomic(gConfigIniPath, content)
+        WriteFileAtomic(gConfigIniPath, content)
     }
 }
 
@@ -949,14 +939,9 @@ CL_DeleteSections(sectionNames) {
             newContent .= "`n"
     }
 
-    tempPath := gConfigIniPath ".tmp"
     try {
-        if (FileExist(tempPath))
-            FileDelete(tempPath)
-        FileAppend(newContent, tempPath, "UTF-8")
-        FileMove(tempPath, gConfigIniPath, true)
+        WriteFileAtomic(gConfigIniPath, newContent)
     } catch as e {
-        try FileDelete(tempPath)
         try LogAppend(LOG_PATH_STORE, "config cleanup write error: " e.Message)
     }
 }

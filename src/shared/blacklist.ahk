@@ -216,10 +216,7 @@ _BL_AddToSection(sectionName, entry) {
         newContent := _BL_InsertInSection(content, sectionName, entry)
         if (newContent = content)
             return false  ; Failed to insert (section not found)
-        tmpPath := gBlacklist_FilePath ".tmp"
-        try FileDelete(tmpPath)  ; Clean stale tmp from prior crash
-        FileAppend(newContent, tmpPath, "UTF-8")
-        FileMove(tmpPath, gBlacklist_FilePath, 1)  ; 1 = overwrite
+        WriteFileAtomic(gBlacklist_FilePath, newContent)
         return true
     } catch as e {
         LogAppend(LOG_PATH_STORE, "blacklist write error in _BL_AddToSection: " e.Message)

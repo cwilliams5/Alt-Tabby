@@ -240,15 +240,9 @@ if (g_AltTabbyMode = "blacklist") {
     ExitApp()
 }
 
-; Parse --launcher-hwnd=<N> from command-line args.
-; Shared by config and blacklist editor mode handlers.
+; Parse --launcher-hwnd=<N> — delegates to shared ParseLauncherHwnd() in ipc_constants.ahk
 _ParseLauncherHwnd() {
-    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
-    for _, arg in A_Args {
-        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
-            return Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
-    }
-    return 0
+    return ParseLauncherHwnd()
 }
 
 ; Notify launcher that an editor process is closing (for dashboard refresh).

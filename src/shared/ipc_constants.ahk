@@ -54,3 +54,14 @@ global IPC_WM_STATS_REQUEST := 0x8002   ; WM_APP+2: PostMessage from launcher to
 ; Command-line argument constants
 global ARG_LAUNCHER_HWND := "--launcher-hwnd="
 global ARG_LAUNCHER_HWND_LEN := StrLen(ARG_LAUNCHER_HWND)
+
+; Parse --launcher-hwnd=<N> from command-line args.
+; Returns the launcher hwnd as an integer, or 0 if not found.
+ParseLauncherHwnd() {
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
+    for _, arg in A_Args {
+        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+            return Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+    }
+    return 0
+}

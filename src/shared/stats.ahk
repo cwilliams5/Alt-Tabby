@@ -255,12 +255,8 @@ _Stats_DirectWrite(statsPath, content) {
         ; Backup existing file (crash safety)
         if (FileExist(statsPath))
             try FileCopy(statsPath, statsPath ".bak", true)
-        ; Atomic write: write to temp, then rename
-        ; UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
-        tmpPath := statsPath ".tmp"
-        try FileDelete(tmpPath)
-        FileAppend(content, tmpPath, "UTF-8-RAW")
-        FileMove(tmpPath, statsPath, true)
+        ; Atomic write: UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
+        WriteFileAtomic(statsPath, content, "UTF-8-RAW")
         ; Success — remove backup
         try FileDelete(statsPath ".bak")
         return true
