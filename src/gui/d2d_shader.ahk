@@ -1171,8 +1171,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
                pData, 0)
         ; Selection rect + colors (offset 48-92, 12 values)
         NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
-               "float", Float(selColorR), "float", Float(selColorG), "float", Float(selColorB), "float", Float(selColorA),
-               "float", Float(borderR), "float", Float(borderG), "float", Float(borderB), "float", Float(borderA),
+               "float", selColorR, "float", selColorG, "float", selColorB, "float", selColorA,
+               "float", borderR, "float", borderG, "float", borderB, "float", borderA,
                pData, 48)
         ; Selection params + compute config + tuning (offset 96-136, 11 values)
         NumPut("float", borderWidth, "float", isHovered, "float", entranceT, "float", mouseSpeed,
