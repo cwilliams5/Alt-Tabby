@@ -234,7 +234,7 @@ float4 PSMain(PSInput input) : SV_Target {
     for (int r = 0; r < VOLSTEPS; r++) {
         float3 p = from + s * dir + 0.5;
 
-        p = abs((float3)TILE - fmod(p, (float3)(TILE * 2.0)));
+        p = abs((float3)TILE - (p - (float3)(TILE * 2.0) * floor(p / (float3)(TILE * 2.0))));
         float pa, a;
         pa = 0.0;
         a = 0.0;

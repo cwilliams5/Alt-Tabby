@@ -53,7 +53,7 @@ float4 getTriangleCoords(float2 uv) {
 }
 
 float4 getLoader(float4 tri) {
-    if (length(tri.xy) > 1.6) {
+    if (dot(tri.xy, tri.xy) > 2.56) {
         return (float4)0;
     }
 

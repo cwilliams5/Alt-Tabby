@@ -97,7 +97,7 @@ float map(float3 p) {
     float3 tp = p;
     p.xy = rotate2d(p.xy, p.z * 0.02);
     float3 cell = float3(5.0, 40.5, 21.5);
-    p = fmod(p, cell) - cell * 0.5;
+    p = (p - cell * floor(p / cell)) - cell * 0.5;
 
     float3 cp = p;
 

@@ -160,7 +160,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Vignette
     u = fragCoord / resolution.xy;
-    col = lerp((float3)0, col, pow(16.0*u.x*u.y*(1.0 - u.x)*(1.0 - u.y), .125)*.5 + .5);
+    col = lerp((float3)0, col, sqrt(sqrt(sqrt(16.0*u.x*u.y*(1.0 - u.x)*(1.0 - u.y))))*.5 + .5);
 
     // Gamma correction
     col = sqrt(saturate(col));

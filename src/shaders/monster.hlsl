@@ -10,7 +10,7 @@ float2 rot(float2 p, float r) {
 float2 pmod(float2 p, float n) {
     float np = 2.0 * PI / n;
     float r = atan2(p.x, p.y) - 0.5 * np;
-    r = fmod(r, np) - 0.5 * np;
+    r = (r - np * floor(r / np)) - 0.5 * np;
     float _ps, _pc;
     sincos(r, _ps, _pc);
     return length(p) * float2(_pc, _ps);
@@ -28,7 +28,7 @@ float dist(float3 p) {
     p.xy = pmod(p.xy, 6.0);
     float k = 0.7;
     float zid = floor(p.z * k);
-    p = fmod(p, k) - 0.5 * k;
+    p = (p - k * floor(p / k)) - 0.5 * k;
     float sXY, cXY, sXZ, cXZ;
     sincos(1.0 + zid + 0.1 * time, sXY, cXY);
     sincos(1.0 + 4.7 * zid + 0.3 * time, sXZ, cXZ);
@@ -66,7 +66,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 pn = ro + rd * t;
     float kn = 0.5;
     pn.z += -1.5 * time;
-    pn.z = fmod(pn.z, kn) - 0.5 * kn;
+    pn.z = (pn.z - kn * floor(pn.z / kn)) - 0.5 * kn;
     float em = clamp(0.01 / pn.z, 0.0, 100.0);
     col += 3.0 * em * float3(0.1, 1.0, 0.1);
     col = saturate(col);

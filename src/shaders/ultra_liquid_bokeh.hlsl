@@ -10,6 +10,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 uv = -1.0 + 2.0 * fragCoord.xy / resolution.xy;
     uv.x *= aspect;
     float3 color = (float3)0.0;
+    float t_div15 = time / 15.0;
+    float t_div7_03 = 0.3 * (time / 7.0);
+    float col_r = 0.194 * sin(time / 6.0) + 0.3;
+    float col_g = 1.1 * sin(time / 9.0) + 0.3;
     for (int i = 0; i < 128; i++)
     {
         float pha =      sin(float(i) * 546.13 + 1.0) * 0.5 + 0.5;
@@ -17,9 +21,9 @@ float4 PSMain(PSInput input) : SV_Target {
         float siz = _sizT2 * _sizT2;
         float pox =      sin(float(i) * 321.55 + 4.1) * aspect;
         float rad = 0.1 + 0.5 * siz + sin(pha + siz) / 4.0;
-        float2 pos = float2( pox + sin(time / 15. + pha + siz), -1.0 - rad + (2.0 + 2.0 * rad) * frac(pha + 0.3 * (time / 7.) * (0.2 + 0.8 * siz)));
+        float2 pos = float2( pox + sin(t_div15 + pha + siz), -1.0 - rad + (2.0 + 2.0 * rad) * frac(pha + t_div7_03 * (0.2 + 0.8 * siz)));
         float dis = length( uv - pos );
-        float3 col = lerp( float3(0.194 * sin(time / 6.0) + 0.3, 0.2, 0.3 * pha), float3(1.1 * sin(time / 9.0) + 0.3, 0.2 * pha, 0.4), 0.5 + 0.5 * sin(float(i)));
+        float3 col = lerp( float3(col_r, 0.2, 0.3 * pha), float3(col_g, 0.2 * pha, 0.4), 0.5 + 0.5 * sin(float(i)));
         float f = dis / rad;
         f = sqrt(saturate(1.0 + (sin(time * siz) * 0.5) * f));
         color += col.zyx * (1.0 - smoothstep( rad * 0.15, rad, dis ));
