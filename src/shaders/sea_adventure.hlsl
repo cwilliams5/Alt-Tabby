@@ -248,7 +248,7 @@ float3 starsField(float2 uv)
     float3 v = (float3)0;
     for (float r = 0.; r < volsteps; r++) {
         float3 p = s * dir * .5;
-        p = abs((float3)tile - fmod(p, (float3)(tile * 2.)));
+        p = abs((float3)tile - (p - (float3)(tile * 2.) * floor(p / (float3)(tile * 2.))));
         float pa = 0., a = 0.;
         for (float i = 0.; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;

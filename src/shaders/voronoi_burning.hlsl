@@ -24,8 +24,8 @@ static const float voronoi_smooth = 0.05;
 float hash(float2 p)
 {
     int2 texp = int2(
-        int(fmod(p.x, 256.0)),
-        int(fmod(p.y, 256.0)));
+        int(p.x - 256.0 * floor(p.x / 256.0)),
+        int(p.y - 256.0 * floor(p.y / 256.0)));
 
     return -1.0 + 2.0 * iChannel0.Load(int3(texp, 0)).x;
 }

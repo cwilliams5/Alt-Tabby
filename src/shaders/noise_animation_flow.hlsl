@@ -53,7 +53,8 @@ float spiral(float2 p, float scl) {
     float r = length(p);
     r = log(r);
     float a = atan2(p.y, p.x);
-    return abs(fmod(scl * (r - 2.0 / scl * a), tau) - 1.0) * 2.0;
+    float sm = scl * (r - 2.0 / scl * a);
+    return abs((sm - tau * floor(sm / tau)) - 1.0) * 2.0;
 }
 
 float4 PSMain(PSInput input) : SV_Target {

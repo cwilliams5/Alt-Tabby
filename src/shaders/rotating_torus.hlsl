@@ -68,8 +68,10 @@ float4 tex(float2 uv) {
 
     float2 position = uv;
     position.x -= position.y - thickness * 3.0 - 2.0;
-    position.x = fmod(position.x, res.x / 8.0);
-    position.y = fmod(position.y, res.x / 30.0);
+    float modX = res.x / 8.0;
+    float modY = res.x / 30.0;
+    position.x = position.x - modX * floor(position.x / modX);
+    position.y = position.y - modY * floor(position.y / modY);
     drawSegment(position, float2(2.0, res.x / 30.0 * 0.5),
                 float2(res.x / 8.0 * 0.5, res.x / 30.0 * 0.5),
                 thickness * 0.01, (float4)1.0, color);

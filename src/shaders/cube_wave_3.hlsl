@@ -30,7 +30,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 M = float2(2, 2.3);
     float2 I = floor(U / M) * M;
     float2 J, X;
-    U = fmod(U, M);
+    U = U - M * floor(U / M);
     float4 O = (float4)0;
 
     float _timeMod = fmod(2.0 * time, 10.0);

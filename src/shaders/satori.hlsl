@@ -11,7 +11,8 @@ float2 centerPos(float2 border, float2 offset, float2 vel) {
         c = fakeMouse * resolution;
     } else {
         c = offset + vel * time * 0.5;
-        c = fmod(c, 2.0 - 4.0 * border);
+        float2 period = 2.0 - 4.0 * border;
+        c = c - period * floor(c / period);
         c = abs(c);
         if (c.x > 1.0 - border.x) c.x = 2.0 - c.x - 2.0 * border.x;
         if (c.x < border.x) c.x = 2.0 * border.x - c.x;

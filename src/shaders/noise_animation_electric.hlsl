@@ -45,7 +45,8 @@ float dualfbm(in float2 p) {
 float circ(float2 p) {
     float r = length(p);
     r = 0.5 * log(r);
-    return abs(fmod(r * 4.0, tau) - 3.14) * 3.0 + 0.2;
+    float rm = r * 4.0;
+    return abs((rm - tau * floor(rm / tau)) - 3.14) * 3.0 + 0.2;
 }
 
 float4 PSMain(PSInput input) : SV_Target {
