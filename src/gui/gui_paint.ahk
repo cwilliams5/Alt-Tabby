@@ -166,13 +166,14 @@ GUI_Repaint() {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
+    scale := 0
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
-    scale := Win_GetMonitorScale(waL, waT, waR, waB)
+    ; PERF: Get scale + workarea from GUI_GetWindowRect — avoids 4 duplicate monitor DllCalls per frame
+    ; (MonitorFromWindow + GetMonitorInfoW + MonitorFromRect + GetDpiForMonitor)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &scale, &waL, &waT, &waR, &waB)
     phX := Round(xDip * scale)
     phY := Round(yDip * scale)
     phW := Round(wDip * scale)
@@ -505,9 +506,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brHdr := gD2D_Res["brHdr"]
         tfHdr := gD2D_Res["tfHdr"]
         if (shadowEnabled) {
-            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+            D2D_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             for _, col in cols {
-                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+                D2D_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             }
         } else {
             D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
@@ -559,7 +560,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
         if (shadowEnabled) {
-            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, sOffX, sOffY)
+            D2D_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, sOffX, sOffY)
         } else {
             D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
         }
@@ -741,11 +742,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             }
 
             if (shadowEnabled) {
-                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
-                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
+                D2D_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
+                D2D_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
                 for _, col in cols {
                     val := col._exists ? cur.%col.key% : ""
-                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
+                    D2D_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
@@ -1033,7 +1034,7 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
 
     ; Draw left arrow
     if (hasShadow) {
-        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, sOffX, sOffY)
+        D2D_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
     }
@@ -1052,7 +1053,7 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
 
     ; Draw right arrow
     if (hasShadow) {
-        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, sOffX, sOffY)
+        D2D_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
     }
@@ -1065,26 +1066,16 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
     }
 
     if (hasShadow) {
-        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, sOffX, sOffY)
+        D2D_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
     }
     Profiler.Leave() ; @profile
 }
 
-; ---- Text Shadow ----
-
-; Draw text with a drop shadow behind it. Shadow is drawn first (offset, darker),
-; then crisp text on top. Two DrawText calls per shadowed text element.
-_FX_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
-    D2D_DrawTextLeft(text, x + offX, y + offY, w, h, shadowBrush, tf)
-    D2D_DrawTextLeft(text, x, y, w, h, brush, tf)
-}
-
-_FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
-    D2D_DrawTextCentered(text, x + offX, y + offY, w, h, shadowBrush, tf)
-    D2D_DrawTextCentered(text, x, y, w, h, brush, tf)
-}
+; Shadow text wrappers moved to gui_gdip.ahk as inlined D2D_DrawTextLeftShadow /
+; D2D_DrawTextCenteredShadow (single function call with one null check + one
+; alignment guard for both shadow and main text draws).
 
 ; Get shadow parameters for current effect style.
 ; Returns {enabled, offX, offY, argb} or {enabled: false}.
