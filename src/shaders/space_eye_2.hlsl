@@ -151,7 +151,7 @@ float4 PSMain(PSInput input) : SV_Target {
     coord *= 0.25;
     coord += fbm(sin(float3(coord * 8.0, time * 0.001))) * 0.05;
     coord += time * 0.0171;
-    float q = cloud(float3(coord * 1.0, 0.222));
+    float q = cloud(float3(coord, 0.222));
     coord += time * 0.0171;
     q += cloud(float3(coord * 0.6, 0.722));
     coord += time * 0.0171;

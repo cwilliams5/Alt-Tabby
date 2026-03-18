@@ -90,7 +90,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float speed = length(p.vel);
         if (speed > 80.0) p.vel *= 80.0 / speed;
 
-        p.vel *= (1.0 - 1.0 * timeDelta);
+        p.vel *= (1.0 - timeDelta);
         p.pos += p.vel * timeDelta;
 
         float2 fromCursor = p.pos - iMouse;

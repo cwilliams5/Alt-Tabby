@@ -186,7 +186,7 @@ float4 planet(float3 ro, float3 rd, float timer) {
     float sd = saturate(dot(lgt, rd) * 0.5 + 0.5);
     float far_dist = 400.0;
     float dtp = 13.0 - (ro + rd * far_dist).y * 3.5;
-    float hori = (linearstep(-1900.0, 0.0, dtp) - linearstep(11.0, 700.0, dtp)) * 1.0;
+    float hori = linearstep(-1900.0, 0.0, dtp) - linearstep(11.0, 700.0, dtp);
     hori *= pow(abs(sd), 0.04);
     hori = abs(hori);
 
@@ -195,7 +195,7 @@ float4 planet(float3 ro, float3 rd, float timer) {
     float h32 = h16*h16; float h64 = h32*h32; float h128 = h64*h64;
     col += (h128*h64*h8) * float3(0.3, 0.7, 1.0) * 3.0;
     col += (hori*h8*h16) * float3(0.5, 0.5, 1.0) * 0.5;
-    col += (hori*h2*h4) * pal(timer * 0.48 * 0.1, float3(0.8, 0.5, 0.04), float3(0.3, 0.04, 0.82), float3(2.0, 1.0, 1.0), float3(0.0, 0.25, 0.25)) * 1.0;
+    col += (hori*h2*h4) * pal(timer * 0.48 * 0.1, float3(0.8, 0.5, 0.04), float3(0.3, 0.04, 0.82), float3(2.0, 1.0, 1.0), float3(0.0, 0.25, 0.25));
     col = saturate(col);
 
     float t = fmod(timer, 15.0);

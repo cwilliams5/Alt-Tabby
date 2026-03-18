@@ -25,7 +25,7 @@ float4 PSMain(PSInput input) : SV_Target {
         o += s * d;
         o.r += (d * 1.5 - 5.0 / s) * 0.25;
         o.b += sin(d * 0.09 + p.z * 0.3) * 2.0 / s;
-        o.g += sin(d * 0.2) * 1.0 / s;
+        o.g += sin(d * 0.2) / s;
 
         p = float3(u * d, d + t * 5.0);
         s = min(p.z, 1.9 + sin(p.z) * 0.15);

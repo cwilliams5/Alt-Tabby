@@ -18,8 +18,8 @@ float4 PSMain(PSInput input) : SV_Target {
     for (int i = 1; i < zoom; i++) {
         float fi = float(i);
         float2 newp = p;
-        newp.x += 0.25 / fi * sin(fi * p.y + t * cos(ct) * 0.5 / 20.0 + 0.005 * fi) * fScale + xBoost;
-        newp.y += 0.25 / fi * sin(fi * p.x + t * ct * 0.3 / 40.0 + 0.03 * float(i + 15)) * fScale + yBoost;
+        newp.x += 0.25 / fi * sin(fi * p.y + t * cos(ct) * 0.025 + 0.005 * fi) * fScale + xBoost;
+        newp.y += 0.25 / fi * sin(fi * p.x + t * ct * 0.0075 + 0.03 * float(i + 15)) * fScale + yBoost;
         p = newp;
     }
 

@@ -81,7 +81,7 @@ float func(float2 q, out float2 o, out float2 n)
 
     f = lerp(f, f * f * f * -3.5, -f * abs(n.x));
 
-    float g = 0.5 + 0.5 * sin(1.0 * p.x) * sin(1.0 * p.y);
+    float g = 0.5 + 0.5 * sin(p.x) * sin(p.y);
     float _g2 = g*g; float _g4 = _g2*_g2;
     f *= 1.0 - 0.5 * (g*_g2*_g4);
 
@@ -113,8 +113,8 @@ float4 PSMain(PSInput input) : SV_Target
     col = lerp(col, float3(-1.0, 0.2, 0.4), 0.5 * smoothstep(1.02, 1.3, abs(n.y) + abs(n.x * n.x)));
     col = lerp(col, float3(0.40, 0.92, 0.4), 0.5 * smoothstep(0.602, 1.93, abs(n.y) + abs(n.x * n.x)));
 
-    float2 ex = -1.0 * float2(2.0 / resolution.x, 0.0);
-    float2 ey = -1.0 * float2(0.0, 2.0 / resolution.y);
+    float2 ex = -float2(2.0 / resolution.x, 0.0);
+    float2 ey = -float2(0.0, 2.0 / resolution.y);
     float3 nor = normalize(float3(funcs(q + ex) - f, ex.x, funcs(q + ey) - f));
     float dif = saturate(0.03 + 0.7 * dot(nor, lig));
 

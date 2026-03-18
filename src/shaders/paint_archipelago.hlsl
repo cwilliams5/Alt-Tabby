@@ -32,7 +32,7 @@ float pattern(in float2 p) {
     float2 aScale = (float2)3.0;
     float a = fbm(p * aScale + aPos);
 
-    float2 bPos = float2(sinT01, sinT01) * 1.0;
+    float2 bPos = float2(sinT01, sinT01);
     float2 bScale = (float2)0.6;
     float b = fbm((p + a) * bScale + bPos);
 

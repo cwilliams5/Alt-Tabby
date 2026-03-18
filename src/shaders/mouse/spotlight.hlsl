@@ -61,8 +61,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float perpComp = dot(delta, perpDir);
 
     // Elliptical distance
+    float rcpElongSq = 1.0 / (elongation * elongation);
     float ellipseDist = sqrt(
-        (paraComp * paraComp) / (elongation * elongation) +
+        paraComp * paraComp * rcpElongSq +
         perpComp * perpComp
     );
 

@@ -117,7 +117,7 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
         float noise = value(float2(angle, u * (1.0 / _Size) * 0.05), f);
         noise = noise * 0.66 + 0.33 * value(float2(angle, u * (1.0 / _Size) * 0.05), f * 2.0);
 
-        float extraWidth = noise * 1.0 * (1.0 - saturate(i * (1.0 / _Steps) * 2.0 - 1.0));
+        float extraWidth = noise * (1.0 - saturate(i * (1.0 / _Steps) * 2.0 - 1.0));
 
         float alpha = saturate(noise * (intensity + extraWidth) * ((1.0 / _Size) * 10.0 + 0.01) * dist * distMult);
 
@@ -126,7 +126,7 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
 
         lp *= (1.0 / _Size);
 
-        o.rgb += redShift * (intensity * 1.0 + 0.5) * (1.0 / _Steps) * 100.0 * distMult / (lp * lp);
+        o.rgb += redShift * (intensity + 0.5) * (1.0 / _Steps) * 100.0 * distMult / (lp * lp);
     }
 
     o.rgb = saturate(o.rgb - 0.005);

@@ -193,11 +193,11 @@ float3 StaticRaindrops(float2 UV, float Time, float UVScale) {
 
     float NewDistance = MapToRange(0.0, DistanceMaxRange * DistanceScale, Distance);
 
-    float Scale = 1.65 * (0.2 + DistanceScale * 1.0) * DistanceMaxRange * lerp(1.5, 0.5, RandVal.x);
-    float2 TempXY = float2(XY.x * 1.0, XY.y) * 4.0;
+    float Scale = 1.65 * (0.2 + DistanceScale) * DistanceMaxRange * lerp(1.5, 0.5, RandVal.x);
+    float2 TempXY = float2(XY.x, XY.y) * 4.0;
     float RandomScale = ProportionalMapToRange(0.85, 1.35, RandVal.z);
     TempXY.x = RandomScale * lerp(TempXY.x, TempXY.x / smoothstep(1.0, 0.4, YDistance * RandVal.z), smoothstep(1.0, 0.0, RandVal.x));
-    TempXY = TempXY + EdgeRandomCurveAdjust * 1.0;
+    TempXY = TempXY + EdgeRandomCurveAdjust;
     float3 HeightAndNormal = RaindropSurface(TempXY, Scale, 1.0);
     HeightAndNormal.yz = -HeightAndNormal.yz;
 
@@ -238,7 +238,7 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
     float SwingPosition = sin(SwingY + sin(GridID.y * RandVec3.z + SwingY) + GridID.y * RandVec3.z);
     SwingX += SwingPosition * (0.5 - abs(SwingX)) * (RandVec3.z - 0.5);
     SwingX *= 0.65;
-    float RandomNormalizedTime = frac(TimeMovingY + RandVec3.z) * 1.0;
+    float RandomNormalizedTime = frac(TimeMovingY + RandVec3.z);
     SwingY = (GradientWave(0.87, RandomNormalizedTime) - 0.5) * 0.9 + 0.5;
     SwingY = clamp(SwingY, 0.15, 0.85);
     float2 Position = float2(SwingX, SwingY);
@@ -260,8 +260,8 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
     float Theta = 3.141592653 - acos(dot(normalize(Direction), float2(0.0, 1.0)));
     Theta = Theta * RandVec3.z;
     float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 * 0.5 - 1.6));
-    float Scale = 1.65 * (0.2 + DistanceScale * 1.0) * DistanceMaxRange * lerp(1.0, 0.25, RandVec3.x * 1.0);
-    float2 TempXY = float2(XY.x * 1.0, XY.y) * 4.0;
+    float Scale = 1.65 * (0.2 + DistanceScale) * DistanceMaxRange * lerp(1.0, 0.25, RandVec3.x);
+    float2 TempXY = float2(XY.x, XY.y) * 4.0;
     float RandomScale = ProportionalMapToRange(0.85, 1.35, RandVec3.z);
     TempXY = TempXY * float2(1.0, 4.2) + EdgeRandomCurveAdjust * 0.85;
     float3 HeightAndNormal = RaindropSurface(TempXY, Scale, 1.0);
@@ -279,7 +279,7 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
     float TrailEdgeRandomCurveAdjust = TrailNoiseResult.w * lerp(0.002, 0.175, frac(RandVec3.y));
     float TrailXDistance = MapToRange(0.0, 0.1, TrailEdgeRandomCurveAdjust * 0.5 + TrailX);
     float2 TrailDirection = SignOfTrailX * float2(1.0, 0.0) + float2(0.0, 1.0) * smoothstep(1.0, 0.0, Trail) * 0.5;
-    float2 TrailXY = TrailDirection * 1.0 * TrailXDistance;
+    float2 TrailXY = TrailDirection * TrailXDistance;
 
     float3 TrailHeightAndNormal = RaindropSurface(TrailXY, 1.0, 1.0);
 
