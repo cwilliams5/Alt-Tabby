@@ -603,7 +603,10 @@ _AdminToggle_CheckComplete() {
             } else {
                 ; Task failed - re-acquire mutexes before relaunching subprocesses,
                 ; otherwise another instance could start in the unprotected window
-                Launcher_ReacquireMutexes()
+                if (!Launcher_ReacquireMutexes()) {
+                    ThemeMsgBox("Another Alt-Tabby instance started while restarting. This instance will exit.", APP_NAME, "Iconi")
+                    ExitApp()
+                }
                 LaunchPump()
                 LaunchGui()
                 ThemeMsgBox("The scheduled task could not start Alt-Tabby.`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
