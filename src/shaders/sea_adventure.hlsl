@@ -22,6 +22,11 @@ float2x2 rot(float a)
     return float2x2(c, -s, s, c);
 }
 
+// rot(2.8): sin(2.8)=0.33498815, cos(2.8)=-0.94222234
+static const float2x2 _rot2p8 = float2x2(-0.94222234, -0.33498815, 0.33498815, -0.94222234);
+// rot(0.5): sin(0.5)=0.47942554, cos(0.5)=0.87758256
+static const float2x2 _rot0p5 = float2x2(0.87758256, -0.47942554, 0.47942554, 0.87758256);
+
 float box(float3 p, float3 s)
 {
     p = abs(p) - s;
@@ -101,8 +106,8 @@ float solid(float3 p)
     float3 p3 = kifs(p + float3(1, 0, 0), 1.9);
 
     float d5 = -1.;
-    p5.xy = mul(p5.xy, rot(2.8));
-    p5.xz = mul(p5.xz, rot(0.5));
+    p5.xy = mul(p5.xy, _rot2p8);
+    p5.xz = mul(p5.xz, _rot0p5);
 
     float trk = 1.;
     float z = 1.;

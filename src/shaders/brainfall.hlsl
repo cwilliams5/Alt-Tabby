@@ -31,12 +31,15 @@ float2x2 rot(float x) {
     return float2x2(c, -s, s, c);
 }
 
+// rot(1.0): sin(1.0)=0.84147098, cos(1.0)=0.54030231
+static const float2x2 _rot1 = float2x2(0.54030231, -0.84147098, 0.84147098, 0.54030231);
+
 float zuzoise(float2 uv, float t) {
     float2 sine_acc = (float2)0;
     float2 res = (float2)0;
     float scale = 5.0;
 
-    float2x2 m = rot(1.0);
+    float2x2 m = _rot1;
 
     for (float i = 0.0; i < 15.0; i++) {
         uv = mul(uv, m);
