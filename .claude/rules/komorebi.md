@@ -37,7 +37,7 @@ Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access on event content.
 
 Activation sequence: `komorebic focus-named-workspace` → poll until switch → SendInput trick to bypass foreground lock → SetWindowPos (TOPMOST/NOTOPMOST) + SetForegroundWindow.
 
-**Hide cmd.exe:** Use `WScript.Shell.Run(cmd, 0, true)` not `shell.Exec()`.
+**Hide cmd.exe:** Use `ProcessUtils_RunHidden(cmd)` from `process_utils.ahk`.
 
 ## Integration Testing
 

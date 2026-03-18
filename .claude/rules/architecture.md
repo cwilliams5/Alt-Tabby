@@ -36,6 +36,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
 - `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
 - `src/editors/config_editor_webview.ahk` - WebView2 editor (HTML/JS UI)
+- `src/editors/blacklist_editor.ahk` - Blacklist editor (launched via `--blacklist`)
 - `src/core/` - Producer modules (WinEventHook, Komorebi, IconPump, ProcPump, etc.)
 - `src/pump/` - EnrichmentPump subprocess
 - `resources/img/` - Image assets (icon.ico, icon.png, logo.png)
@@ -130,12 +131,13 @@ Stats engine (`stats.ahk`) runs in-process within MainProcess. `Stats_Accumulate
 Paint pipeline composites layers bottom-to-top in `_GUI_PaintOverlay`:
 
 1. **DWM Surface** (unchanged)
-2. **User Background Image** (`BGImg_Draw`)
+2. **User Background Image** (`BGImg_Draw`) — configurable: below or above shaders
 3. **Shader Layers 1..N** (0-4 stackable D3D11 HLSL shaders, `FX_DrawShaderLayers`)
 4. **Mouse Effect** (0-1 dedicated slot receiving cursor position, `FX_DrawMouseEffect`)
-5. **Selection/Hover Effect** (shader-based or simple D2D fill, `FX_DrawSelectionEffect`)
-6. **Inner Shadow + Hover** (D2D1 SoftRect chains)
-7. **Window List + text** (GDI+/D2D)
+5. **Selection Effect** (shader-based or simple D2D fill, `FX_DrawSelectionEffect`) — before row loop
+6. **Row loop** (per-row hover → icon → text with shadow)
+7. **Scrollbar + Footer**
+8. **Inner Shadow** (D2D1 SoftRect chains, drawn last as overlay)
 
 Shader rendering: D3D11 pixel shaders compiled from HLSL→DXBC. Each layer renders to an intermediate texture, composited via `DrawImage` with per-layer opacity. Common cbuffer (144 bytes, 9×16-byte rows) provides `time`, `resolution`, `iMouse`, `selRect`, `selColor`, compute grid config, selection tuning, etc. — see `src/shaders/alt_tabby_common.hlsl`.
 
