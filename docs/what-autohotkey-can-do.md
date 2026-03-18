@@ -357,7 +357,37 @@ The harness uses poll-based waiting (`WaitForFlag`) instead of fixed sleeps, so 
 
 The entire suite is worktree-isolated — multiple agents or users can run tests simultaneously on the same host without interference. Named pipes, mutexes, log files, and process kills are all scoped to the worktree path, so a test run in one git worktree won't collide with another running in the main checkout or a different branch.
 
-Timing instrumentation reports per-check and per-suite durations. A dedicated benchmark script measures AHK startup overhead to evaluate parallelization split strategies — because at 12,700 lines of test code, the bottleneck is often process launch time, not test execution.
+Timing instrumentation reports per-check and per-suite durations with bottleneck detection. A dedicated benchmark script measures AHK startup overhead to evaluate parallelization split strategies — because at 12,700 lines of test code, the bottleneck is often process launch time, not test execution.
+
+The `--timing` flag produces a hierarchical timing report showing the two-gate parallelization strategy: Pre-Gate and Compilation run simultaneously, and whichever finishes first unlocks its dependent tests immediately (arrows show which gate released which wave). Truncated example:
+
+```
+=== TIMING REPORT ===
+                                                    Offset   Duration
+----------------------------------------------------------------------
+        Phase 1: Pre-Gate + Compilation              +0.2s      10.8s
+     ┌─   Compilation                                           10.6s ◄── slowest
+     │      Ahk2Exe                                              7.1s ◄── slowest
+     │      Profile Strip                                        2.2s
+     │      ⋮ (5 more steps)
+     │ ┌─  Pre-Gate                                              8.8s
+     │ │     check_batch_functions.ps1                            8.5s ◄── slowest
+     │ │       check_globals                                     2.3s ◄── slowest
+     │ │       check_arity                                       1.2s
+     │ │       ⋮ (3 more sub-checks)
+     │ │     check_batch_patterns.ps1                             6.4s
+     │ │       ⋮ (16 sub-checks)
+     │ │     ⋮ (8 more bundles)
+     │ │   Phase 2: Tests                            +9.0s      23.5s ◄══ bottleneck
+     │ └▸       GUI Tests                            +9.0s       8.0s
+     │          Unit/Core/Store                                   7.7s
+     │          ⋮ (9 more unit suites)
+     └───▸      Live/Watcher                        +10.8s      21.7s ◄── slowest
+                Live/Pump                                        19.7s
+                ⋮ (4 more live suites)
+----------------------------------------------------------------------
+Total wall-clock                                                32.5s
+```
 
 ---
 
