@@ -53,10 +53,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
     float2 uv = (fragCoord - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
 
-    float t = time / 10.0;
+    float t = time * 0.1;
 
     float s, c;
-    sincos(t / 10.0, s, c);
+    sincos(t * 0.1, s, c);
     float2x2 rot = float2x2(c, s, -s, c);
 
     uv = mul(rot, uv);

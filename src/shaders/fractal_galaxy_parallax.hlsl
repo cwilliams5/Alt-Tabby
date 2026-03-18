@@ -52,8 +52,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
     float2 uv = 2.0 * fragCoord.xy / resolution.xy - 1.0;
     float2 uvs = uv * resolution.xy / max(resolution.x, resolution.y);
+    float3 timeOsc = float3(sin(time * 0.0625), sin(time * 0.083333), sin(time * 0.0078125));
     float3 p = float3(uvs / 4.0, 0.0) + float3(1.0, -1.3, 0.0);
-    p += 0.2 * float3(sin(time / 16.0), sin(time / 12.0), sin(time / 128.0));
+    p += 0.2 * timeOsc;
 
     // Synthetic frequency bands (replaces audio input)
     float freqs0 = getFreq(0.0);
@@ -67,7 +68,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Second Layer
     float3 p2 = float3(uvs / (4.0 + sin(time * 0.11) * 0.2 + 0.2 + sin(time * 0.15) * 0.3 + 0.4), 1.5) + float3(2.0, -1.3, -1.0);
-    p2 += 0.25 * float3(sin(time / 16.0), sin(time / 12.0), sin(time / 128.0));
+    p2 += 0.25 * timeOsc;
     float t2 = field2(p2, freqs3, strength);
     float4 c2 = lerp(0.4, 1.0, v) * float4(1.3 * t2 * t2 * t2, 1.8 * t2 * t2, t2 * freqs0, t2);
 

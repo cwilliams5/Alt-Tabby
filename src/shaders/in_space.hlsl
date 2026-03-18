@@ -141,12 +141,12 @@ float4 get_lines_color(float2 p, float3 n, float timer, float2 timerSC) {
 
     // lines
     tuv.x = abs(frac(tuv.x / divx) - 0.5) * divx;
-    float ld = SS(0.1, 0.9, (frac(polar_line_scale * tuv.x * max(idx, 1.0) / 10.0 + idx / 3.0))) *
-               (1.0 - SS(0.98, 1.0, (frac(polar_line_scale * tuv.x * max(idx, 1.0) / 10.0 + idx / 3.0))));
+    float f1 = frac(polar_line_scale * tuv.x * max(idx, 1.0) * 0.1 + idx / 3.0);
+    float ld = SS(0.1, 0.9, f1) * (1.0 - SS(0.98, 1.0, f1));
 
     tuv.x += 1.0 * timer * (0.01 + divx / 200.0) - 1.135 * idx;
-    ld *= 1.0 - SS(0.1, 0.9, (frac(polar_line_scale * tuv.x * max(idx, 1.0) / 10.0 + idx / 6.5))) *
-                (1.0 - SS(0.98, 1.0, (frac(polar_line_scale * tuv.x * max(idx, 1.0) / 10.0 + idx / 6.5))));
+    float f2 = frac(polar_line_scale * tuv.x * max(idx, 1.0) * 0.1 + idx / 6.5);
+    ld *= 1.0 - SS(0.1, 0.9, f2) * (1.0 - SS(0.98, 1.0, f2));
 
     float ld2 = 0.1 / (max(abs(frac(tuv.y) - 0.5) * 1.46, 0.0001) + ld);
     ld = 0.1 / ((max(abs(frac(tuv.y) - 0.5) * 1.46, 0.0001) + ld) * (2.5 - (n.y + 1.0 * max(n.y, n.z))));

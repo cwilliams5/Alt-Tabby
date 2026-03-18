@@ -75,7 +75,7 @@ float4 PSMain(PSInput input) : SV_Target {
     }
 
     val = min(1.0, val);
-    val = 1.0 - (1.0 - val) * (1.0 - val);
+    val = val * (2.0 - val);
 
     float3 col = val * hue(0.5 + 0.5 * sin(time + val));
 

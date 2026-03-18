@@ -75,7 +75,7 @@ float3 effect(float2 p, float2 pp) {
     float3 bcol0 = HSV2RGB(float3(0.55, 0.85, 0.85));
     float3 bcol1 = HSV2RGB(float3(0.33, 0.85, 0.025));
     float3 col = 0.1 * bcol0;
-    col += bcol1 / sqrt(abs(d));
+    col += bcol1 * rsqrt(abs(d));
     col += bcol0 * smoothstep(aa, -aa, (d - 0.001));
 
     col *= smoothstep(1.5, 0.5, length(pp));
