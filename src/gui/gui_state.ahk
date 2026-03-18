@@ -729,10 +729,12 @@ _GUI_ShowOverlayWithFrozen() {
     diagTiming := cfg.DiagPaintTimingLog  ; PERF: cache config read (5+ uses)
 
     ; ===== TIMING: Show sequence start =====
-    tShow_Start := QPC()
-    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    if (diagTiming)
+    ; PERF: Guard QPC calls behind diagTiming — 6 DllCalls (~600ns) saved when diagnostics disabled
+    if (diagTiming) {
+        tShow_Start := QPC()
+        idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
+    }
 
     ; Set visible flag FIRST to prevent re-entrancy issues
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
@@ -768,12 +770,14 @@ _GUI_ShowOverlayWithFrozen() {
     Anim_PrepareShowFade(hasAnim)
 
     ; ===== TIMING: Resize =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired, true)  ; skipFlush — we flush after paint
     global gGUI_LastRowsDesired
     gGUI_LastRowsDesired := rowsDesired  ; Sync so first paint skips unnecessary pre-render
-    tShow_Resize := QPC() - t1
+    if (diagTiming)
+        tShow_Resize := QPC() - t1
 
     ; ===== Show window BEFORE painting =====
     ; With SwapChain + DComp, Present() works for hidden windows (commits to the
@@ -841,9 +845,11 @@ _GUI_ShowOverlayWithFrozen() {
     ; By painting before starting the tween, the window stays invisible until
     ; content is rendered.
     ; ===== TIMING: Paint on visible window (Present works) =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     GUI_Repaint()
-    tShow_Repaint := QPC() - t1
+    if (diagTiming)
+        tShow_Repaint := QPC() - t1
 
     ; NOW start the show-fade tween — first paint is done, content is rendered.
     ; Animation timer can safely call GUI_Repaint from here on.
@@ -877,9 +883,10 @@ _GUI_ShowOverlayWithFrozen() {
     GUI_StartHoverPolling()
 
     ; ===== TIMING: Log show sequence =====
-    tShow_Total := QPC() - tShow_Start
-    if (diagTiming)
+    if (diagTiming) {
+        tShow_Total := QPC() - tShow_Start
         Paint_Log("ShowOverlay END: total=" Round(tShow_Total, 2) "ms | resize=" Round(tShow_Resize, 2) " repaint=" Round(tShow_Repaint, 2))
+    }
     Profiler.Leave() ; @profile
 }
 

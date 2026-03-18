@@ -505,9 +505,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brHdr := gD2D_Res["brHdr"]
         tfHdr := gD2D_Res["tfHdr"]
         if (shadowEnabled) {
-            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+            ; PERF: Inlined _FX_DrawTextLeftShadow — eliminates AHK function call overhead
+            ; (~1-2μs per call × N text elements/frame). Shadow first, then crisp text on top.
+            D2D_DrawTextLeft("Title", textX + sOffX, hdrY + sOffY, textW, hdrTextH, shadowBr, tfHdr)
+            D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
             for _, col in cols {
-                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+                D2D_DrawTextLeft(col.name, col.x + sOffX, hdrY + sOffY, col.w, hdrTextH, shadowBr, tfHdr)
+                D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr)
             }
         } else {
             D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
@@ -741,11 +745,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             }
 
             if (shadowEnabled) {
-                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
-                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
+                ; PERF: Inlined _FX_DrawTextLeftShadow (see header block comment)
+                D2D_DrawTextLeft(title, textX + sOffX, yRow + titleY + sOffY, textW, titleH, shadowBr, tfMainUse)
+                D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
+                D2D_DrawTextLeft(sub, textX + sOffX, yRow + subY + sOffY, textW, subH, shadowBr, tfSubUse)
+                D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
                 for _, col in cols {
                     val := col._exists ? cur.%col.key% : ""
-                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
+                    D2D_DrawTextLeft(val, col.x + sOffX, yRow + colY + sOffY, col.w, colH, shadowBr, tfColUse)
+                    D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
@@ -772,7 +780,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, cachedLayout)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, start0, count, cachedLayout)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -897,7 +905,9 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
 
 ; ========================= SCROLLBAR =========================
 
-_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, cachedLayout) {
+; PERF: start0 passed from caller (already computed in _GUI_PaintOverlay) to avoid
+; redundant Win_Wrap0 call
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, start0, count, cachedLayout) {
     global cfg, gD2D_BrushGeneration
     Profiler.Enter("_GUI_DrawScrollbar") ; @profile
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
@@ -925,7 +935,6 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, ca
         thumbH := 3
     }
 
-    start0 := Win_Wrap0(scrollTop, count)
     startRatio := start0 / count
     y1 := y + Floor(startRatio * trackH)
     y2 := y1 + thumbH
@@ -1073,13 +1082,6 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
 }
 
 ; ---- Text Shadow ----
-
-; Draw text with a drop shadow behind it. Shadow is drawn first (offset, darker),
-; then crisp text on top. Two DrawText calls per shadowed text element.
-_FX_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
-    D2D_DrawTextLeft(text, x + offX, y + offY, w, h, shadowBrush, tf)
-    D2D_DrawTextLeft(text, x, y, w, h, brush, tf)
-}
 
 _FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
     D2D_DrawTextCentered(text, x + offX, y + offY, w, h, shadowBrush, tf)
