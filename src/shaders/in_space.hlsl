@@ -230,7 +230,9 @@ float3 cam(float2 uv, float timer) {
     float aspect = 1.0;
     float screenSize = 1.0; // tan(45deg)=1, so 1/tan(((180-90)*PI/180)/2) = 1.0
     float3 rd = normalize(float3(uv * screenSize, 1.0 / aspect));
-    rd = mul(mul(mul(roty(-im.x), rotx(im.y)), rotz(0.32 * sin(timer * 0.07))), rd);
+    rd = mul(rotz(0.32 * sin(timer * 0.07)), rd);
+    rd = mul(rotx(im.y), rd);
+    rd = mul(roty(-im.x), rd);
     return rd;
 }
 

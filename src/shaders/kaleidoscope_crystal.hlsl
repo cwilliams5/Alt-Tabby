@@ -47,7 +47,7 @@ float mp(float3 p) {
 
     sd = bx(p, (float3)1) - 0.01;
 
-    sd = smin_f(sd, sd, 0.8);
+    sd -= 0.2;
 
     gl += exp(-sd * 0.001) * normalize(p * p) * 0.003;
 

@@ -64,7 +64,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float dripPhase = sin(px.x * 0.3 + time * 3.0) * 0.5 + 0.5;
     float3 borderMix = lerp(borderColor.rgb, rainCol * 0.5, dripPhase * 0.3 * selIntensity);
     float borderA = borderMask * borderColor.a * tI;
-    col = lerp(col, borderMix, saturate(borderA));
+    col = lerp(col, borderMix, borderA);
     a = max(a, borderA);
 
     return AT_PostProcess(col, saturate(a));

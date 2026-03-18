@@ -150,7 +150,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float d = max(length(l), 0.001);
         l /= d;
 
-        float at = 1./(1. + d*.05 + d*d*.0125);
+        float at = 1./(1. + d*(.05 + d*.0125));
 
         float ao = cao(p, n);
         float sh = sha(p, l, 0.04, d, 16.);
