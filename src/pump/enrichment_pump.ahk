@@ -53,13 +53,7 @@ _Pump_Init() {
     _Pump_DiagEnabled := cfg.DiagPumpLog
 
     ; Parse --launcher-hwnd from command line (for PUMP_READY self-announce)
-    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
-    for _, arg in A_Args {
-        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND) {
-            _Pump_LauncherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
-            break
-        }
-    }
+    _Pump_LauncherHwnd := ParseLauncherHwnd()
 
     ; Initialize blacklist (for title-based re-check on enrichment)
     Blacklist_Init()
@@ -268,12 +262,8 @@ _Pump_HandleStatsFlush(parsed) {
         ; Backup existing file (crash safety)
         if (FileExist(statsPath))
             try FileCopy(statsPath, statsPath ".bak", true)
-        ; Atomic write: temp + rename
-        ; UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
-        tmpPath := statsPath ".tmp"
-        try FileDelete(tmpPath)
-        FileAppend(content, tmpPath, "UTF-8-RAW")
-        FileMove(tmpPath, statsPath, true)
+        ; Atomic write: UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
+        WriteFileAtomic(statsPath, content, "UTF-8-RAW")
         ; Success — remove backup
         try FileDelete(statsPath ".bak")
     } catch as e {
@@ -344,10 +334,13 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
     }
 
     if (h) {
+        ; RACE FIX: Protect map mutation — _Pump_PruneAllCaches iterates this map on a separate timer
+        Critical "On"
         ; Track ownership — destroy old HICON if re-enriching same hwnd
         if (oldIcon := _Pump_OwnedIcons.Get(hwnd, 0))
             try DllCall("user32\DestroyIcon", "ptr", oldIcon)
         _Pump_OwnedIcons[hwnd] := h
+        Critical "Off"
     }
 
     return {h: h, method: method}

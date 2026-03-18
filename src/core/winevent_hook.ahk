@@ -69,7 +69,7 @@ _WEH_DiagLog(msg) {
     global cfg, LOG_PATH_WINEVENT
     if (!cfg.DiagWinEventLog)
         return
-    LogAppend(LOG_PATH_WINEVENT, msg)
+    try LogAppend(LOG_PATH_WINEVENT, msg)
 }
 
 

@@ -25,9 +25,19 @@ global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
 global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
 global gFX_HoverEffect      ; Hover effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
-gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
-gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
-gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+gFX_MouseEffect := _FX_DefaultMouseEffect()
+gFX_SelectionEffect := _FX_DefaultSelectionEffect()
+gFX_HoverEffect := _FX_DefaultHoverEffect()
+
+_FX_DefaultMouseEffect() {
+    return {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
+}
+_FX_DefaultSelectionEffect() {
+    return {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+}
+_FX_DefaultHoverEffect() {
+    return {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+}
 global gFX_MousePrevX := 0.0        ; Previous frame mouse X
 global gFX_MousePrevY := 0.0        ; Previous frame mouse Y
 global gFX_MouseVelX := 0.0         ; Smoothed velocity X (px/sec)
@@ -198,9 +208,9 @@ FX_GPU_Dispose() {
     ; Release shader resources
     gFX_ShaderTime := Map()
     gFX_ShaderLayers := []
-    gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0, _bitmap: 0}
-    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
-    gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false, _bitmap: 0}
+    gFX_MouseEffect := _FX_DefaultMouseEffect()
+    gFX_SelectionEffect := _FX_DefaultSelectionEffect()
+    gFX_HoverEffect := _FX_DefaultHoverEffect()
     Shader_Cleanup()
 }
 

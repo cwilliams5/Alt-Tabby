@@ -19,25 +19,36 @@ global RES_ID_EDITOR_HTML := 25    ; config_editor.txt (HTML content)
 ; WebView2 Evergreen runtime GUID (shared by all editors)
 global WEBVIEW2_EVERGREEN_GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-; Extract an embedded resource to a file
+; Load an embedded resource into memory: FindResource → LoadResource → LockResource.
 ; resourceId: Resource ID from @Ahk2Exe-AddResource directive
-; destPath: Full path to write the extracted file
-; Returns: true on success, throws on failure
-ResourceExtract(resourceId, destPath) {
+; outSize: receives the resource size in bytes
+; Returns: pointer to locked resource data, throws on failure
+_ResourceLoad(resourceId, &outSize) {
     global RT_RCDATA
 
     hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
     if (!hRes)
         throw Error("Resource " resourceId " not found")
 
-    resSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
+    outSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
     hMem := DllCall("LoadResource", "ptr", 0, "ptr", hRes, "ptr")
-    if (!hMem || !resSize)
+    if (!hMem || !outSize)
         throw Error("Failed to load resource " resourceId)
 
     pData := DllCall("LockResource", "ptr", hMem, "ptr")
     if (!pData)
         throw Error("Failed to lock resource " resourceId)
+
+    return pData
+}
+
+; Extract an embedded resource to a file
+; resourceId: Resource ID from @Ahk2Exe-AddResource directive
+; destPath: Full path to write the extracted file
+; Returns: true on success, throws on failure
+ResourceExtract(resourceId, destPath) {
+    resSize := 0
+    pData := _ResourceLoad(resourceId, &resSize)
 
     buf := Buffer(resSize, 0)
     DllCall("RtlMoveMemory", "ptr", buf.Ptr, "ptr", pData, "uptr", resSize)
@@ -74,20 +85,8 @@ ResourceExtractToTemp(resourceId, fileName, destDir := "") {
 ; resourceId: Resource ID from @Ahk2Exe-AddResource directive
 ; Returns: Buffer with resource data, or throws on failure.
 ResourceLoadToBuffer(resourceId) {
-    global RT_RCDATA
-
-    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
-    if (!hRes)
-        throw Error("Resource " resourceId " not found")
-
-    resSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
-    hMem := DllCall("LoadResource", "ptr", 0, "ptr", hRes, "ptr")
-    if (!hMem || !resSize)
-        throw Error("Failed to load resource " resourceId)
-
-    pData := DllCall("LockResource", "ptr", hMem, "ptr")
-    if (!pData)
-        throw Error("Failed to lock resource " resourceId)
+    resSize := 0
+    pData := _ResourceLoad(resourceId, &resSize)
 
     buf := Buffer(resSize)
     DllCall("RtlMoveMemory", "ptr", buf, "ptr", pData, "uptr", resSize)

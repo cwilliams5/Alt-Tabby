@@ -1117,55 +1117,10 @@ _CEN_MakeFileClearHandler(globalName) {
 
 _CEN_OnFileBrowse(globalName) {
     global gCEN, gConfigIniPath
-    ctrlInfo := gCEN["Controls"][globalName]
-
-    filter := "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff;*.webp)"
-    selected := FileSelect(1, , "Select Background Image", filter)
-    if (selected = "")
+    destPath := ConfigEditor_BrowseBackgroundImage(gConfigIniPath)
+    if (destPath = "")
         return
-
-    ; Determine resources directory (next to config.ini)
-    configDir := ""
-    if (gConfigIniPath != "")
-        SplitPath(gConfigIniPath, , &configDir)
-    else if (A_IsCompiled)
-        configDir := A_ScriptDir
-    else
-        configDir := A_ScriptDir "\.."
-
-    resDir := configDir "\resources"
-    if (!DirExist(resDir))
-        DirCreate(resDir)
-
-    ; Determine destination filename
-    SplitPath(selected, , , &ext)
-    ext := StrLower(ext)
-    destExt := ext
-
-    ; WebP → PNG conversion (via libwebp — GDI+ WebP support varies by Windows version)
-    if (ext = "webp") {
-        converted := _CEN_ConvertWebPToPNG(selected, resDir)
-        if (converted = "") {
-            ThemeMsgBox("Failed to convert WebP image. Please select a PNG or JPG instead.", "Conversion Error", "OK Icon!")
-            return
-        }
-        destExt := "png"
-        destPath := resDir "\alttabby-background." destExt
-        ; Remove old background files only AFTER successful conversion
-        loop files resDir "\alttabby-background.*"
-            if (A_LoopFileFullPath != converted)
-                FileDelete(A_LoopFileFullPath)
-        if (converted != destPath)
-            FileMove(converted, destPath, true)
-    } else {
-        destPath := resDir "\alttabby-background." destExt
-        FileCopy(selected, destPath, true)
-        ; Remove stale background files with different extensions
-        loop files resDir "\alttabby-background.*"
-            if (A_LoopFileFullPath != destPath)
-                FileDelete(A_LoopFileFullPath)
-    }
-
+    ctrlInfo := gCEN["Controls"][globalName]
     ctrlInfo.ctrl.Value := destPath
 }
 
@@ -1173,10 +1128,6 @@ _CEN_OnFileClear(globalName) {
     global gCEN
     ctrlInfo := gCEN["Controls"][globalName]
     ctrlInfo.ctrl.Value := ""
-}
-
-_CEN_ConvertWebPToPNG(webpPath, outputDir) {
-    return WebP_ConvertToPNG(webpPath, outputDir)
 }
 
 ; Create a handler that syncs slider value -> edit control
