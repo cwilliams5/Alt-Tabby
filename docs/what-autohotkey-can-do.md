@@ -4,30 +4,34 @@ People dismiss AutoHotkey as a macro language — good for remapping keys and au
 
 This page documents what we built in pure AHK v2 — no C++ shims, no native DLLs beyond what Windows ships. Just `DllCall`, `ComCall`, and a scripting language doing things it wasn't designed for: a D3D11 rendering pipeline with 183 HLSL shaders and GPU compute, a multi-process architecture with named pipe IPC, sub-5ms keyboard hooks with foreground lock bypass via undocumented COM interfaces, embedded Chromium, native dark mode through undocumented uxtheme ordinals, an 86-check static analysis pre-gate, and a build-time profiler that exports industry-standard flamecharts.
 
-> The rendering stack grew organically: GDI+ → Direct2D → D3D11 with HLSL pixel shaders → dedicated swap chain → compute shaders with GPU-side particle state. Each time we expected to hit AHK's ceiling. We haven't yet.
+> The rendering stack grew organically through 10 distinct architecture transitions — each one was "this is probably where AHK hits its ceiling":
+>
+> GDI+ with `UpdateLayeredWindow` → Direct2D single-window → `ID2D1DeviceContext` via QI → DXGI SwapChain + DirectComposition → Waitable swap chain for hardware frame sync → Fixed swap chain + DComp clip (atomic resize) → D3D11 HLSL pixel shaders → Multi-texture iChannel support → Compute shaders with GPU-side particle state → DWM Compositor Clock synchronization (Win11+ undocumented API)
+>
+> We haven't hit the ceiling yet.
 
 ## Contents
 
 - [A Full D3D11 Pipeline](#a-full-d3d11-pipeline) — device creation, shader compilation, bytecode caching, zero-copy DXGI sharing, fullscreen triangle VS
 - [Compute Shaders and GPU-Side Particle State](#compute-shaders-and-gpu-side-particle-state) — physics simulation on the GPU
 - [The Compositor Stack](#the-compositor-stack) — 8-layer compositing, 183 shaders, iChannel textures, DirectWrite text, DWM integration
-- [Multi-Process Architecture](#multi-process-architecture-from-a-single-executable) — 12 runtime modes from one exe, named pipe IPC, WM_COPYDATA signals
+- [Multi-Process Architecture](#multi-process-architecture-from-a-single-executable) — 12 runtime modes from one exe, named pipe IPC, WM_COPYDATA signals, error boundaries with crash isolation
 - [The Window Store](#the-window-store) — concurrent data structure with two-phase mutation, channel queues, atomic hot-reload
 - [355 Configurable Settings](#355-configurable-settings) — registry-driven config with live file monitoring, format-preserving writes
 - [Embedding Chromium](#embedding-chromium-webview2) — WebView2 integration with anti-flash and callback stability
 - [Native Windows Theming](#native-windows-theming) — 5-layer dark mode API stack, window procedure subclassing, undocumented ordinals
 - [Low-Level Keyboard Hooks](#low-level-keyboard-hooks) — sub-5ms detection, STA reentrancy, timer corruption, activation engine, cross-workspace COM uncloaking
 - [Escaping the 16ms Timer](#escaping-the-16ms-timer) — QPC spin-waits, NtYieldExecution, graduated cooldowns
-- [Portable Executable with Auto-Update](#portable-executable-with-auto-update) — self-replacing exe, state-preserving elevation
+- [Portable Executable with Auto-Update](#portable-executable-with-auto-update) — self-replacing exe, state-preserving elevation, XML injection prevention
 - [The Build Pipeline](#the-build-pipeline) — 7-stage smart-skip compilation with shader bundling
 - [Test Infrastructure](#test-infrastructure) — 86-check pre-gate, worktree-isolated test suite, dual-gate parallelization
 - [Build-Time Profiler](#build-time-profiler-with-flamechart-export) — zero-cost instrumentation with speedscope export
 - [Performance Engineering](#performance-engineering) — event pipeline, caching, rendering, frame pacing, MCode
-- [The Flight Recorder](#the-flight-recorder) — zero-cost ring buffer diagnostics
+- [The Flight Recorder](#the-flight-recorder) — zero-cost ring buffer diagnostics, in-process debug viewer
 - [Video Capture via FFmpeg](#video-capture-via-ffmpeg) — CreateProcess with stdin pipe, GDI+ screenshot export
 - [Animated Splash Screen](#animated-splash-screen) — WebP streaming decode with circular ring buffer
 - [Crash-Safe Statistics](#crash-safe-statistics) — atomic writes, sentinel-based recovery
-- [42,000 Lines of Tooling](#42000-lines-of-tooling) — static analysis, query tools, ownership manifest
+- [42,000 Lines of Tooling](#42000-lines-of-tooling) — static analysis, query tools, ownership manifest, function visibility enforcement
 - [By the Numbers](#by-the-numbers)
 
 ---
@@ -147,6 +151,7 @@ Alt-Tabby uses undocumented and semi-documented Windows DWM APIs for native desk
 - **Rounded corners** via `DWMWA_WINDOW_CORNER_PREFERENCE`
 - **DwmFlush** for compositor synchronization after render target updates
 - **Dark mode** — see [Native Windows Theming](#native-windows-theming) below
+- **WS_EX_LAYERED toggle for live acrylic blur** — layered windows (`WS_EX_LAYERED`) cache the DWM acrylic blur from the last time it was composited. During fade-out, `WS_EX_LAYERED` is added (needed for alpha=0). After fade completes, `WS_EX_LAYERED` is removed — restoring live acrylic blur that updates with the desktop in real-time. Without this toggle, the overlay would show stale blur from the previous session. An undocumented behavioral insight about DWM's layered window compositing. ([`gui_animation.ahk`](../src/gui/gui_animation.ahk))
 
 ---
 
@@ -217,9 +222,11 @@ The MainProcess runs 8 independent data producers in `src/core/`, each responsib
 | **IconPump** | Icon resolution (via EnrichmentPump subprocess) | Pipe IPC responses |
 | **ProcPump** | Process name resolution (via EnrichmentPump subprocess) | Pipe IPC responses |
 
-Producers are fault-isolated — if one fails at startup, the others continue. All write to a shared store through `WL_UpsertWindow()` and `WL_UpdateFields()`, with dirty tracking that classifies changes by impact (MRU-only, structural, cosmetic) to minimize downstream work. Because producers are eventually-consistent, the refresh path includes a foreground guard: at Alt press, `GetForegroundWindow()` is checked directly — if that hwnd isn't in the display list yet (race between `EVENT_SYSTEM_FOREGROUND` and WinEnum discovery), it's probed, upserted with current MRU data, and placed at position 1. This guarantees the currently-focused window always appears at the top.
+Producers are fault-isolated at every layer. At startup, a failing producer doesn't block the others. At runtime, every producer timer callback is wrapped in a shared error boundary ([`error_boundary.ahk`](../src/shared/error_boundary.ahk)) — a crash in the icon pump doesn't take down the WinEventHook. The boundary logs the exception (message, file, line, full stack trace), increments a per-producer error counter, and triggers exponential backoff (5s → 10s → 20s → ... → 300s cap) after 3 consecutive failures. Timers keep running during backoff (early-return on tick check rather than canceling the timer), avoiding one-shot timer dispatch corruption. Recovery is automatic when the underlying issue resolves — the error counter resets on the first successful tick. Nine files use this pattern across the entire producer and pump stack. All producers write to a shared store through `WL_UpsertWindow()` and `WL_UpdateFields()`, with dirty tracking that classifies changes by impact (MRU-only, structural, cosmetic) to minimize downstream work. Because producers are eventually-consistent, the refresh path includes a foreground guard: at Alt press, `GetForegroundWindow()` is checked directly — if that hwnd isn't in the display list yet (race between `EVENT_SYSTEM_FOREGROUND` and WinEnum discovery), it's probed, upserted with current MRU data, and placed at position 1. This guarantees the currently-focused window always appears at the top.
 
 UWP and Store apps present a platform-specific challenge: they take 2–3 seconds after window creation before their titles populate. The WinEventHook producer detects untitled new windows and schedules deferred retry timers at escalating intervals (300ms → 700ms → 1500ms) with a 10-second expiry. Each retry re-probes the title and upserts if populated — without blocking the GUI thread or wasting cycles on windows that will never have titles. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
+
+Ghost windows are a separate platform challenge: apps like Outlook and Teams reuse HWNDs for temporary windows. The window "closes" but the HWND still exists — just hidden or cloaked. `IsWindow()` returns true, so standard validation doesn't remove it. `WL_ValidateExistence()` runs a multi-check pipeline: visible? DWM-cloaked? minimized? If none of these are true, it's a ghost — purged from the store. Without this, ghost windows persist in the Alt-Tab list forever. The flight recorder tracks ghost purge events for diagnostics. ([`window_list.ahk`](../src/shared/window_list.ahk))
 
 ### Named Pipe IPC
 
@@ -439,7 +446,7 @@ A single compiled `.exe` with no installer, no registry entries, no external dep
 
 - **Self-replacing update:** The running exe renames itself to `.old` (Windows allows renaming a running executable), copies the new version to the original path, relaunches, and cleans up `.old` on next startup. Updates are checked via `WinHttp.WinHttpRequest.5.1` COM object against the GitHub releases API — JSON response parsed for version tag and download URLs, semantic version comparison determines if an update is available, and downloaded executables are validated by checking PE headers (MZ magic bytes and size bounds) before the swap is attempted. ([`setup_utils.ahk`](../src/shared/setup_utils.ahk))
 - **State-preserving elevation:** When UAC elevation is needed, the current state is serialized to a temp file, the exe relaunches via `*RunAs` with a flag like `--apply-update`, and the elevated instance reads the state file to continue. The reverse direction is also handled: launching a *non-elevated* process from an elevated context uses `ComObject("Shell.Application").ShellExecute()` — the same de-elevation technique used by Sysinternals tools, since Windows provides no straightforward API for dropping elevation.
-- **Task Scheduler integration:** Optional admin mode creates a scheduled task (`schtasks`) with `HighestAvailable` run level for UAC-free operation. InstallationId tracking prevents cross-directory task hijacking.
+- **Task Scheduler integration:** Optional admin mode creates a scheduled task (`schtasks`) with `HighestAvailable` run level for UAC-free operation. InstallationId tracking prevents cross-directory task hijacking. The task creation path generates XML for `schtasks /Create` — user-controllable data (exe path, installation ID, description) is sanitized through `_XmlEscape()` before embedding, preventing XML injection that could modify task properties or create additional scheduled tasks. ([`setup_utils.ahk`](../src/shared/setup_utils.ahk))
 - **Smart compilation:** The build script compares source file timestamps against the compiled exe and skips Ahk2Exe when nothing changed. Resource embedding handles icons, splash images, DXBC shader bytecode, HTML assets, and DLLs.
 
 ---
@@ -589,6 +596,9 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Negative PID cache** — process name resolution via `QueryFullProcessImageNameW` fails for system processes (PID 0, PID 4, protected services). Both the GUI-side proc pump and the EnrichmentPump maintain a negative cache: failed PIDs are recorded with `A_TickCount` and skipped for a configurable TTL (default 60s). Housekeeping prunes expired entries and dead PIDs on heartbeat. Prevents retry storms against PIDs that will always fail `OpenProcess`. ([`proc_pump.ahk`](../src/core/proc_pump.ahk), [`enrichment_pump.ahk`](../src/pump/enrichment_pump.ahk))
 - **Pump idle/wake framework** — icon, process, and WinEvent batch pumps share a reusable lifecycle pattern: `Pump_HandleIdle()` counts consecutive empty ticks and pauses the timer (`SetTimer(fn, 0)`) after N idle cycles. `Pump_EnsureRunning()` restarts on demand when new work arrives. Both check-then-act paths are wrapped in Critical sections to prevent a race between the pause decision and an incoming wake signal. Zero CPU when idle, instant wake on demand. ([`pump_utils.ahk`](../src/shared/pump_utils.ahk))
 - **Cursor feedback suppression** — test process launches use `CreateProcessW` with `STARTF_FORCEOFFFEEDBACK` (0x80) in the `STARTUPINFO` struct, suppressing Windows' "app starting" busy cursor animation. A small Win32 detail that eliminates visual noise during automated test runs. ([`process_utils.ahk`](../src/shared/process_utils.ahk))
+- **Monotonic MRU protection** — store mutations reject stale `lastActivatedTick` writes that are older than the current record value. Prevents concurrent producers (WinEventHook + Komorebi, running from different event sources at different latencies) from corrupting MRU ordering with out-of-order timestamps. ([`window_list.ahk`](../src/shared/window_list.ahk))
+- **Superseded focus check** — after a slow window probe (~10–50ms for `WinGetTitle` on hung apps), the WinEventHook re-checks whether a newer focus event arrived during the probe. If superseded, the stale upsert is skipped entirely — preventing slow probes from overwriting a more recent focus change with stale data. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
+- **TTL-based window removal** — windows that disappear from WinEnum but still pass `IsWindow()` are tracked with `missingSinceTick`. They're only removed after a 1200ms TTL, preventing false positives from transient visibility changes (e.g., a window briefly hidden during a workspace transition animation). Immediate removal caused flickering in the display list during workspace switches. ([`window_list.ahk`](../src/shared/window_list.ahk))
 
 ### Display List & Caching
 
@@ -621,6 +631,7 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Bidirectional resize ordering** — overlay resize has a race between HWND `SetWindowPos` and DirectComposition `Commit`/`Present`. The fix uses direction-dependent ordering: **shrink** calls `SetWindowPos` first (old HWND clips old content cleanly during STA pump), **grow** calls `SetWindowPos` last (old HWND clips new content cleanly). DComp `SetClip + Commit + Present` stay adjacent with no STA pump between, guaranteeing they land on the same compositor frame. Prevents visible background flash artifacts on resize.
 - **Debounced cosmetic repaint** — title updates and icon resolution for off-screen items trigger a leading-edge repaint immediately, then debounce subsequent changes on a trailing-edge timer. Prevents paint spam during rapid cosmetic update bursts (e.g., 10 icons resolving in quick succession). ([`gui_main.ahk`](../src/gui/gui_main.ahk))
 - **Hover detection short-circuit** — the hover recalculation path caches the previous cursor position and scroll offset in static locals. When nothing has changed (cursor sitting still over the overlay — the overwhelmingly common case), the entire hit-test and repaint path is skipped before any DllCall or layout computation. ([`gui_input.ahk`](../src/gui/gui_input.ahk))
+- **Pre-render at new dimensions before resize** — during overlay resize, shader and mouse effect layers are pre-rendered at the *new* dimensions *before* `SetWindowPos` actually resizes the HWND. Each layer has independent D3D11 resources that don't depend on the render target being resized yet. This eliminates a single frame of stale-dimension content that would otherwise be visible during the STA message pump between the resize and first paint. ([`gui_paint.ahk`](../src/gui/gui_paint.ahk))
 
 ### Frame Pacing
 
@@ -633,6 +644,8 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Display list eviction during ACTIVE** — the frozen display list never grows or reorders during Alt-Tab, but window destroys are allowed through (they're signal, not noise). Selection tracking adjusts automatically when a destroyed window is removed.
 - **Pre-allocated 64KB IPC write buffer** — a global 65KB `Buffer` is allocated once at startup and reused for all pipe messages under 64KB. Only messages exceeding the buffer fall back to heap allocation. Eliminates per-send allocation in the common case — the vast majority of IPC messages. ([`ipc_pipe.ahk`](../src/shared/ipc_pipe.ahk))
 - **Critical section double-buffer for pipe writes** — `RtlMoveMemory` copies the message into the pre-allocated buffer under `Critical` (~6 microseconds), then Critical is released *before* `WriteFile`. Blocked I/O on the pipe never freezes the keyboard hook thread. The copy is cheap; the potential I/O block is not.
+- **Stats pump offload** — stats flush involves 13 `IniWrite` calls (10–75ms total). Rather than blocking MainProcess, the flush is offloaded to the EnrichmentPump via a single pipe message (~10–15μs). The pump writes to disk in its own process. Falls back to direct write if the pump is unavailable. Keeps the GUI thread responsive during periodic stats persistence. ([`stats.ahk`](../src/shared/stats.ahk))
+- **Event buffer swap pattern** — during async workspace activation, keyboard events are buffered. When activation completes, the buffer is swapped by reference under Critical (assign old buffer to a local, replace global with a fresh array, release Critical) rather than cloned. This prevents the race where new events arrive between clearing the phase flag and processing the buffer — and avoids the allocation overhead of `Clone()`. ([`gui_activation.ahk`](../src/gui/gui_activation.ahk))
 
 ### Memory Residency
 
@@ -668,8 +681,13 @@ A zero-cost in-memory diagnostics system: ([`gui_flight_recorder.ahk`](../src/gu
 - **~1 microsecond per record** — QPC timestamp + array slot write under Critical, no allocations
 - **44 event codes** covering keyboard hooks, state machine transitions, window lifecycle, workspace switches, paint timing, producer health, and recovery events
 - **F12 dump** writes a timestamped snapshot to disk with full state capture: globals, window store, display list, and the complete event trace with hwnd→title resolution
+- **Diagnostic churn tracking** — a `field→count` Map in the window store tracks which specific fields cause revision bumps during idle. When the store is churning (revisions incrementing without user action), the churn map identifies the source — title changes? icon updates? focus ping-pong? Zero-cost when not inspected; maintained as a side-effect of existing dirty tracking. Dumped with the flight recorder snapshot.
 
 Event codes are small integers at record time. Human-readable names are resolved only during the dump — keeping the hot path allocation-free. See [Using the Flight Recorder](USING_RECORDER.md) for the analysis guide.
+
+### In-Process Debug Viewer
+
+A 1,300-line live WindowList inspector ([`viewer.ahk`](../src/viewer/viewer.ahk)) runs in-process within MainProcess — not a separate tool, but an embedded debugger window. It reads `WL_GetDisplayList()` directly with zero IPC latency, displays window metadata in a themed ListView with custom header drawing, provides context menus for blacklist operations, and shows hover tooltips via timer-based tracking with native Win32 tooltip controls. Toggled via tray menu (the launcher sends a `WM_COPYDATA` signal). Dark mode theming is applied through the shared theme system. A built-in diagnostic tool for a scripting language application, running inside the application it's diagnosing.
 
 ---
 
@@ -693,6 +711,10 @@ The animation data is embedded as a PE resource in the compiled exe and decoded 
 
 GDI+ decodes each animation frame via `GdipImageSelectActiveFrame`. A configurable ring buffer (default 24 frames) pre-buffers ahead of playback, with each frame stored as a GDI+ bitmap backed by a DIB section pixel buffer (~4MB per frame at 1280x720). Old frames are evicted as new ones decode, keeping memory bounded. Frame timing is independent of the decode pipeline — playback runs at the animation's native framerate while decoding runs ahead to fill the buffer. The result is smooth animated splash playback from a scripting language, with no external media player dependency and no intermediate file I/O.
 
+### WebP Image Processing
+
+Beyond the splash screen, a standalone WebP→PNG conversion pipeline ([`webp_utils.ahk`](../src/shared/webp_utils.ahk)) supports WebP background images in the config editors. The chain: load `libwebp` DLL via `DllCall("LoadLibrary")` (with multi-version fallback across `libwebp-7.dll`, `libwebp-2.dll`, `libwebp.dll`), `WebPGetInfo` to read dimensions, `WebPDecodeBGRA` to decode pixels into a raw buffer, then GDI+ bitmap creation from the pixel buffer + PNG encoding via `GdipSaveImageToFile`. In compiled builds, the DLLs (`libwebp` + `libsharpyuv`) are embedded as PE resources and extracted to `%TEMP%` at first use. A full image format processing pipeline driven entirely from AHK DllCalls.
+
 ---
 
 ## Crash-Safe Statistics
@@ -712,6 +734,11 @@ Derived metrics (`AvgAltTabsPerHour`, `QuickSwitchPct`, `CancelRate`) are comput
 ## 42,000 Lines of Tooling
 
 The project includes 86 static analysis checks (bundled into 12 parallel bundles), 17 semantic query tools, an ownership manifest for cross-file mutation tracking, and a test framework with unit, GUI, and live integration tests — ~42,000 lines of tooling code. The pre-gate runs all 86 checks in ~8 seconds and blocks the entire test suite if any check fails.
+
+Two checks deserve special mention for bringing language-level guarantees to a dynamically-typed scripting language:
+
+- **Ownership manifest** — a machine-enforced ACL for global variables. Every global is either implicitly owned by its declaring file (only that file may mutate it), or explicitly listed in `ownership.manifest` with every authorized cross-file writer. The pre-gate rejects commits that introduce undeclared cross-file mutations. The manifest started at 25+ entries and was systematically reduced to 14 through deliberate refactoring — each reduction representing a coupling boundary that was eliminated. Stale entries are auto-removed. This is effectively Rust-style ownership semantics applied to a scripting language via static analysis.
+- **Function visibility enforcement** — AHK v2 has no access modifiers. The project enforces file-level encapsulation via convention: `_FuncName()` is private to the declaring file; `FuncName()` is public API. The pre-gate rejects cross-file calls to `_`-prefixed functions. 51 functions were privatized in a single pass, 14 dead functions removed (~430 lines). Public/private visibility in a language that has no concept of it, enforced by machine rather than discipline.
 
 Query tools fall into three categories: **data-flow analysis** (ownership, call graphs, impact, mutations, state), **code structure** (functions, visibility, interfaces, includes), and **domain inventories** (config, IPC, timers, messages, shaders, events, profiler coverage).
 
