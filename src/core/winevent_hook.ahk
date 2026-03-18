@@ -471,7 +471,7 @@ _WEH_ProcessBatch() {
         ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
         ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
         probe := WinUtils_ProbeWindow(pendingProbeHwnd, 0, false, true)
-        probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
+        probeTitle := (probe) ? probe.Get("title", "") : ""
         if (probe && probeTitle != "") {
             probe["lastActivatedTick"] := A_TickCount
             probe["isFocused"] := true

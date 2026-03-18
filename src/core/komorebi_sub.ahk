@@ -1390,7 +1390,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         for wi, wsObj in wsArr {
             if !(wsObj is Map)
                 continue
-            wsName := wsObj.Has("name") ? String(wsObj["name"]) : ""
+            wsName := String(wsObj.Get("name", ""))
             if (wsName = "")
                 continue
 
@@ -1473,8 +1473,9 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     Critical "On"
     for hwnd, _data in wsMap {
         _wsn := _data.wsName
-        if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = _wsn)
-            _KSub_WorkspaceCache[hwnd].tick := now
+        _cached := _KSub_WorkspaceCache.Get(hwnd, 0)  ; PERF: single lookup
+        if (_cached && _cached.wsName = _wsn)
+            _cached.tick := now
         else
             _KSub_WorkspaceCache[hwnd] := { wsName: _wsn, tick: now }
     }
@@ -1509,8 +1510,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             ; This happens for windows on other workspaces that winenum didn't see
             ; Extract title/class/exe lazily — only needed for new windows
             _winObj := _data.winObj
-            kTitle := _winObj.Has("title") ? String(_winObj["title"]) : ""
-            kClass := _winObj.Has("class") ? String(_winObj["class"]) : ""
+            kTitle := String(_winObj.Get("title", ""))
+            kClass := String(_winObj.Get("class", ""))
             title := (kTitle != "") ? kTitle : _KSub_GetWindowTitle(hwnd)
             class := (kClass != "") ? kClass : _KSub_GetWindowClass(hwnd)
 

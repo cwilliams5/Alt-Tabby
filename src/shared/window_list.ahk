@@ -485,11 +485,11 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
     hwnd := hwnd + 0
-    if (!gWS_Store.Has(hwnd)) {
+    row := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup instead of Has+Get
+    if (!row) {
         Profiler.Leave() ; @profile
         return { changed: false, exists: false, rev: gWS_Rev }
     }
-    row := gWS_Store[hwnd]
 
     ; Apply patch using shared helper
     result := _WS_ApplyPatch(row, patch, hwnd)
@@ -1170,9 +1170,9 @@ WL_UpdateProcessName(pid, name) {
     ; Update all matching rows
     changed := false
     for _, hwnd in hwnds {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup instead of Has+Get
+        if (!rec)
             continue
-        rec := gWS_Store[hwnd]
         if (rec.pid = pid && rec.processName != name) {
             rec.processName := name
             gWS_DirtyHwnds[hwnd] := true

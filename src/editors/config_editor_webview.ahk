@@ -325,7 +325,7 @@ _CEW_SerializeCurrentValues() {
 
         if (InStr(entry.g, "{N}")) {
             ; Array section — serialize only active layers
-            count := actualLayerCounts.Has(entry.s) ? actualLayerCounts[entry.s] : 1
+            count := actualLayerCounts.Get(entry.s, 1)
             Loop count {
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
                 sectionName := entry.s "." A_Index
