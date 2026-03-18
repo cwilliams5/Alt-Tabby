@@ -6,7 +6,7 @@
 
 global RT_RCDATA := 10
 
-; Embedded resource IDs (must match @Ahk2Exe-AddResource directives in compile.ps1)
+; Embedded resource IDs (must match @Ahk2Exe-AddResource directives in tools/compile.ps1)
 global RES_ID_LOGO := 10           ; logo.png
 global RES_ID_ICON := 11           ; icon.png
 global RES_ID_ANIMATION := 15      ; animation.webp

@@ -204,13 +204,13 @@ function Show-TimingReport {
     [void]$p1Items.Add(@{ Name = "Pre-Gate"; DurMs = $preGatePhase.DurationMs })
     $p1SlowestMs = ($p1Items | Sort-Object { $_.DurMs } -Descending | Select-Object -First 1).DurMs
 
-    # Render Compilation + sub-items (from compile.ps1 --test-mode output)
+    # Render Compilation + sub-items (from tools/compile.ps1 --test-mode output)
     if ($compPhase) {
         $compMarker = if ($compPhase.DurationMs -eq $p1SlowestMs -and $p1Items.Count -gt 1) { $MRK_SLOWEST } else { "" }
         $compGateRole = if ($hasGateArrows -and $outerGateName -eq "Compilation") { "outer_start" } elseif ($hasGateArrows) { "inner_start" } else { "" }
         [void]$lines.Add(@{ Prefix = "     "; Name = "Compilation"; OffsetMs = -1; DurMs = $compPhase.DurationMs; Marker = $compMarker; GateRole = $compGateRole })
 
-        # Compilation sub-items (step timings from compile.ps1 --test-mode)
+        # Compilation sub-items (step timings from tools/compile.ps1 --test-mode)
         if ($phaseItems.ContainsKey("Compilation")) {
             $compSubItems = $phaseItems["Compilation"] | Sort-Object { $_.DurationMs } -Descending
             $compSubSlowestMs = $compSubItems[0].DurationMs
@@ -582,7 +582,7 @@ $srcFile = "$srcRoot\alt_tabby.ahk"
 $releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
 $outFile = "$releaseDir\AltTabby.exe"
 $compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
-$compilePs1 = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.ps1"
+$compilePs1 = (Resolve-Path "$PSScriptRoot\..").Path + "\tools\compile.ps1"
 $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
 $staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
 $guiScript = "$PSScriptRoot\gui_tests.ahk"
@@ -825,7 +825,7 @@ if ($live) {
 
 # --- Compilation Phase ---
 if ($live) {
-    Write-Host "`n--- Compilation Phase (compile.ps1) ---" -ForegroundColor Yellow
+    Write-Host "`n--- Compilation Phase (tools/compile.ps1) ---" -ForegroundColor Yellow
 
     if ($compileHandle -ne [IntPtr]::Zero) {
         # Compilation was started in background — poll until done.
@@ -857,7 +857,7 @@ if ($live) {
         # Process exited — get exit code and close handle
         $compileExit = [SilentProcess]::WaitAndGetExitCode($compileHandle)
         Record-PhaseEnd "Compilation"
-        # Parse compile.ps1 step timings from captured output
+        # Parse tools/compile.ps1 step timings from captured output
         if ($timing -and (Test-Path $compileOutFile)) {
             $compileTotalMs = 0
             foreach ($line in (Get-Content $compileOutFile -ErrorAction SilentlyContinue)) {
@@ -887,9 +887,9 @@ if ($live) {
             exit 1
         }
     } elseif (Test-Path $compilePs1) {
-        # compile.ps1 not found at early launch — try now
+        # tools/compile.ps1 not found at early launch — try now
         Record-PhaseStart "Compilation"
-        Write-Host "  Running compile.ps1..."
+        Write-Host "  Running tools/compile.ps1..."
         $compileFlags = "--test-mode"
         if ($timing) { $compileFlags += " --timing" }
         if ($forceCompile) { $compileFlags += " --force" }
@@ -897,7 +897,7 @@ if ($live) {
         Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
         $compileExit = [SilentProcess]::RunWaitCaptured(('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $compilePs1 + '" ' + $compileFlags), $compileOutFile, $compileDir)
         Record-PhaseEnd "Compilation"
-        # Parse compile.ps1 step timings from captured output
+        # Parse tools/compile.ps1 step timings from captured output
         if ($timing -and (Test-Path $compileOutFile)) {
             foreach ($line in (Get-Content $compileOutFile -ErrorAction SilentlyContinue)) {
                 if ($line -match '^TIMING:(.+):(\d+)$') {
@@ -914,7 +914,7 @@ if ($live) {
             exit 1
         }
     } else {
-        Write-Host "FAIL: compile.ps1 not found" -ForegroundColor Red
+        Write-Host "FAIL: tools/compile.ps1 not found" -ForegroundColor Red
         Show-TimingReport
         exit 1
     }

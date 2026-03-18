@@ -10,9 +10,12 @@ param(
     [switch]$force
 )
 
-$outFile   = Join-Path $PSScriptRoot "AGENTS.MD"
-$claudeMd  = Join-Path $PSScriptRoot "CLAUDE.md"
-$rulesDir  = Join-Path $PSScriptRoot ".claude\rules"
+# Project root (script lives in tools/, project root is one level up)
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+
+$outFile   = Join-Path $projectRoot "AGENTS.MD"
+$claudeMd  = Join-Path $projectRoot "CLAUDE.md"
+$rulesDir  = Join-Path $projectRoot ".claude\rules"
 $scriptSelf = $PSCommandPath
 
 # --- Collect source files ---

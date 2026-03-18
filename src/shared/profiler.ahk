@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0
 ; Build-time strip profiler — every code line tagged ; @profile
-; In release builds (no --profile flag), compile.ps1 strips all ; @profile lines,
+; In release builds (no --profile flag), tools/compile.ps1 strips all ; @profile lines,
 ; removing this entire file's content and all Profiler.Enter/Leave call sites.
 ; Result: true zero cost in production.
 

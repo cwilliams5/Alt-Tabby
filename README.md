@@ -4,86 +4,94 @@
   <img src="resources/img/logo.png" alt="Alt-Tabby Logo" width="400">
 </p>
 
-A fast, customizable Alt-Tab replacement for Windows, built with AutoHotkey v2. Designed for power users who want responsive window switching with deep integration for tiling window managers like [Komorebi](https://github.com/LGUG2Z/komorebi).
+<p align="center">
+  <a href="docs/what-autohotkey-can-do.md">AHK Deep Dive</a> &nbsp;&middot;&nbsp;
+  <a href="docs/llm-development.md">AI-Assisted Development</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?logo=windows" alt="Platform">
+  <img src="https://img.shields.io/badge/language-AutoHotkey%20v2-334455?logo=autohotkey" alt="Language">
+  <img src="https://img.shields.io/github/v/release/cwilliams5/Alt-Tabby?color=green" alt="Release">
+  <img src="https://img.shields.io/github/downloads/cwilliams5/Alt-Tabby/total?color=blue" alt="Downloads">
+  <img src="https://img.shields.io/github/license/cwilliams5/Alt-Tabby" alt="License">
+</p>
+
+A fast, deeply customizable Alt-Tab replacement for Windows. Built with AutoHotkey v2, designed for power users who want responsive window switching, GPU-accelerated visuals, and deep integration with tiling window managers like [Komorebi](https://github.com/LGUG2Z/komorebi).
+
+<!-- Screenshots/GIFs coming soon -->
 
 ## Features
 
 <img src="resources/img/icon.png" alt="Alt-Tabby Icon" width="64" align="right">
 
-- **Low Latency** - Keyboard hooks and window data live in the same process for sub-5ms Alt-Tab detection
-- **MRU Ordering** - Windows sorted by most-recently-used, matching native Windows behavior
-- **Komorebi Integration** - Workspace-aware filtering and cross-workspace window activation
-- **Workspace Toggle** - Press Ctrl during Alt-Tab to filter by current workspace
-- **Quick Switch** - Alt+Tab and release before the GUI shows for instant window switching
-- **Configurable** - GUI-based configuration editor (WebView2 with native AHK fallback)
-- **Fullscreen Bypass** - Automatically uses native Alt-Tab in fullscreen games
-- **Window & Process Blacklist** - Filter out unwanted windows by title, class, or process name
-- **Flight Recorder** - In-memory event ring buffer for diagnosing missed keystrokes (near-zero overhead)
-- **Auto-Update** - Checks for new releases on startup with one-click update
-- **Admin Mode** - Optional Task Scheduler integration for UAC-free elevated operation
+### Window Switching
+- **Sub-5ms Detection** — keyboard hooks and window data live in the same process, no IPC on the critical path
+- **MRU Ordering** — windows sorted by most-recently-used, matching native Windows behavior
+- **Quick Switch** — Alt+Tab and release before the GUI appears for instant window switching (~25ms total)
+- **Click or Keyboard** — navigate with Tab/Shift+Tab, arrow keys, or mouse click
+- **Row Actions** — hover to reveal close, kill, or blacklist buttons on any window
 
-## Architecture
+### Visual Customization
+- **GPU-Accelerated Shaders** — up to 4 stackable D3D11 background shader layers with 157 built-in effects (raymarching, fractals, fluid dynamics, domain warping, and more)
+- **Mouse-Reactive Effects** — 15 GPU compute shader effects that respond to cursor movement (ember trails, fireflies, fluid simulation, gravity wells, water surfaces, and more)
+- **Selection Highlights** — 10 animated shader-based selection effects (aurora, glass, neon, plasma, lightning) or simple color fill
+- **Background Images** — load any image with fit modes, blur, desaturation, opacity, and drop shadow
+- **Backdrop Materials** — Acrylic blur, Mica, MicaAlt, Aero Glass, or solid color backgrounds
+- **Inner Shadow** — recessed glass effect along overlay edges
+- **Shader Cycling** — switch background and mouse effects on-the-fly with configurable hotkeys
+- **Dark/Light Mode** — follows Windows system theme automatically, or force either mode
 
-Alt-Tabby uses a multi-process architecture optimized for latency:
+### Komorebi Integration
+- **Workspace-Aware Filtering** — toggle between all workspaces or current-only with Ctrl during Alt-Tab
+- **Cross-Workspace Activation** — select a window on any workspace and Alt-Tabby handles the workspace switch
+- **Workspace & Monitor Labels** — optional columns showing which workspace and monitor each window is on
 
-```
-+------------------+     +------------------+
-|    Launcher      |---->|   MainProcess    |
-|  (Tray + Spawn)  |     | (Window Data +   |
-+------------------+     |  Producers +     |
-                          |  Overlay + Hooks)|
-                          +--------+---------+
-                                   |
-                            Named Pipe IPC
-                                   |
-                          +--------+---------+
-                          | EnrichmentPump   |
-                          | (Icon + Process  |
-                          |  Resolution)     |
-                          +------------------+
-```
+### Window Management
+- **Title, Class & Process Blacklist** — filter unwanted windows by pattern (wildcards supported)
+- **One-Click Blacklist** — double-click a row or use the action button to blacklist instantly
+- **Fullscreen Bypass** — automatically uses native Alt-Tab in fullscreen games
+- **Process-Level Bypass** — whitelist specific processes to always use native Alt-Tab
+- **Ghost Window Detection** — automatically removes zombie windows from apps that reuse HWNDs
 
-### Launcher
+### Configuration
+- **200+ Settings** — control every aspect of appearance, behavior, and performance
+- **WebView2 Config Editor** — modern web-based UI with sections, search, and live validation
+- **Native AHK Fallback** — pure AutoHotkey editor for systems without WebView2
+- **Portable** — single `config.ini` file next to the executable, no registry entries
 
-Manages the tray icon, spawns MainProcess and EnrichmentPump as subprocesses, and handles lifecycle events (restart, config/blacklist editor launch). Receives control signals via WM_COPYDATA.
+### Installation & Updates
+- **First-Run Wizard** — interactive setup for Start Menu, startup, Program Files install, and admin mode
+- **Auto-Update** — checks for new releases on startup with one-click apply
+- **Admin Mode** — optional Task Scheduler integration for UAC-free elevated operation
+- **Portable Executable** — single `.exe`, no installer, no external dependencies
 
-### MainProcess
+### Diagnostics
+- **Flight Recorder** — always-on in-memory event ring buffer (~1 microsecond/event, zero allocations). Press F12 to dump a full state snapshot with event trace.
+- **Debug Viewer** — live window list inspector with Z-order/MRU sorting, workspace filtering, and producer health monitoring
+- **15+ Diagnostic Logs** — selective logging for keyboard events, focus tracking, paint timing, shader compilation, IPC, and more
+- **Usage Statistics** — optional lifetime and session stats (Alt-Tabs/hour, quick switch rate, peak windows tracked)
 
-The core of Alt-Tabby. Window data, all producers, the overlay GUI, and keyboard hooks run in a single process to eliminate IPC latency on the critical path:
-
-| Producer | Purpose |
-|----------|---------|
-| WinEventHook | Window create/destroy/focus events and MRU tracking (primary) |
-| WinEnum | Full window enumeration (startup, snapshot, Z-order pump) |
-| MRU_Lite | Focus tracking fallback (only if WinEventHook fails) |
-| KomorebiSub | Workspace tracking via komorebi named pipe subscription |
-| KomorebiLite | Workspace polling fallback (if subscription fails) |
-| IconPump | Async icon resolution with retry/backoff |
-| ProcPump | PID to process name resolution |
-
-The overlay intercepts Alt+Tab before Windows sees it, pre-warms the window list on Alt press, and freezes the display on first Tab press.
-
-### EnrichmentPump
-
-A separate subprocess that handles blocking icon extraction (WM_GETICON, UWP logo parsing) and process name resolution. Communicates with MainProcess via named pipe IPC, keeping the main thread responsive.
-
-### Debug Viewer
-
-An in-process diagnostic window within MainProcess that reads the live window list directly. Features Z-order and MRU sorting, workspace filtering, and producer health monitoring. Toggled via tray menu.
+### Performance
+- **Adaptive Timer System** — graduated cooldown (8ms active → 100ms idle) with PostMessage hot wakeup for sub-tick IPC latency
+- **Multi-Process Architecture** — blocking work (icon extraction, process resolution) runs in a separate subprocess via named pipe IPC
+- **Smart Resource Management** — GDI+/D2D resource caching, pre-compiled regex, viewport-based repaint skipping, dirty tracking with field classification
+- **Animation Control** — None (zero GPU), Minimal (transitions only), or Full (ambient effects) with configurable FPS cap
 
 ## Installation
 
 ### Requirements
 
 - Windows 10/11
-- [AutoHotkey v2](https://www.autohotkey.com/) (for development)
+- [AutoHotkey v2](https://www.autohotkey.com/) (for development only)
 - Optional: [Komorebi](https://github.com/LGUG2Z/komorebi) for workspace features
 
 ### From Release
 
 1. Download `AltTabby.exe` from [Releases](https://github.com/cwilliams5/Alt-Tabby/releases)
 2. Run `AltTabby.exe`
-3. Right-click the tray icon for options
+3. Complete the first-run wizard (or skip to use defaults)
+4. Right-click the tray icon for options
 
 ### From Source
 
@@ -96,23 +104,8 @@ AutoHotkey64.exe src/alt_tabby.ahk
 
 # Or compile
 compile.bat
+# Output: release/AltTabby.exe
 ```
-
-## Configuration
-
-Access the configuration editor via:
-- Tray icon > Config
-- Command line: `AltTabby.exe --config`
-
-Key settings:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| GraceMs | 150 | Delay before showing GUI (quick-switch window) |
-| BypassFullscreen | true | Use native Alt-Tab in fullscreen apps |
-| BypassProcesses | "" | Comma-separated process names to bypass |
-
-Configuration is stored in `config.ini` next to the executable.
 
 ## Usage
 
@@ -124,38 +117,46 @@ Configuration is stored in `config.ini` next to the executable.
 | Toggle workspace filter | Ctrl (while Alt-Tab is open) |
 | Cancel | Escape |
 | Switch to selected | Release Alt |
+| Cycle background shader | Configurable hotkey |
+| Cycle mouse effect | Configurable hotkey |
+| Dump flight recorder | F12 (configurable) |
+
+## Configuration
+
+Access the configuration editor via:
+- Tray icon > Config
+- Command line: `AltTabby.exe --config`
+
+Settings are organized into sections:
+
+| Section | What it controls |
+|---------|-----------------|
+| **AltTab** | Grace period, quick switch, bypass rules |
+| **GUI** | Sizing, fonts, colors, effects, columns, scrollbar |
+| **Theme** | Dark/light mode, custom color palettes |
+| **Shader** | Per-layer shader selection, opacity, speed, darkness |
+| **MouseEffect** | Mouse shader, grid quality, particle density, reactivity |
+| **BackgroundImage** | Image path, fit mode, blur, desaturation, shadow |
+| **Komorebi** | Workspace integration, activation method, timing |
+| **Performance** | Process priority, animation mode, FPS, memory policy |
+| **Diagnostics** | Flight recorder, logging toggles, stats tracking |
+
+Configuration is stored in `config.ini` next to the executable. See [Configuration Options](docs/options.md) for the full reference.
 
 ## Documentation
 
-- [Configuration Options](docs/options.md) - All config.ini settings with defaults and ranges
+- [Configuration Options](docs/options.md) — all config.ini settings with defaults and ranges
+- [Using the Flight Recorder](docs/USING_RECORDER.md) — how to capture and analyze event dumps
+
+## Behind the Scenes
+
+Alt-Tabby is also an experiment in two areas:
+
+**Pushing AutoHotkey.** The rendering stack includes a full D3D11 pipeline with compute shaders, 183 HLSL shaders, zero-copy DXGI surface sharing, DWM compositor integration, and an embedded Chromium control — all from pure AHK v2 via `DllCall` and `ComCall`. Read more: [What AutoHotkey Can Do](docs/what-autohotkey-can-do.md)
+
+**AI-assisted development.** The codebase was built primarily by Claude Code, with 71 static analysis checks, 17 semantic query tools, and an ownership manifest that make categories of mistakes mechanically impossible across sessions. Read more: [Building Alt-Tabby with Claude Code](docs/llm-development.md)
 
 ## Development
-
-### Project Structure
-
-```
-src/
-  alt_tabby.ahk         # Unified entry point (launcher + all modes)
-  gui/                   # MainProcess (overlay + window data + producers)
-    gui_main.ahk         # Init, producers, heartbeat, cleanup
-    gui_interceptor.ahk  # Keyboard hooks (Alt/Tab/Ctrl/Escape)
-    gui_state.ahk        # State machine (IDLE/ALT_PENDING/ACTIVE)
-    gui_data.ahk         # Snapshot + pre-cache
-    gui_paint.ahk        # GDI+ overlay rendering
-    gui_flight_recorder.ahk # In-memory event ring buffer
-  core/                  # Producer modules
-    winevent_hook.ahk    # Window events + MRU tracking
-    komorebi_sub.ahk     # Komorebi subscription integration
-    icon_pump.ahk        # Async icon resolution
-    proc_pump.ahk        # PID -> process name resolution
-  pump/                  # EnrichmentPump subprocess
-  editors/               # Config and blacklist editors
-  shared/                # Window data, IPC, config, blacklist, stats, theme
-tests/
-  run_tests.ahk          # Test orchestrator
-  gui_tests.ahk          # State machine tests
-  static_analysis.ps1    # Pre-gate static analysis
-```
 
 ### Running Tests
 
@@ -164,11 +165,19 @@ tests/
 .\tests\test.ps1 --live
 ```
 
-### Compiling
+### Project Structure
 
-```bash
-compile.bat
-# Output: release/AltTabby.exe
+```
+src/
+  alt_tabby.ahk          # Unified entry point (launcher + all modes)
+  gui/                    # MainProcess (overlay, data, hooks, rendering)
+  core/                   # Producer modules (WinEventHook, Komorebi, Pumps)
+  pump/                   # EnrichmentPump subprocess
+  editors/                # Config and blacklist editors
+  shared/                 # Window data, IPC, config, blacklist, stats, theme
+  shaders/                # HLSL pixel and compute shaders (183 shaders)
+tests/                    # Unit, GUI, live tests + 71 static analysis checks
+tools/                    # 17 query tools + shader bundler
 ```
 
 ## License
@@ -177,8 +186,9 @@ MIT
 
 ## Acknowledgments
 
-- [AutoHotkey](https://www.autohotkey.com/) - Scripting language for Windows automation
-- [Komorebi](https://github.com/LGUG2Z/komorebi) - Tiling window manager for Windows
-- [WebView2.ahk](https://github.com/thqby/ahk2_lib) - WebView2 control wrapper for AHK v2
-- [cJson.ahk](https://github.com/G33kDude/cJson.ahk) - High-performance JSON parser
-- [ShinsOverlayClass](https://github.com/Spawnova/ShinsOverlayClass) - Direct2D overlay reference
+- [AutoHotkey](https://www.autohotkey.com/) — scripting language for Windows automation
+- [LGUG2Z/komorebi](https://github.com/LGUG2Z/komorebi) — tiling window manager for Windows
+- [thqby/ahk2_lib](https://github.com/thqby/ahk2_lib) — WebView2, OVERLAPPED (async I/O with MCode trampolines), MCodeLoader, Direct2D, ctypes, Promise, DirectoryWatcher, ComVar
+- [G33kDude/cJson.ahk](https://github.com/G33kDude/cJson.ahk) — MCode JSON parser
+- [Spawnova/ShinsOverlayClass](https://github.com/Spawnova/ShinsOverlayClass) — Direct2D overlay reference
+- [Claude Code](https://claude.ai/claude-code) — AI-assisted development

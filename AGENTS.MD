@@ -85,10 +85,10 @@ Query tools live in `tools/`. Prefer these over reading full files or grepping:
 - `query_function_visibility.ps1 <funcName>` â€” where defined, public/private, all callers
 - `query_function.ps1 <funcName>` â€” extract full function body without loading the entire file
 - `query_interface.ps1 <filename>` â€” public functions + globals for a file (like help(module))
-- `query_config.ps1` â€” no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value
+- `query_config.ps1` â€” no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value. `-Format hex` / `-Type int` / `-HasBounds`: metadata filters
 - `query_callchain.ps1 <funcName>` â€” call graph from a function: what it calls (or `-Reverse` for callers), to `-Depth N` levels. Primary tool for tracing code paths
 
-Additional domain-specific query tools (ipc, timers, impact, mutations, includes, messages, state) exist in `tools/` â€” run `ls tools/query_*.ps1` to discover when needed.
+Additional domain-specific query tools (ipc, timers, impact, mutations, includes, messages, state, shader, events) exist in `tools/` â€” run `ls tools/query_*.ps1` to discover when needed.
 
 For deep multi-module flow tracing, use `/trace <question>` â€” spawns an agent in separate context that uses all query tools and returns only the semantic answer.
 
@@ -244,7 +244,7 @@ Move variables computed **only for logging** inside the guard too. Keep the guar
 
 ## Compilation
 
-- `compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience
+- `tools/compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience
 - Flags: `--force` (skip smart-skip), `--test-mode` (machine-readable TIMING output), `--timing` (human-readable)
 - Ahk2Exe requires `/base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"`
 - Embedded resources: icon via `/icon`, splash PNG via `@Ahk2Exe-AddResource`
@@ -256,7 +256,7 @@ Move variables computed **only for logging** inside the guard too. Keep the guar
 ## Version Management
 
 - Single source: `VERSION` file in project root
-- Compiled: `compile.ps1` reads VERSION for Ahk2Exe flags
+- Compiled: `tools/compile.ps1` reads VERSION for Ahk2Exe flags
 - Dev: `GetAppVersion()` searches up directories for VERSION file
 
 ## Anti-Flash Window Show

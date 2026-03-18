@@ -8,7 +8,7 @@ Enter planning mode. Review which functions are instrumented for profiling and i
 
 ## Background
 
-Alt-Tabby has a build-time strip profiler (`src/shared/profiler.ahk`). Functions are instrumented with `Profiler.Enter("FuncName") ; @profile` / `Profiler.Leave() ; @profile` pairs. In release builds, `compile.ps1` strips all `; @profile` lines — true zero cost. In `--profile` builds, the profiler records QPC-timestamped events to a ring buffer and exports speedscope flame graphs.
+Alt-Tabby has a build-time strip profiler (`src/shared/profiler.ahk`). Functions are instrumented with `Profiler.Enter("FuncName") ; @profile` / `Profiler.Leave() ; @profile` pairs. In release builds, `tools/compile.ps1` strips all `; @profile` lines — true zero cost. In `--profile` builds, the profiler records QPC-timestamped events to a ring buffer and exports speedscope flame graphs.
 
 The static analysis check validates balanced Enter/Leave per function (sub-check `profile_markers` in `tests/check_batch_directives.ps1`) — catches the early-return problem.
 

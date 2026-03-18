@@ -1,7 +1,7 @@
 ﻿# Alt-Tabby Configuration Options
 
 > **Auto-generated from `config_registry.ahk`** - Do not edit manually.
-> Run `build-config-docs.ahk` to regenerate.
+> Run `tools/build-config-docs.ahk` to regenerate.
 
 This document lists all configuration options available in `config.ini`.
 Edit `config.ini` (next to AltTabby.exe) to customize behavior.
@@ -32,8 +32,8 @@ These control the Alt-Tab overlay behavior - tweak these first!
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `GraceMs` | int | `150` | `0` - `2000` | Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI. |
-| `QuickSwitchMs` | int | `100` | `0` - `1000` | Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch. |
+| `GraceMs` | int | `150` | `0` - `2000` | Grace period before showing the overlay (ms). During this time, if Alt is released, we do a quick switch without showing the overlay. |
+| `QuickSwitchMs` | int | `100` | `0` - `1000` | Maximum time for quick switch without showing the overlay (ms). If Alt+Tab and release happen within this time, instant switch. |
 | `SwitchOnClick` | bool | `true` | - | Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released. |
 | `AsyncActivationPollMs` | int | `15` | `10` - `100` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU. |
 
@@ -214,7 +214,7 @@ Window background and frame styling
 | `BackdropStyle` | enum | `Acrylic` | - | Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Mica/MicaAlt = system material (Win11 22H2+). Solid = flat tinted overlay, no blur. |
 | `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles. |
 | `StealFocus` | bool | `false` | - | Take focus when overlay appears. Required for Mica backdrop tint. Auto-enabled when BackdropStyle is Mica or MicaAlt. |
-| `CornerStyle` | enum | `Round` | - | Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners. |
+| `CornerStyle` | enum | `Round` | - | Window corner shape. Round = 8px rounding. RoundSmall = 4px. Square = sharp corners. |
 | `OverlayMonitor` | enum | `FocusedWindow` | - | Which monitor the overlay appears on. FocusedWindow = the monitor where you're working. Primary = always the primary monitor. |
 | `MonitorFilterDefault` | enum | `All` | - | Default monitor filter. All = windows from all monitors. Current = only windows on the overlay's monitor. Toggle with backtick key during use. |
 
@@ -224,7 +224,7 @@ Window and row sizing
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `ScreenWidthPct` | float | `0.60` | `0.10` - `1.00` | GUI width as fraction of screen |
+| `ScreenWidthPct` | float | `0.60` | `0.10` - `1.00` | Overlay width as a fraction of screen width (0.6 = 60%) |
 | `RowsVisibleMin` | int | `1` | `1` - `20` | Minimum visible rows |
 | `RowsVisibleMax` | int | `8` | `1` - `50` | Maximum visible rows |
 | `RowHeight` | int | `56` | `20` - `200` | Height of each row in pixels |
@@ -489,7 +489,6 @@ Footer bar appearance
 | `FooterFontWeight` | int | `600` | `100` - `900` | Footer font weight |
 | `FooterHeightPx` | int | `24` | `0` - `100` | Footer height in pixels |
 | `FooterGapTopPx` | int | `8` | `0` - `50` | Gap between content and footer in pixels |
-| `FooterPaddingX` | int | `12` | `0` - `100` | Footer horizontal padding in pixels |
 
 ## Komorebi
 
@@ -517,6 +516,7 @@ Event-driven komorebi integration via named pipe
 | `MruSuppressionMs` | int | `2000` | `500` - `5000` | Duration (ms) to suppress WinEventHook MRU updates after a workspace switch. Prevents focus events from corrupting window order during transitions. |
 | `SubPromotionRetryMs` | int | `30000` | `5000` - `300000` | Retry interval (ms) for promoting from polling to subscription mode after komorebi starts. Lower = faster promotion when komorebi restarts, but more frequent probing. |
 | `SubInitialPollDelayMs` | int | `1500` | `500` - `10000` | Delay (ms) before first komorebi state poll at startup. Allows komorebi pipe to initialize. Increase on slow systems where komorebi takes longer to start. |
+| `LitePollMs` | int | `1000` | `200` - `5000` | Polling interval (ms) for komorebi state when using Polling mode. Lower = more responsive workspace tracking, higher = less CPU. Only active when KomorebiIntegration=Polling. |
 
 ## Setup
 
@@ -563,6 +563,8 @@ WinEventHook and MRU are always enabled (core). These control optional producers
 | `AdditionalWindowInformation` | enum | `Always` | - | How to resolve window icons and process names. Always = separate process with in-process fallback (recommended). NonBlocking = separate process only, no fallback. ProcessOnly = in-process only, saves memory. Never = disabled. |
 | `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval to clean up cached icons for closed windows |
 | `PumpHangTimeoutMs` | int | `15000` | `5000` - `60000` | Time (ms) without a pump response before declaring it hung and restarting |
+| `PumpCollectIntervalMs` | int | `50` | `10` - `500` | How often the pump batches pending hwnds into enrich requests (ms). Lower = faster icon/process resolution, higher = fewer IPC roundtrips. |
+| `PumpIdleThreshold` | int | `5` | `1` - `30` | Empty queue ticks before pausing collection timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
 ### Window Filtering
 
@@ -801,4 +803,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*352 total settings.*
+*354 total settings.*

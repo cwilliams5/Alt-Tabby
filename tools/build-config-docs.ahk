@@ -8,11 +8,11 @@
 ; Reads gConfigRegistry and generates markdown documentation.
 ; Run this script to regenerate docs after editing config_registry.ahk.
 ;
-; Usage: AutoHotkey64.exe build-config-docs.ahk
+; Usage: AutoHotkey64.exe tools\build-config-docs.ahk
 ; ============================================================
 
 ; Include the config registry (we only need the registry, not full loader)
-#Include src\shared\config_registry.ahk
+#Include %A_ScriptDir%\..\src\shared\config_registry.ahk
 
 Main()
 
@@ -20,7 +20,7 @@ Main() {
     global gConfigRegistry
 
     ; Ensure docs directory exists
-    docsDir := A_ScriptDir "\docs"
+    docsDir := A_ScriptDir "\..\docs"
     if (!DirExist(docsDir))
         DirCreate(docsDir)
 
@@ -58,7 +58,7 @@ BuildMarkdown() {
     ; Header
     md .= "# Alt-Tabby Configuration Options`n`n"
     md .= "> **Auto-generated from ``config_registry.ahk``** - Do not edit manually.`n"
-    md .= "> Run ``build-config-docs.ahk`` to regenerate.`n`n"
+    md .= "> Run ``tools/build-config-docs.ahk`` to regenerate.`n`n"
     md .= "This document lists all configuration options available in ``config.ini``.`n"
     md .= "Edit ``config.ini`` (next to AltTabby.exe) to customize behavior.`n`n"
 

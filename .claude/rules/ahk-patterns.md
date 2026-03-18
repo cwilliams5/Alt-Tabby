@@ -124,7 +124,7 @@ Move variables computed **only for logging** inside the guard too. Keep the guar
 
 ## Compilation
 
-- `compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience
+- `tools/compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience
 - Flags: `--force` (skip smart-skip), `--test-mode` (machine-readable TIMING output), `--timing` (human-readable)
 - Ahk2Exe requires `/base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"`
 - Embedded resources: icon via `/icon`, splash PNG via `@Ahk2Exe-AddResource`
@@ -136,7 +136,7 @@ Move variables computed **only for logging** inside the guard too. Keep the guar
 ## Version Management
 
 - Single source: `VERSION` file in project root
-- Compiled: `compile.ps1` reads VERSION for Ahk2Exe flags
+- Compiled: `tools/compile.ps1` reads VERSION for Ahk2Exe flags
 - Dev: `GetAppVersion()` searches up directories for VERSION file
 
 ## Anti-Flash Window Show
