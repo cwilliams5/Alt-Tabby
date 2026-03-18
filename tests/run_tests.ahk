@@ -302,6 +302,12 @@ GUIPump_EnsureRunning(params*) {
 }
 ProcPump_EnsureRunning(params*) {
 }
+ZPump_EnsureRunning(params*) {
+}
+MRU_Lite_EnsureRunning(params*) {
+}
+KomorebiLite_EnsureRunning(params*) {
+}
 
 ; Shader name/key arrays (from shader_bundle.ahk — mocked to avoid GPU dependency chain)
 global SHADER_NAMES := ["None"], SHADER_KEYS := [""]

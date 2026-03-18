@@ -16,17 +16,24 @@ global _KLite_PendingTmp := ""     ; Temp file path for output
 global _KLite_PendingStart := 0    ; A_TickCount when query started
 global _KLite_PendingTimeout := 2000  ; Max wait time (ms)
 
+; Idle detection state for Pump_HandleIdle/Pump_EnsureRunning
+global _KLite_TimerOn := false
+global _KLite_IdleTicks := 0
+global _KLite_IdleThreshold := 5
+
 KomorebiLite_Init() {
-    global cfg
+    global cfg, _KLite_TimerOn
     ; Check if komorebi is available before starting timer
     if (!_KomorebiLite_IsAvailable())
         return false
+    _KLite_TimerOn := true
     SetTimer(_KomorebiLite_Tick, cfg.KomorebiLitePollMs)
     return true
 }
 
 KomorebiLite_Stop() {
-    global _KLite_PendingPid, _KLite_PendingTmp
+    global _KLite_PendingPid, _KLite_PendingTmp, _KLite_TimerOn
+    _KLite_TimerOn := false
     SetTimer(_KomorebiLite_Tick, 0)
     if (_KLite_PendingPid) {
         try ProcessClose(_KLite_PendingPid)
@@ -38,15 +45,23 @@ KomorebiLite_Stop() {
     }
 }
 
+KomorebiLite_EnsureRunning() {
+    global _KLite_TimerOn, _KLite_IdleTicks, cfg
+    Pump_EnsureRunning(&_KLite_TimerOn, &_KLite_IdleTicks, cfg.KomorebiLitePollMs, _KomorebiLite_Tick)
+}
+
 _KomorebiLite_Tick() {
-    global _KLite_StateObj
+    global _KLite_StateObj, _KLite_TimerOn, _KLite_IdleTicks, _KLite_IdleThreshold
     static _errCount := 0
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
         return
     try {
-        if !_KomorebiLite_IsAvailable()
+        if !_KomorebiLite_IsAvailable() {
+            Pump_HandleIdle(&_KLite_IdleTicks, _KLite_IdleThreshold, &_KLite_TimerOn, _KomorebiLite_Tick)
             return
+        }
+        _KLite_IdleTicks := 0
         stateObj := _KomorebiLite_GetState()
         if !(stateObj is Map)
             return
