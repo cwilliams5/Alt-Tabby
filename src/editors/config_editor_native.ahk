@@ -493,7 +493,7 @@ _CEN_BuildPage(section) {
         sectionName := section.name
         addBtn := pageGui.AddButton("x16 y" y " w140 h28", "+ Add Shader Layer")
         addBtn.SetFont("s9", "Segoe UI")
-        themeEntry := gCEN.Has("ThemeEntry") ? gCEN["ThemeEntry"] : ""
+        themeEntry := gCEN.Get("ThemeEntry", "")
         if (themeEntry != "")
             Theme_ApplyToControl(addBtn, "Button", themeEntry)
         addBtn.OnEvent("Click", (*) => _CEN_OnAddLayer(sectionName))
@@ -584,13 +584,13 @@ _CEN_RebuildArrayPage(sectionName) {
     ; Save current scroll position before destroying
     oldScrollPos := 0
     isCurrent := (gCEN["CurrentPage"] = sectionName)
-    page := gCEN["Pages"].Has(sectionName) ? gCEN["Pages"][sectionName] : ""
+    page := gCEN["Pages"].Get(sectionName, "")
     if (page != "") {
         oldScrollPos := page.scrollPos
         ; Remove all controls registered under this section
         keysToRemove := []
         for gName, _ in gCEN["Controls"] {
-            group := gCEN["SettingGroups"].Has(gName) ? gCEN["SettingGroups"][gName] : ""
+            group := gCEN["SettingGroups"].Get(gName, "")
             if (group != "" && group.pageKey = sectionName)
                 keysToRemove.Push(gName)
         }
@@ -957,7 +957,7 @@ _CEN_LoadValues() {
 
         if (InStr(entry.g, "{N}")) {
             ; Array section — load only active layers
-            count := activeLayerCounts.Has(entry.s) ? activeLayerCounts[entry.s] : 1
+            count := activeLayerCounts.Get(entry.s, 1)
             Loop count {
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
                 if (!gCEN["Controls"].Has(expandedG))
@@ -1664,7 +1664,7 @@ _CEN_GetChangedValues() {
 
         if (InStr(entry.g, "{N}")) {
             ; Array section — check only active layers
-            count := activeLayerCounts.Has(entry.s) ? activeLayerCounts[entry.s] : 1
+            count := activeLayerCounts.Get(entry.s, 1)
             Loop count {
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
                 if (!gCEN["Controls"].Has(expandedG))

@@ -123,6 +123,8 @@ GUI_Repaint() {
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
     gPaint_SessionPaintCount += 1
     paintNum := gPaint_SessionPaintCount
+    if (paintNum = 1)
+        _gPaint_SubCache.Clear()  ; PERF: purge stale subtitle entries from prior session
 
     ; Log context for first paint or paint after long idle
     global PAINT_IDLE_LOG_THRESHOLD_MS
@@ -436,11 +438,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         ["GUI_ColFixed2", "GUI_Col2Name", "hwndHex"]
     ]
 
-    ; Cache column metrics - only rebuild when scale, width, margin, or gap changes
+    ; Cache column metrics + textW - only rebuild when scale, width, margin, or gap changes
     ; (avoids rebuilding cols array + Round() calls per column per frame)
-    static cachedCols := [], cachedColsRightX := 0
-    static _ccScale := -1, _ccW := -1, _ccMx := -1, _ccGap := -1
-    if (scale != _ccScale || wPhys != _ccW || Mx != _ccMx || gapCols != _ccGap) {
+    static cachedCols := [], cachedColsRightX := 0, cachedTextW := 0
+    static _ccScale := -1, _ccW := -1, _ccMx := -1, _ccGap := -1, _ccTextX := -1
+    if (scale != _ccScale || wPhys != _ccW || Mx != _ccMx || gapCols != _ccGap || textX != _ccTextX) {
         cachedCols := []
         cachedColsRightX := wPhys - Mx
         for _, def in colDefs {
@@ -451,15 +453,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 cachedColsRightX := cx - gapCols
             }
         }
-        _ccScale := scale, _ccW := wPhys, _ccMx := Mx, _ccGap := gapCols
+        tw := (cachedColsRightX - Round(PAINT_TEXT_RIGHT_PAD_DIP * scale)) - textX
+        cachedTextW := (tw > 0) ? tw : 0
+        _ccScale := scale, _ccW := wPhys, _ccMx := Mx, _ccGap := gapCols, _ccTextX := textX
     }
     cols := cachedCols
-    rightX := cachedColsRightX
-
-    textW := (rightX - Round(PAINT_TEXT_RIGHT_PAD_DIP * scale)) - textX
-    if (textW < 0) {
-        textW := 0
-    }
+    textW := cachedTextW
 
     ; Hoist config/global reads used in compositor stack (matches D2D_Res hoisting at lines 589-609)
     bgAbove := cfg.BGImgRenderAboveShaders

@@ -292,8 +292,10 @@ Stats_BumpLifetimeStat(key) {
     ; calls this inside its own Critical section — adding Critical "Off" here would
     ; leak the caller's Critical state. Blacklist callers are unprotected but losing
     ; a rare cosmetic stat increment is acceptable (VERY LOW impact).
-    if (IsObject(gStats_Lifetime) && gStats_Lifetime.Has(key)) {
-        gStats_Lifetime[key] += 1
+    if (!IsObject(gStats_Lifetime))
+        return
+    try {
+        gStats_Lifetime[key] += 1  ; PERF: single lookup on happy path (key exists)
         gStats_Dirty := true
     }
 }

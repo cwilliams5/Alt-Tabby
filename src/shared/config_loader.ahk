@@ -142,7 +142,7 @@ _CL_InitializeDefaults() {
 
         if (InStr(entry.g, "{N}")) {
             ; Array section — expand for each instance
-            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            count := arraySections.Get(entry.s, 1)
             Loop count {
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
                 ; Layer 1 uses default1 if present (e.g., first shader = "raindropsGlass")
@@ -157,7 +157,7 @@ _CL_InitializeDefaults() {
     }
 
     ; Track active shader layer count
-    cfg._ShaderLayerCount := arraySections.Has("Shader") ? arraySections["Shader"] : 0  ; lint-ignore: cfg-property
+    cfg._ShaderLayerCount := arraySections.Get("Shader", 0)  ; lint-ignore: cfg-property
 }
 
 ; ============================================================
@@ -747,7 +747,7 @@ _CL_LoadAllSettings() {
 
         if (InStr(entry.g, "{N}")) {
             ; Array section — read from [Section.1] through [Section.N]
-            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            count := arraySections.Get(entry.s, 1)
             Loop count {
                 sectionName := entry.s "." A_Index
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
@@ -1012,7 +1012,7 @@ _CL_ValidateSettings() {
         if (!entry.HasOwnProp("min"))
             continue
         if (InStr(entry.g, "{N}")) {
-            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            count := arraySections.Get(entry.s, 1)
             Loop count {
                 expandedG := StrReplace(entry.g, "{N}", A_Index)
                 cfg.%expandedG% := clamp(cfg.%expandedG%, entry.min, entry.max)
@@ -1026,7 +1026,7 @@ _CL_ValidateSettings() {
     for _, entry in gConfigRegistry {
         if (entry.HasOwnProp("t") && entry.t = "enum" && entry.HasOwnProp("options")) {
             if (InStr(entry.g, "{N}")) {
-                count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+                count := arraySections.Get(entry.s, 1)
                 Loop count {
                     expandedG := StrReplace(entry.g, "{N}", A_Index)
                     val := cfg.%expandedG%
