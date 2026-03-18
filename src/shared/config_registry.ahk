@@ -51,7 +51,7 @@ global gConfigRegistry := [
      desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
 
     {s: "AltTab", k: "BypassFullscreen", g: "AltTabBypassFullscreen", t: "bool", default: true,
-     d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior."},
+     d: "Bypass Alt-Tabby when the foreground window is fullscreen (coverage >= BypassFullscreenThreshold). Useful for games that need native Alt-Tab behavior."},
 
     {s: "AltTab", k: "BypassFullscreenThreshold", g: "AltTabBypassFullscreenThreshold", t: "float", default: 0.99,
      min: 0.5, max: 1.0,
@@ -1133,7 +1133,7 @@ global gConfigRegistry := [
      d: "Filter windows like native Alt-Tab (skip tool windows, etc.)"},
 
     {s: "Store", k: "UseBlacklist", g: "UseBlacklist", t: "bool", default: true,
-     d: "Apply blacklist from shared/blacklist.txt"},
+     d: "Apply blacklist filtering to exclude specific windows"},
 
     {type: "subsection", section: "Store", name: "WinEventHook",
      desc: "Event-driven window change detection. Events are queued then processed in batches"},
@@ -1266,7 +1266,7 @@ global gConfigRegistry := [
     ; Performance
     ; ============================================================
     {type: "section", name: "Performance", desc: "Performance",
-     long: "Memory management to maintain responsiveness after long idle periods."},
+     long: "Performance tuning: memory management, HDR compensation, process priority, and animation control."},
 
     {s: "Performance", k: "HDRCompensation", g: "PerfHDRCompensation", t: "enum", default: "auto",
      options: ["auto", "on", "off"],
@@ -1355,10 +1355,10 @@ global gConfigRegistry := [
     {s: "MouseEffect", k: "Speed", g: "MouseEffect_Speed", t: "float", default: 1.0,
      min: 0.1, max: 10.0,
      d: "Animation speed multiplier for the mouse effect."},
-    {s: "MouseEffect", k: "GridQuality", g: "MouseEffect_GridQuality", t: "enum", default: "High", ; lint-ignore: dead-config
+    {s: "MouseEffect", k: "GridQuality", g: "MouseEffect_GridQuality", t: "enum", default: "High",
      options: ["Low", "Medium", "High", "Ultra"],
      d: "Grid resolution for compute mouse effects. Low = 256×128 (~1 MB). Medium = 512×256 (~4 MB). High = 1024×512 (~16 MB, recommended). Ultra = 2048×1024 (~67 MB). Lower = better FPS."},
-    {s: "MouseEffect", k: "ParticleDensity", g: "MouseEffect_ParticleDensity", t: "float", default: 1.0, ; lint-ignore: dead-config
+    {s: "MouseEffect", k: "ParticleDensity", g: "MouseEffect_ParticleDensity", t: "float", default: 1.0,
      min: 0.25, max: 4.0,
      d: "Particle count multiplier. Lower = better FPS, fewer particles."},
     {s: "MouseEffect", k: "Reactivity", g: "MouseEffect_Reactivity", t: "float", default: 1.0,
@@ -1496,7 +1496,7 @@ global gConfigRegistry := [
      d: "Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures."},
 
 
-    {s: "Diagnostics", k: "ShaderLog", g: "DiagShaderLog", t: "bool", default: false, ; lint-ignore: dead-config
+    {s: "Diagnostics", k: "ShaderLog", g: "DiagShaderLog", t: "bool", default: false,
      d: "Log D3D11 shader pipeline operations to %TEMP%\\tabby_shader.log. Use when debugging shader compilation, texture loading, or rendering issues."},
 
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,

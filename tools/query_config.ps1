@@ -176,11 +176,25 @@ if ($Usage) {
     $propertyName = $Usage -replace '^cfg\.', ''
 
     # Find the config entry by its g: (global/property) field
+    # Also handles array section expanded names (e.g., Shader1_ShaderName → Shader{N}_ShaderName)
     $found = $null
     foreach ($st in $settings) {
         if ($st.G -eq $propertyName) {
             $found = $st
             break
+        }
+    }
+    # If not found, try matching against {N} template patterns (array sections)
+    if (-not $found) {
+        foreach ($st in $settings) {
+            if ($st.G -notlike '*{N}*') { continue }
+            $parts = $st.G -split '\{N\}'
+            $escapedParts = $parts | ForEach-Object { [regex]::Escape($_) }
+            $pattern = '^' + ($escapedParts -join '\d+') + '$'
+            if ($propertyName -match $pattern) {
+                $found = $st
+                break
+            }
         }
     }
 
@@ -199,7 +213,7 @@ if ($Usage) {
     Write-Host "  cfg.$propertyName" -ForegroundColor White
     Write-Host "    defined:  [$($found.S)] $($found.K)  $typeInfo  $defaultInfo" -ForegroundColor DarkGray
 
-    # Search src/ (excluding src/lib/) for cfg.<propertyName>
+    # Pass 1: Search src/ (excluding src/lib/) for literal cfg.<propertyName>
     $srcPath = Join-Path $projectRoot "src"
     $srcFiles = Get-AhkSourceFiles $srcPath
 
@@ -219,12 +233,113 @@ if ($Usage) {
         }
     }
 
-    if ($hitCount -eq 0) {
+    # Pass 2: Detect dynamic property access (cfg.%expr%)
+    # AHK v2 patterns:
+    #   a) cfg.%"Shader" A_Index "_ShaderName"% — inline string literals in expression
+    #   b) cfg.%prefix "Bg"% — variable + inline literal suffix
+    #   c) cfg.%cfgProp% — fully variable (e.g., theme palette via _Theme_CfgHex)
+    # For (a)/(b): extract string literals and check if they form fragments of propertyName.
+    # For (c): check if the file contains string literals that decompose propertyName.
+    $dynRx = [regex]::new('cfg\.%([^%]+)%')
+    $litRx = [regex]::new('"([^"]+)"')
+    $dynHitCount = 0
+    $dynLines = [System.Collections.ArrayList]::new()
+    $dynSeenLines = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($file in $srcFiles) {
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+        # Skip config_loader.ahk — its cfg.%entry.g% is the generic loader, not a real consumer
+        if ($relPath -like '*config_loader.ahk') { continue }
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+        if ($text.IndexOf('cfg.%') -lt 0) { continue }
+        $lines = Split-Lines $text
+
+        # Collect all string literals in the file for fallback matching (pattern c)
+        $fileLits = $null
+
+        for ($li = 0; $li -lt $lines.Count; $li++) {
+            $line = $lines[$li]
+            if ($line.IndexOf('cfg.%') -lt 0) { continue }
+            $dynMatches = $dynRx.Matches($line)
+            foreach ($dm in $dynMatches) {
+                $expr = $dm.Groups[1].Value
+                $exprLits = $litRx.Matches($expr)
+
+                $matched = $false
+                if ($exprLits.Count -gt 0) {
+                    # Pattern (a)/(b): inline literals in the expression
+                    $skeleton = ""
+                    foreach ($lit in $exprLits) { $skeleton += $lit.Groups[1].Value }
+                    if ($skeleton.Length -ge 2) {
+                        $fragments = @()
+                        foreach ($lit in $exprLits) { $fragments += [regex]::Escape($lit.Groups[1].Value) }
+                        $fragPattern = $fragments -join '.*'
+                        if ($propertyName -cmatch $fragPattern) { $matched = $true }
+                    }
+                } else {
+                    # Pattern (c): fully variable — check if file has literals that compose propertyName
+                    # E.g., theme palette: cfg.%cfgProp% where cfgProp = "Theme_Dark" + "Accent"
+                    # Lazy-init: collect all 3+ char string literals from the entire file
+                    if ($null -eq $fileLits) {
+                        $fileLits = [System.Collections.ArrayList]::new()
+                        $allLits = $litRx.Matches($text)
+                        foreach ($al in $allLits) {
+                            $v = $al.Groups[1].Value
+                            if ($v.Length -ge 3) { [void]$fileLits.Add($v) }
+                        }
+                    }
+                    # Require 2+ literal fragments that together cover most of the property name.
+                    # Fragment 1 must match a prefix of propertyName, fragment 2 must cover the remainder.
+                    $propLower = $propertyName.ToLower()
+                    foreach ($fl in $fileLits) {
+                        $flLower = $fl.ToLower()
+                        # Fragment must match at a reasonable position in the property name
+                        $idx = $propLower.IndexOf($flLower)
+                        if ($idx -lt 0) { continue }
+                        # Remove matched fragment and any surrounding underscores/digits
+                        $before = if ($idx -gt 0) { $propLower.Substring(0, $idx) } else { '' }
+                        $after = $propLower.Substring($idx + $flLower.Length)
+                        $remainParts = @($before, $after) | Where-Object { $_.Trim('_0123456789').Length -ge 2 }
+                        if ($remainParts.Count -eq 0) {
+                            # Fragment + trivial remainder covers the property name
+                            $matched = $true; break
+                        }
+                        # Check if all remaining parts appear in file literals
+                        $allCovered = $true
+                        foreach ($rp in $remainParts) {
+                            $rpClean = $rp.Trim('_0123456789')
+                            $partFound = $false
+                            foreach ($fl2 in $fileLits) {
+                                if ($fl2.ToLower() -eq $rpClean) { $partFound = $true; break }
+                            }
+                            if (-not $partFound) { $allCovered = $false; break }
+                        }
+                        if ($allCovered) { $matched = $true; break }
+                    }
+                }
+
+                if ($matched) {
+                    $lineRef = "      ${relPath}:$($li + 1)  (dynamic)"
+                    if ($dynSeenLines.Add($lineRef)) {
+                        [void]$dynLines.Add($lineRef)
+                        $dynHitCount++
+                    }
+                }
+            }
+        }
+    }
+
+    $totalHits = $hitCount + $dynHitCount
+    if ($totalHits -eq 0) {
         Write-Host "    used by: (none)" -ForegroundColor DarkGray
     } else {
         Write-Host "    used by:" -ForegroundColor DarkGray
         foreach ($line in $usageLines) {
             Write-Host $line -ForegroundColor Green
+        }
+        foreach ($line in $dynLines) {
+            Write-Host $line -ForegroundColor Yellow
         }
     }
 
