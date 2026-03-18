@@ -69,11 +69,54 @@ All of this runs at the monitor's native refresh rate. The shader pipeline suppo
 
 The shader library includes 157 background shaders (raymarching, domain warping, fractals, fluid dynamics, matrix effects, aurora, and dozens more), 15 mouse-reactive shaders (particle systems, fluid simulations, physics effects), and 10 selection highlight shaders. Each shader has a JSON metadata file and an HLSL source file. A PowerShell bundling tool ([`shader_bundle.ps1`](../tools/shader_bundle.ps1)) auto-generates the AHK registration code and Ahk2Exe resource embedding directives.
 
+### DWM Composition
+
+Alt-Tabby uses undocumented and semi-documented Windows DWM APIs for native desktop integration:
+
+- **Acrylic blur** via `SetWindowCompositionAttribute` (undocumented user32 API) — blurred translucent backdrop with tint color
+- **Mica and MicaAlt materials** via `DwmSetWindowAttribute` with `DWMWA_SYSTEMBACKDROP_TYPE` (Windows 11)
+- **Window cloaking** via `DWMWA_CLOAK` for zero-flash show/hide
+- **Rounded corners** via `DWMWA_WINDOW_CORNER_PREFERENCE`
+- **DwmFlush** for compositor synchronization after render target updates
+- **Dark mode** — see [Native Windows Theming](#native-windows-theming) below
+
 ---
 
 ## Multi-Process Architecture from a Single Executable
 
-One compiled `AltTabby.exe` serves 9 different runtime modes, selected by command-line flags: ([`alt_tabby.ahk`](../src/alt_tabby.ahk))
+One compiled `AltTabby.exe` serves 12 different runtime modes, selected by command-line flags. Three processes run continuously, editors launch on demand, and setup modes are one-shot tasks that often require elevation. ([`alt_tabby.ahk`](../src/alt_tabby.ahk))
+
+```mermaid
+graph TD
+    subgraph core ["Core Runtime (3 processes, always running)"]
+        L["Launcher<br>Tray icon · lifecycle · stats dashboard"]
+        G["MainProcess<br>Window data · overlay · keyboard hooks · producers"]
+        P["EnrichmentPump<br>Icon extraction · process name resolution"]
+    end
+
+    subgraph editors ["User-Invoked (on demand)"]
+        CE["Config Editor"]
+        BE["Blacklist Editor"]
+    end
+
+    subgraph setup ["Setup (one-shot, often elevated)"]
+        S["Wizard · Admin Task<br>Update · Install"]
+    end
+
+    L -->|spawns + monitors PID| G
+    L -->|spawns + monitors PID| P
+    G <-->|Named Pipes<br>JSON messages| P
+    L <-->|WM_COPYDATA<br>viewer toggle, pump lifecycle, stats| G
+    P -->|WM_COPYDATA<br>PUMP_READY| L
+    L -.->|spawns on demand| CE
+    L -.->|spawns on demand| BE
+    CE -->|WM_COPYDATA<br>EDITOR_CLOSED| L
+    BE -.->|file watcher<br>no IPC needed| G
+```
+
+The launcher is the lifecycle hub — it spawns the GUI and pump as child processes, monitors their PIDs, and handles recovery (if the pump crashes, the GUI reports via `WM_COPYDATA` and the launcher restarts it). The heavy IPC path is the named pipe between MainProcess and EnrichmentPump: UTF-8 JSON messages carrying icon and process enrichment requests. Everything else — viewer toggling, stats queries, editor lifecycle — flows through lightweight `WM_COPYDATA` signals, which piggyback on the Windows message loop AHK already runs (zero additional infrastructure). The named pipe exists because icon extraction and process name resolution block (50–100ms per call), and that latency can't live on the GUI thread. Config and blacklist changes bypass IPC entirely via file watchers in the GUI process.
+
+The runtime mode is selected by command-line flag:
 
 | Flag | Role |
 |------|------|
@@ -86,8 +129,11 @@ One compiled `AltTabby.exe` serves 9 different runtime modes, selected by comman
 | `--enable-admin-task` | Task Scheduler task creation (post-elevation) |
 | `--apply-update` | Update application (post-elevation) |
 | `--update-installed` | Update installed copy (post-elevation) |
+| `--repair-admin-task` | Repair stale admin task (post-elevation) |
+| `--disable-admin-task` | Delete admin task (post-elevation) |
+| `--install-to-pf` | Install to Program Files (post-elevation) |
 
-The launcher spawns the GUI and pump as child processes, tracks their PIDs, and coordinates lifecycle events (restart, config reload, editor launch). The mode flag is checked before `#Include` directives execute, so each mode only initializes the code paths it needs.
+The mode flag is checked before `#Include` directives execute, so each mode only initializes the code paths it needs.
 
 ### Event-Driven Producer Architecture
 
@@ -105,13 +151,7 @@ The MainProcess runs 8 independent data producers in `src/core/`, each responsib
 
 Producers are fault-isolated — if one fails at startup, the others continue. All write to a shared store through `WL_UpsertWindow()` and `WL_UpdateFields()`, with dirty tracking that classifies changes by impact (MRU-only, structural, cosmetic) to minimize downstream work.
 
-### 354 Configurable Settings
-
-The entire application is driven by a centralized config registry (`config_registry.ahk`) with 355 settings across 15 sections. Each entry declares its type, default, min/max bounds, and description. Validation, documentation generation, and editor UI are all registry-driven — adding a setting to one file propagates everywhere automatically.
-
----
-
-## Named Pipe IPC
+### Named Pipe IPC
 
 The EnrichmentPump runs in a separate process to keep blocking Win32 calls (icon extraction, process name resolution) off the GUI thread. Communication happens over named pipes, built entirely from Win32 API calls: ([`ipc_pipe.ahk`](../src/shared/ipc_pipe.ahk))
 
@@ -122,6 +162,14 @@ The EnrichmentPump runs in a separate process to keep blocking Win32 calls (icon
 - **Protocol:** UTF-8 JSON lines over message-mode pipes
 
 The pipe wakeup pattern uses `PostMessageW` after writes to signal the receiver immediately instead of waiting for its next timer tick. Combined with graduated timer cooldown (8ms active → 20ms → 50ms → 100ms idle), the system is responsive under load and silent when idle.
+
+---
+
+## 355 Configurable Settings
+
+The entire application is driven by a centralized config registry (`config_registry.ahk`) with 355 settings across 15 sections. Each entry declares its type, default, min/max bounds, and description. Validation, documentation generation, and editor UI are all registry-driven — adding a setting to one file propagates everywhere automatically.
+
+Both `config.ini` and `blacklist.txt` are live-monitored via `ReadDirectoryChangesW` with 300ms debounce. Edit either file in Notepad, save, and the app picks up the change — config changes trigger a full restart through the launcher, blacklist changes hot-reload the eligibility rules in-process. This also means `git checkout` of a different config branch just works.
 
 ---
 
@@ -143,6 +191,38 @@ AHK GUI Window
 - **Resource embedding:** Ahk2Exe's RT_HTML resource type breaks on CSS `%` values (it tries to dereference them). HTML resources use `.txt` extension instead.
 
 The fallback is a pure AHK native editor with sidebar navigation and scroll viewport — no external dependencies.
+
+---
+
+## Native Windows Theming
+
+Alt-Tabby implements the full Windows dark mode API stack — including undocumented APIs that Microsoft ships but doesn't publicly document — from pure AHK v2. ([`theme.ahk`](../src/shared/theme.ahk))
+
+### The Dark Mode API Layers
+
+Windows dark mode isn't a single API call. It's five layers, each targeting a different part of the UI:
+
+1. **`SetPreferredAppMode`** (uxtheme ordinal #135) — tells Windows this process wants dark mode. Must be called before any GUI is created or context menus render light regardless.
+2. **`AllowDarkModeForWindow`** (uxtheme ordinal #133) — enables dark mode per-window. Applied to each GUI after construction.
+3. **`DwmSetWindowAttribute`** with `DWMWA_USE_IMMERSIVE_DARK_MODE` (attribute 20) — darkens the title bar and window frame.
+4. **`SetWindowTheme`** with `"DarkMode_Explorer"` — re-themes individual controls (edit boxes, dropdowns, tree views) to use the dark variant of their visual style.
+5. **`WM_CTLCOLOR*` message handlers** — for controls where `SetWindowTheme` isn't enough, custom color handlers return cached GDI brushes for background and text colors.
+
+All five layers are called through `DllCall` — ordinal imports for the undocumented uxtheme functions, standard calls for DWM and user32.
+
+### Beyond Dark Mode
+
+The theming goes deeper than light vs. dark:
+
+- **System theme following** — a `WM_SETTINGCHANGE` listener detects when the user toggles dark/light in Windows Settings and re-themes all windows and controls automatically
+- **Force override** — users can force dark or light regardless of system setting
+- **User-customizable palettes** — 15+ color slots for each mode (background, text, accent, border, control backgrounds, etc.) all configurable via `config.ini`
+- **Win11 title bar customization** — `DwmSetWindowAttribute` with attributes 34 (caption color), 35 (text color), and 36 (border color) for custom-colored title bars, not just dark/light
+- **Window materials** — `DWMWA_SYSTEMBACKDROP_TYPE` (attribute 38) for Mica, MicaAlt, and Acrylic backdrop effects on supported Windows 11 builds
+- **Rounded corners** — `DWMWA_WINDOW_CORNER_PREFERENCE` (attribute 33) for controlling corner radius on Win11
+- **Drop-in dark MsgBox** — `ThemeMsgBox()` replaces the standard `MsgBox` with a fully themed version, used throughout the application for consistent dark mode dialogs
+
+The theme system is shared across all native AHK GUIs (config editor, blacklist editor, wizard, debug viewer). The main overlay is excluded — it has its own ARGB compositor — but every dialog and editor window gets automatic dark mode without per-window effort.
 
 ---
 
@@ -187,21 +267,6 @@ AHK's `Sleep` and `SetTimer` have ~16ms resolution (the Windows timer tick). For
 
 ---
 
-## DWM Composition
-
-Alt-Tabby uses undocumented and semi-documented Windows DWM APIs for native desktop integration:
-
-- **Acrylic blur** via `SetWindowCompositionAttribute` (undocumented user32 API) — blurred translucent backdrop with tint color
-- **Mica and MicaAlt materials** via `DwmSetWindowAttribute` with `DWMWA_SYSTEMBACKDROP_TYPE` (Windows 11)
-- **Dark mode** via `SetPreferredAppMode` (uxtheme ordinal #135), `AllowDarkModeForWindow` (ordinal #133), and `DwmSetWindowAttribute` with `DWMWA_USE_IMMERSIVE_DARK_MODE`
-- **Window cloaking** via `DWMWA_CLOAK` for zero-flash show/hide
-- **Rounded corners** via `DWMWA_WINDOW_CORNER_PREFERENCE`
-- **DwmFlush** for compositor synchronization after render target updates
-
-The theme system reacts to `WM_SETTINGCHANGE` broadcasts automatically, re-theming all windows and controls when the user toggles dark/light mode in Windows Settings.
-
----
-
 ## Portable Executable with Auto-Update
 
 A single compiled `.exe` with no installer, no registry entries, no external dependencies:
@@ -228,6 +293,74 @@ The compile script ([`compile.ps1`](../tools/compile.ps1)) isn't a thin wrapper 
 Each step has independent staleness detection. A typical no-change rebuild completes in under a second. The `--force` flag overrides all skips. The `--timing` flag emits machine-readable `TIMING:step:ms` output for CI integration.
 
 The pipeline also handles junction/symlink resolution for process management (finding and killing only *this directory's* AltTabby instances, not the user's personal install or other worktree test processes), and provides detailed error recovery when the exe is locked by a running process.
+
+---
+
+## Test Infrastructure
+
+AHK v2 has no built-in test runner, no assertion library, and no parallel execution. The language's compiler silently accepts code that will fail at runtime — missing `global` declarations create local variables instead, wrong parameter counts go unnoticed, and `Critical "On"` without matching `"Off"` leaks silently. These don't crash; they generate dialog popups that block automated testing or cause silent misbehavior. We built the testing infrastructure from scratch. ([`tests/`](../tests/))
+
+### Static Analysis Pre-Gate
+
+Every test run begins with 86 static analysis checks — PowerShell scripts that scan AHK source for patterns the compiler misses. Bundled into 12 parallel bundles, the pre-gate runs in ~8 seconds and blocks all tests (unit, GUI, and live) if any check fails. New checks are auto-discovered: drop a `check_*.ps1` in the test directory and it's enforced on the next run.
+
+What they catch:
+
+| Category | Checks | Examples |
+|----------|--------|----------|
+| **Scoping** | `check_globals`, `switch_global` | Missing `global` declarations — AHK silently creates a local instead of accessing the file-scope variable |
+| **Concurrency** | `critical_leaks`, `critical_sections`, `critical_heavy_calls`, `callback_critical` | Unmatched `Critical "On"`/`"Off"`, COM calls inside Critical (blocks the STA pump), missing Critical in hotkey callbacks |
+| **Functions** | `check_arity`, `check_dead_functions`, `check_undefined_calls`, `duplicate_functions` | Wrong parameter counts, calls to functions that don't exist, dead code |
+| **Lifecycle** | `timer_lifecycle`, `destroy_untrack`, `scan_pairing` | Unmatched SetTimer/kill, missing cleanup on window destroy, unbalanced BeginScan/EndScan |
+| **Correctness** | `return_paths`, `unreachable_code`, `bare_try`, `numeric_string_comparison` | Functions that fall through without returning, dead code after return, swallowed errors, string-vs-number comparison bugs |
+| **Patterns** | `v1_patterns`, `send_patterns`, `map_dot_access`, `dllcall_types` | AHK v1 syntax in a v2 codebase, `SendInput` (uninstalls hooks), dot access on Map objects, wrong DllCall type annotations |
+| **Ownership** | `global_ownership`, `function_visibility` | Cross-file mutation of globals not listed in the ownership manifest, calls to `_Private()` functions from other files |
+| **Resources** | `dead_globals`, `dead_locals`, `dead_params`, `dead_config`, `lint_ignore_orphans` | Unused variables, config keys defined but never read, stale lint-ignore annotations |
+| **Integrity** | `registry_key_uniqueness`, `registry_completeness`, `config_registry_integrity`, `fr_event_coverage` | Duplicate config keys, missing registry fields, flight recorder events defined but never emitted |
+
+### Test Suite
+
+The test harness runs three types of tests in parallel where possible:
+
+- **Unit tests** — production source files are `#Include`'d directly, with mocks for visual/external layers (COM, DllCall, GUI objects). Tests call real production functions, not copies. 25 test files covering store operations, state machine transitions, IPC protocol, blacklist logic, and more.
+- **GUI state machine tests** — exercise the full IDLE → ALT_PENDING → ACTIVE state machine with mock rendering, verifying freeze behavior, workspace toggle, escape handling, and config combinations.
+- **Live integration tests** — launch the compiled `AltTabby.exe` as a real process, interact via named pipes and WM_COPYDATA, and verify end-to-end behavior including komorebi integration and heartbeat monitoring.
+
+The harness uses poll-based waiting (`WaitForFlag`) instead of fixed sleeps, so tests complete as fast as the system allows. Process launching uses cursor suppression and cleanup utilities. The pre-gate gates *all* test types — static analysis catches AHK coding errors that pass compilation but generate runtime dialog popups, which would break the automated flow for any test running AHK code.
+
+Timing instrumentation reports per-check and per-suite durations. A dedicated benchmark script measures AHK startup overhead to evaluate parallelization split strategies — because at 12,700 lines of test code, the bottleneck is often process launch time, not test execution.
+
+---
+
+## Build-Time Profiler with Flamechart Export
+
+Alt-Tabby includes a compile-time instrumentation profiler that generates industry-standard flamecharts — with zero cost in production builds. ([`profiler.ahk`](../src/shared/profiler.ahk))
+
+### How It Works
+
+Functions are instrumented with matched `Profiler.Enter()` / `Profiler.Leave()` calls, tagged with a `;@profile` comment:
+
+```ahk
+Profiler.Enter("_GUI_PaintOverlay")  ; @profile
+; ... rendering work ...
+Profiler.Leave()  ; @profile
+```
+
+The `compile.ps1` build script strips every line containing `;@profile` from production builds. The profiler code is physically removed from the compiled executable — not disabled, not behind a flag, *gone*. Zero runtime cost, zero binary size cost.
+
+### Recording
+
+In debug builds, the profiler writes QPC timestamps (~100ns precision) into a pre-allocated ring buffer holding the most recent 50,000 events — several minutes of recording at typical call rates. A configurable hotkey toggles recording on/off. No file I/O during recording, no allocations, no measurable impact on the code being profiled.
+
+### Flamechart Visualization
+
+On stop, the profiler exports to [speedscope](https://www.speedscope.app/) JSON format — the same format used by Chrome DevTools, Firefox Profiler, and other industry tools. Open the JSON in speedscope.app (runs entirely in-browser, no upload) and get:
+
+- **Flamecharts** — call stacks over time, showing exactly what ran when and for how long
+- **Left-heavy aggregation** — merged call trees showing where cumulative time is spent
+- **Sandwich view** — callers and callees of any function
+
+This means you can profile an AHK v2 application with the same tooling used for C++ and JavaScript performance work. The profiler infrastructure (ring buffer, QPC timestamps, speedscope export) is itself written in AHK.
 
 ---
 
@@ -277,70 +410,6 @@ The AHK ecosystem has libraries that embed compiled C as base64 MCode blobs — 
 For icon processing, we wrote our own ([`icon_alpha.ahk`](../src/gui/icon_alpha.ahk), [`icon_alpha.c`](../tools/native_benchmark/native_src/icon_alpha.c)). Icons without alpha channels (common in older Win32 apps) require scanning every pixel's alpha byte and optionally applying a mask — an O(N) operation that scales with pixel count. At 128×128, a scan costs **1.5ms** in AHK's interpreter; the full scan-and-mask pipeline on a 256×256 icon costs **20ms**. We wrote the C source, compiled it with MSVC (`/O2 /GS- /Zl` — optimize for speed, no CRT, no stack checks), parsed the COFF `.obj` with a custom AHK-based COFF reader, extracted the machine code as base64 blobs, and embedded them in the AHK source. The result: the 128×128 scan drops to **~6 microseconds** (252x faster), and the 256×256 scan to **10 microseconds** — a **572x speedup**. [Benchmarked and verified](../tools/native_benchmark/BENCH_RESULTS.md).
 
 The full pipeline ([`build_mcode.ps1`](../tools/mcode/build_mcode.ps1), [pipeline docs](../tools/mcode/MCODE_PIPELINE.md)): C source → MSVC compile → COFF `.obj` parse → base64 extraction → AHK embedding with named exports. Four exported functions (alpha scan, mask apply, premultiply alpha, scan-only), both x86 and x64, with a build script that produces paste-ready blobs. Before building any MCode, we run systematic benchmarks across 6 candidate hot paths with GO/NO-GO decisions — most were already fast enough in AHK (StrPut wraps `WideCharToMultiByte` under the hood, `InStr` wraps `wcsstr`). The ones that weren't got native treatment.
-
----
-
-## Native Windows Theming
-
-Alt-Tabby implements the full Windows dark mode API stack — including undocumented APIs that Microsoft ships but doesn't publicly document — from pure AHK v2. ([`theme.ahk`](../src/shared/theme.ahk))
-
-### The Dark Mode API Layers
-
-Windows dark mode isn't a single API call. It's five layers, each targeting a different part of the UI:
-
-1. **`SetPreferredAppMode`** (uxtheme ordinal #135) — tells Windows this process wants dark mode. Must be called before any GUI is created or context menus render light regardless.
-2. **`AllowDarkModeForWindow`** (uxtheme ordinal #133) — enables dark mode per-window. Applied to each GUI after construction.
-3. **`DwmSetWindowAttribute`** with `DWMWA_USE_IMMERSIVE_DARK_MODE` (attribute 20) — darkens the title bar and window frame.
-4. **`SetWindowTheme`** with `"DarkMode_Explorer"` — re-themes individual controls (edit boxes, dropdowns, tree views) to use the dark variant of their visual style.
-5. **`WM_CTLCOLOR*` message handlers** — for controls where `SetWindowTheme` isn't enough, custom color handlers return cached GDI brushes for background and text colors.
-
-All five layers are called through `DllCall` — ordinal imports for the undocumented uxtheme functions, standard calls for DWM and user32.
-
-### Beyond Dark Mode
-
-The theming goes deeper than light vs. dark:
-
-- **System theme following** — a `WM_SETTINGCHANGE` listener detects when the user toggles dark/light in Windows Settings and re-themes all windows and controls automatically
-- **Force override** — users can force dark or light regardless of system setting
-- **User-customizable palettes** — 15+ color slots for each mode (background, text, accent, border, control backgrounds, etc.) all configurable via `config.ini`
-- **Win11 title bar customization** — `DwmSetWindowAttribute` with attributes 34 (caption color), 35 (text color), and 36 (border color) for custom-colored title bars, not just dark/light
-- **Window materials** — `DWMWA_SYSTEMBACKDROP_TYPE` (attribute 38) for Mica, MicaAlt, and Acrylic backdrop effects on supported Windows 11 builds
-- **Rounded corners** — `DWMWA_WINDOW_CORNER_PREFERENCE` (attribute 33) for controlling corner radius on Win11
-- **Drop-in dark MsgBox** — `ThemeMsgBox()` replaces the standard `MsgBox` with a fully themed version, used throughout the application for consistent dark mode dialogs
-
-The theme system is shared across all native AHK GUIs (config editor, blacklist editor, wizard, debug viewer). The main overlay is excluded — it has its own ARGB compositor — but every dialog and editor window gets automatic dark mode without per-window effort.
-
----
-
-## Build-Time Profiler with Flamechart Export
-
-Alt-Tabby includes a compile-time instrumentation profiler that generates industry-standard flamecharts — with zero cost in production builds. ([`profiler.ahk`](../src/shared/profiler.ahk))
-
-### How It Works
-
-Functions are instrumented with matched `Profiler.Enter()` / `Profiler.Leave()` calls, tagged with a `;@profile` comment:
-
-```ahk
-Profiler.Enter("_GUI_PaintOverlay")  ; @profile
-; ... rendering work ...
-Profiler.Leave()  ; @profile
-```
-
-The `compile.ps1` build script strips every line containing `;@profile` from production builds. The profiler code is physically removed from the compiled executable — not disabled, not behind a flag, *gone*. Zero runtime cost, zero binary size cost.
-
-### Recording
-
-In debug builds, the profiler writes QPC timestamps (~100ns precision) into a pre-allocated ring buffer holding the most recent 50,000 events — several minutes of recording at typical call rates. A configurable hotkey toggles recording on/off. No file I/O during recording, no allocations, no measurable impact on the code being profiled.
-
-### Flamechart Visualization
-
-On stop, the profiler exports to [speedscope](https://www.speedscope.app/) JSON format — the same format used by Chrome DevTools, Firefox Profiler, and other industry tools. Open the JSON in speedscope.app (runs entirely in-browser, no upload) and get:
-
-- **Flamecharts** — call stacks over time, showing exactly what ran when and for how long
-- **Left-heavy aggregation** — merged call trees showing where cumulative time is spent
-- **Sandwich view** — callers and callees of any function
-
-This means you can profile an AHK v2 application with the same tooling used for C++ and JavaScript performance work. The profiler infrastructure (ring buffer, QPC timestamps, speedscope export) is itself written in AHK.
 
 ---
 
