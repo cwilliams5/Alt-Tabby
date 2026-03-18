@@ -860,25 +860,23 @@ _KSub_QuickExtractEventType(jsonLine) {
 ; Returns 0 if not found.
 _KSub_QuickExtractHwnd(jsonLine) {
     ; hwnd appears in event.content[{...,"hwnd":N,...}]
-    ; Search within first 500 chars (event object is small)
-    searchLimit := Min(500, StrLen(jsonLine))
-    searchPortion := SubStr(jsonLine, 1, searchLimit)
-
-    pos := InStr(searchPortion, '"hwnd":')
-    if (!pos)
+    ; Search on original string directly (avoids ~500-char SubStr copy per call)
+    pos := InStr(jsonLine, '"hwnd":')
+    if (!pos || pos > 500)
         return 0
 
     ; Skip past '"hwnd":' (7 chars)
     pos += 7
+    searchLimit := Min(pos + 30, StrLen(jsonLine))  ; hwnd is at most ~10 digits
 
     ; Skip whitespace
-    while (pos <= searchLimit && SubStr(searchPortion, pos, 1) = " ")
+    while (pos <= searchLimit && SubStr(jsonLine, pos, 1) = " ")
         pos++
 
     ; Extract digits (use InStr instead of comparison operators - AHK v2 string comparison quirk)
     numStr := ""
     while (pos <= searchLimit) {
-        ch := SubStr(searchPortion, pos, 1)
+        ch := SubStr(jsonLine, pos, 1)
         if (ch = "" || !InStr("0123456789", ch))
             break
         numStr .= ch
@@ -1496,7 +1494,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     mruTick := A_TickCount
 
     ; Collect all patches into a Map for batch update (one rev bump instead of N)
-    batchPatches := Map()
+    static batchPatches := Map()
+    batchPatches.Clear()
 
     addedCount := 0
     updatedCount := 0
@@ -1504,8 +1503,9 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     for hwnd, _data in wsMap {
         _wsn := _data.wsName
         _isCur := _data.isCurrent
-        ; Check if window exists in store
-        if (!gWS_Store.Has(hwnd)) {
+        ; Single Get() replaces separate Has() + Get() (avoids two hash lookups)
+        row := gWS_Store.Get(hwnd, 0)
+        if (!row) {
             ; Window not in store - add it!
             ; This happens for windows on other workspaces that winenum didn't see
             ; Extract title/class/exe lazily — only needed for new windows
@@ -1537,13 +1537,9 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             addedCount++
         } else {
             ; Window exists - only patch if workspace data actually changed
-            ; RACE FIX: Use .Get() — WEH timer can remove hwnd between .Has() check and here
-            row := gWS_Store.Get(hwnd, 0)
-            if (!row)
-                continue
-            if (!row.HasOwnProp("workspaceName") || row.workspaceName != _wsn
-                || !row.HasOwnProp("isOnCurrentWorkspace") || row.isOnCurrentWorkspace != _isCur
-                || !row.HasOwnProp("isCloaked") || row.isCloaked != !_isCur) {
+            if (row.workspaceName != _wsn
+                || row.isOnCurrentWorkspace != _isCur
+                || row.isCloaked != !_isCur) {
                 batchPatches[hwnd] := {
                     workspaceName: _wsn,
                     isOnCurrentWorkspace: _isCur,

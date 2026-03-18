@@ -504,7 +504,9 @@ FX_PreRenderMouseEffect(w, h) {
         return
     }
 
-    tBefore := QPC()
+    adaptiveFPS := cfg.PerfAdaptiveMouseFPS  ; PERF: cache config read (used twice)
+    if (adaptiveFPS)
+        tBefore := QPC()
     try {
         ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
         me._bitmap := Shader_PreRender(me.key, w, h, baseTime,
@@ -521,11 +523,13 @@ FX_PreRenderMouseEffect(w, h) {
             LogAppend(LOG_PATH_SHADER, errDetail)
         }
     }
-    mouseLastRenderMs := QPC() - tBefore
 
     ; If the mouse shader alone took more than half the frame budget, skip next frame
-    if (cfg.PerfAdaptiveMouseFPS && mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
-        mouseSkipNext := true
+    if (adaptiveFPS) {
+        mouseLastRenderMs := QPC() - tBefore
+        if (mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
+            mouseSkipNext := true
+    }
     Profiler.Leave() ; @profile
 }
 
