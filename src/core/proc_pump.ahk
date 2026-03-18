@@ -114,6 +114,7 @@ ProcPump_EnsureRunning() {
 _PP_Tick() {
     Profiler.Enter("_PP_Tick") ; @profile
     global ProcBatchPerTick, _PP_IdleTicks, _PP_IdleThreshold, _PP_TimerOn, cfg
+    global _PP_FailedPidCache, _PP_FailedPidCacheTTL  ; PERF: hoisted from loop body
 
     global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
     static _errCount := 0  ; Error boundary: consecutive error tracking
@@ -142,7 +143,7 @@ _PP_Tick() {
             continue
 
         ; Check failed PID cache first - skip recently failed PIDs
-        global _PP_FailedPidCache, _PP_FailedPidCacheTTL
+        ; (_PP_FailedPidCache, _PP_FailedPidCacheTTL declared at function top)
         ; RACE FIX: Protect cache read - ProcPump_PruneFailedPidCache runs from heartbeat timer
         Critical "On"
         if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL) {

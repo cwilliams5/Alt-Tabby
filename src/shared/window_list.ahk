@@ -189,9 +189,9 @@ WL_EndScan(graceMs := "") {
     toMarkMissing := []
     komorebiKeep := []
     for _, hwnd in hwnds {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!rec)
             continue  ; May have been removed by another producer
-        rec := gWS_Store[hwnd]
         if (rec.lastSeenScanId != gWS_ScanId) {
             ; Komorebi-managed windows are "present" even if winenum doesn't see them
             if (rec.HasOwnProp("workspaceName") && rec.workspaceName != "") {
@@ -215,9 +215,9 @@ WL_EndScan(graceMs := "") {
 
     ; Mark komorebi windows as present, preserve their Z value
     for _, hwnd in komorebiKeep {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!rec)
             continue
-        rec := gWS_Store[hwnd]
         rec.lastSeenScanId := gWS_ScanId
         rec.presentNow := true
         rec.present := true
@@ -225,9 +225,9 @@ WL_EndScan(graceMs := "") {
 
     ; Mark missing windows (first miss starts the TTL clock)
     for _, hwnd in toMarkMissing {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!rec)
             continue
-        rec := gWS_Store[hwnd]
         if (rec.presentNow) {
             rec.presentNow := false
             rec.present := false
@@ -238,7 +238,8 @@ WL_EndScan(graceMs := "") {
 
     ; Remove dead windows (re-check IsWindow in case window reappeared between phases)
     for _, hwnd in toRemove {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!rec)
             continue
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             _WS_DeleteWindow(hwnd)
@@ -246,7 +247,7 @@ WL_EndScan(graceMs := "") {
             changed := true
         } else {
             ; Window reappeared — reset presence, winenum will find it next scan
-            rec := gWS_Store[hwnd]
+            ; rec already fetched by Get() above
             rec.presentNow := true
             rec.present := true
             rec.missingSinceTick := 0
@@ -278,6 +279,7 @@ WL_UpsertWindow(records, source := "") {
     ; Collect rows needing enrichment (enqueued after Critical section ends)
     static rowsToEnqueue := []
     rowsToEnqueue.Length := 0
+    rowsToEnqueue.Capacity := records.Length  ; PERF: pre-size to avoid realloc during Push
 
     ; LATENCY FIX: Single Critical section for entire batch (was per-record).
     ; For 30 windows this saves ~58 Critical enter/exit transitions (~1-2ms).
@@ -303,7 +305,7 @@ WL_UpsertWindow(records, source := "") {
 
         ; If window has komorebi workspace data, don't let winenum overwrite state/isCloaked
         ; Komorebi is authoritative for workspace state
-        hasKomorebiWs := row.HasOwnProp("workspaceName") && row.workspaceName != ""
+        hasKomorebiWs := !isNew && row.HasOwnProp("workspaceName") && row.workspaceName != ""
 
         ; Track if any field actually changed
         rowChanged := false
@@ -601,7 +603,7 @@ WL_ValidateExistence() {
 
     toRemove := []
     for _, hwnd in hwnds {
-        if (!gWS_Store.Has(hwnd))
+        if (!gWS_Store.Get(hwnd, 0))  ; PERF: single lookup replaces Has+[] double hash
             continue  ; May have been removed by another producer
 
         ; Check 1: IsWindow returns false for truly destroyed windows

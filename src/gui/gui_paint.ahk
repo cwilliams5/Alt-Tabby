@@ -461,21 +461,27 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
+    ; Hoist config/global reads used in compositor stack (matches D2D_Res hoisting at lines 589-609)
+    bgAbove := cfg.BGImgRenderAboveShaders
+    gpuReady := gFX_GPUReady
+    selEffKey := gFX_SelectionEffect.key
+    hovEffKey := gFX_HoverEffect.key
+
     ; Background image layer (configurable: above or below shader layers)
-    if (!cfg.BGImgRenderAboveShaders)
+    if (!bgAbove)
         BGImg_Draw()
 
     ; Shader layers (N stackable layers from config)
     FX_DrawShaderLayers(wPhys, hPhys)
 
-    if (cfg.BGImgRenderAboveShaders)
+    if (bgAbove)
         BGImg_Draw()
 
     ; Mouse effect layer (above shader layers, below selection)
     FX_DrawMouseEffect(wPhys, hPhys)
 
     ; Text shadow params (always enabled when GPU ready)
-    shadowP := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
+    shadowP := _FX_GetShadowParams(gpuReady ? 1 : 0, scale)
     static _shadowBrARGB := -1, _shadowBrCached := 0, _shadowBrGen := -1
     if (shadowP.enabled) {
         if (shadowP.argb != _shadowBrARGB || _shadowBrGen != gD2D_BrushGeneration) {
@@ -631,7 +637,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 selY := baseSelY
             }
 
-            if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+            if (selEffKey != "" && gpuReady) {
                 ; Shader-based selection effect
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
                     cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, 1.0, entranceT, Rad)
@@ -662,17 +668,17 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 hoverX := selX      ; PERF: reuse selection geometry (identical computation)
                 hoverY := yRow - selExpandY
                 hoverW := selW      ; PERF: reuse selection geometry (identical computation)
-                if (gFX_HoverEffect.key != "" && gFX_GPUReady) {
+                if (hovEffKey != "" && gpuReady) {
                     ; Path 1: Independent hover shader
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
                         cfgHoverARGB, cfgHovBorderARGB, cfgHovBorderW, entranceT, Rad)
                     FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
-                } else if (!cfgUseHoverSelEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+                } else if (!cfgUseHoverSelEffect && selEffKey != "" && gpuReady) {
                     ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
                         cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, cfgSelIntensityHover, entranceT, Rad)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
-                } else if (gFX_GPUReady) {
+                } else if (gpuReady) {
                     ; Path 3: GPU flat fill + border
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
                 } else if ((cfgHoverARGB >> 24) > 0 || cfgHovBorderW > 0) {
@@ -786,7 +792,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         _isAlpha := cfg.GUI_InnerShadowAlpha
         _isDepthPx := cfg.GUI_InnerShadowDepthPx
     }
-    if (gFX_GPUReady && _isEnabled && _isAlpha > 0) {
+    if (gpuReady && _isEnabled && _isAlpha > 0) {
         FX_GPU_DrawInnerShadow(wPhys, hPhys, Round(_isDepthPx * scale), _isAlpha)
     }
 

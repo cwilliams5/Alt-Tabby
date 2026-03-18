@@ -1256,8 +1256,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ComCall(11, ctx, "ptr", gShader_VS, "ptr", 0, "uint", 0, "int")
 
         ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
-        static cbBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", cb, cbBuf)
+        static cbBuf := Buffer(A_PtrSize, 0), cbBufLast := 0
+        if (cb != cbBufLast) {
+            NumPut("ptr", cb, cbBuf)
+            cbBufLast := cb
+        }
         ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf, "int")
 
         ; PSSetSamplers (vtable 10): bind all 8 slots with shared sampler
@@ -1297,8 +1300,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
     ; Bind compute particle buffer as SRV at slot 4 (PSSetShaderResources, startSlot=4)
     if (entry.csSRV) {
-        static csParticleSrvBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", entry.csSRV, csParticleSrvBuf)
+        static csParticleSrvBuf := Buffer(A_PtrSize, 0), csLastSrv := 0
+        if (entry.csSRV != csLastSrv) {
+            NumPut("ptr", entry.csSRV, csParticleSrvBuf)
+            csLastSrv := entry.csSRV
+        }
         ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csParticleSrvBuf, "int")
     }
 
@@ -1313,17 +1319,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ; OMSetRenderTargets(0, null, null)
         ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
 
-        ; Unbind SRVs: consolidated single call covering slots 0-4 when both
-        ; iChannel textures and compute particle SRV are bound (avoids two ComCalls)
+        ; Unbind SRVs: always clear slots 0-4 (iChannels + particle SRV).
+        ; Unbinding slots that weren't bound is a D3D11 no-op (null → null).
         static nullSrvBuf5 := Buffer(A_PtrSize * 5, 0)
-        if (nSrvs > 0 && entry.csSRV) {
-            ; Single call unbinds slots 0-4 (iChannels at 0..nSrvs-1 + particle SRV at 4)
+        if (nSrvs > 0 || entry.csSRV)
             ComCall(8, ctx, "uint", 0, "uint", 5, "ptr", nullSrvBuf5, "int")
-        } else if (nSrvs > 0) {
-            ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf5, "int")
-        } else if (entry.csSRV) {
-            ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", nullSrvBuf5, "int")
-        }
     }
 
     ; D2D bitmap is backed by the render target's DXGI surface — no readback needed.

@@ -729,6 +729,8 @@ _KomorebiSub_Maintenance() {
     if (!_KSub_hPipe)
         return
 
+    logEnabled := cfg.DiagKomorebiLog  ; PERF: cache config read (used 5 times below)
+
     ; 1. Check if async connect has completed (same logic as _KomorebiSub_Poll)
     if (!_KSub_Connected && _KSub_hEvent) {
         WAIT_OBJECT_0 := 0
@@ -744,7 +746,7 @@ _KomorebiSub_Maintenance() {
             if (ok) {
                 _KSub_Connected := true
                 DllCall("ResetEvent", "ptr", _KSub_hEvent)
-                if (cfg.DiagKomorebiLog)
+                if (logEnabled)
                     KSub_DiagLog("Maintenance: Connection established")
 
                 ; Now enable async I/O and issue first read
@@ -752,11 +754,11 @@ _KomorebiSub_Maintenance() {
                     if (_KomorebiSub_EnableAsync()) {
                         _KSub_AsyncMode := true
                         _KomorebiSub_IssueRead()
-                        if (cfg.DiagKomorebiLog)
+                        if (logEnabled)
                             KSub_DiagLog("Maintenance: Async mode enabled after connect")
                     } else {
                         ; Async setup failed — fall back to legacy polling
-                        if (cfg.DiagKomorebiLog)
+                        if (logEnabled)
                             KSub_DiagLog("Maintenance: Async failed, switching to legacy poll")
                         SetTimer(_KomorebiSub_Maintenance, 0)
                         SetTimer(_KomorebiSub_Poll, KSub_PollMs)
@@ -775,14 +777,14 @@ _KomorebiSub_Maintenance() {
 
     ; 2. Recovery: if no read is pending in async mode, re-issue
     if (_KSub_AsyncMode && !_KSub_ReadPending) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("Maintenance: No read pending, re-issuing")
         _KomorebiSub_IssueRead()
     }
 
     ; 3. Idle recycle: restart subscription if no events for too long
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("Maintenance: Idle recycle after " (A_TickCount - _KSub_LastEventTick) "ms")
         _KomorebiSub_Start()
     }

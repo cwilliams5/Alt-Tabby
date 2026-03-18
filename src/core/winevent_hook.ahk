@@ -211,7 +211,7 @@ WinEventHook_IsRunning() {
 ;   0x800C = EVENT_OBJECT_NAMECHANGE
 _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
     global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded, _WEH_PendingLocChange
-    global cfg, gWS_Store
+    global cfg, gWS_Store, _WEH_TimerOn
 
     try {  ; Error boundary: DllCall callback — unhandled throw = undefined Win32 behavior
     Profiler.Enter("_WEH_WinEventProc") ; @profile
@@ -244,7 +244,10 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
-        _WinEventHook_EnsureTimerRunning()
+        ; PERF: Skip EnsureTimerRunning when timer is already on — the fast-path
+        ; one-shot above is sufficient. Avoids entering Pump_EnsureRunning's Critical.
+        if (!_WEH_TimerOn)
+            _WinEventHook_EnsureTimerRunning()
         Profiler.Leave() ; @profile
         return
     }
@@ -257,7 +260,8 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         _WEH_PendingHwnds[hwnd] := -2  ; -2 = hidden, check eligibility in batch
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
-        _WinEventHook_EnsureTimerRunning()
+        if (!_WEH_TimerOn)
+            _WinEventHook_EnsureTimerRunning()
         Profiler.Leave() ; @profile
         return
     }
