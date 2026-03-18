@@ -84,12 +84,6 @@ In frequently-called functions (paint, input, per-window loops):
 
 AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late — the string is already built. Move variables computed **only for logging** inside the guard too. Enforced by `log_guards` check.
 
-## #SingleInstance in Multi-Process Architecture
-
-- Entry point (`alt_tabby.ahk`): `#SingleInstance Off`
-- Module files: NO `#SingleInstance` directive
-- This allows store + gui from same exe with different args
-
 ## Compilation
 
 - `tools/compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience

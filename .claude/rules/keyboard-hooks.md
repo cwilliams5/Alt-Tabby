@@ -8,7 +8,7 @@
 
 ## Key Patterns
 
-- **Async activation**: Buffer events in `gGUI_EventBuffer` while `gGUI_PendingPhase != ""`. Escape cancels pending activation.
+- **Async activation**: Buffer events in `gGUI_EventBuffer` while `gGUI_Pending.phase != ""`. Escape cancels pending activation.
 - **Lost Tab detection**: ALT_DN + ALT_UP without TAB = Tab was lost. Synthesize it.
 - **In-process MRU**: Window data lives in MainProcess — MRU is always authoritative, no stale snapshot risk.
 

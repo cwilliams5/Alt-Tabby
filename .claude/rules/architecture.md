@@ -114,7 +114,6 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 - Main overlay is excluded (has its own ARGB colors); debug viewer uses the theme system
 - `Theme_Init()` must be called **before any `Gui()` constructor** (sets SetPreferredAppMode)
 - `Theme_ApplyToGui(gui)` after constructor, `Theme_ApplyToControl(ctrl, type)` after each control
-- `ThemeMsgBox()` is a drop-in `MsgBox` replacement (enforced by `thememsgbox` check)
 - WebView2 editors: `Theme_GetWebViewJS()` generates CSS custom properties
 - Reacts to system theme changes via WM_SETTINGCHANGE automatically
 

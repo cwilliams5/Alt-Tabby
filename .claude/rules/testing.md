@@ -25,7 +25,7 @@ Or run AHK directly (double-slash for Git Bash):
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
 
-Logs: `%TEMP%\alt_tabby_tests_<worktree>.log` (unit tests). `--live` adds suite suffixes: `_core`, `_features`, `_execution`, etc.
+Logs: `%TEMP%\alt_tabby_tests_<worktree>.log` (unit tests). `--live` adds suite suffixes: `_core`, `_network`, `_features`, `_execution`, `_pump`, `_watcher`.
 
 **Pre-gate:** Static analysis (`tests/static_analysis.ps1`) runs before all tests. If any function uses a file-scope global without a `global` declaration, the suite is blocked. Fix by adding `global <name>` inside the flagged function. New checks are auto-discovered as `tests/check_*.ps1`.
 
