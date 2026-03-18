@@ -1,6 +1,6 @@
 # Building Alt-Tabby with Claude Code
 
-Alt-Tabby is a 50,000-line AHK v2 codebase built primarily by [Claude Code](https://claude.ai/claude-code) as the hands-on-keyboard coder, with a human (me) directing architecture, recognizing failure patterns, and reviewing output. This page documents the specific systems we built to make that work.
+Alt-Tabby is a 41,000-line AHK v2 codebase built primarily by [Claude Code](https://claude.ai/claude-code) as the hands-on-keyboard coder, with a human (me) directing architecture, recognizing failure patterns, and reviewing output. This page documents the specific systems we built to make that work.
 
 For a generalized, project-agnostic version of the lessons learned, see [Making my unteachable AI build its own cage](making-my-unteachable-ai-build-its-own-cage.md).
 
@@ -18,7 +18,7 @@ Our response was to build systems that make mistakes mechanically impossible rat
 
 ### Static Analysis Pre-Gate
 
-Every test run begins with a pre-gate ([`static_analysis.ps1`](../tests/static_analysis.ps1)) that runs **71 static analysis checks** in parallel (~8 seconds). If any check fails, the entire test suite is blocked — unit, GUI, and live integration tests alike.
+Every test run begins with a pre-gate ([`static_analysis.ps1`](../tests/static_analysis.ps1)) that runs **86 static analysis checks** in parallel (~8 seconds). If any check fails, the entire test suite is blocked — unit, GUI, and live integration tests alike.
 
 Checks are auto-discovered: drop a `tests/check_*.ps1` file into the test directory and it's enforced on the next run. No registration.
 
@@ -44,8 +44,8 @@ Related checks are bundled into 8 batch scripts that share PowerShell startup co
 ```
 --- Pre-Gate: Syntax Check + Static Analysis (Parallel) ---
   Syntax: 13/13 passed [PASS]
-  Running 71 static analysis check(s) in parallel...
-  Static analysis: all 71 checks passed (8.1s)
+  Running 86 static analysis check(s) in parallel...
+  Static analysis: all 86 checks passed (8.1s)
 ```
 
 ### Ownership Manifest
@@ -71,26 +71,38 @@ Functions prefixed with `_` are private to their declaring file. Any file may ca
 
 ## Query Tools
 
-17 PowerShell scripts that return semantic answers to common questions. The key insight: when the AI reads a 1,000-line file to find a 5-line answer, it burns ~1,200 tokens. A query tool returns the same answer for ~40 tokens.
+17 PowerShell scripts that return semantic answers to common questions, organized into three categories: data-flow analysis, code structure, and domain inventories. The key insight: when the AI reads a 1,000-line file to find a 5-line answer, it burns ~1,200 tokens. A query tool returns the same answer for ~40 tokens.
+
+**Data flow & ownership:**
 
 | Tool | What it answers |
 |------|----------------|
 | [`query_global_ownership.ps1`](../tools/query_global_ownership.ps1) | Who declares, writes, and reads a global variable |
-| [`query_function_visibility.ps1`](../tools/query_function_visibility.ps1) | Where a function is defined, public/private, all callers |
-| [`query_function.ps1`](../tools/query_function.ps1) | Full function body without loading the file |
 | [`query_callchain.ps1`](../tools/query_callchain.ps1) | Call graph from a function (forward or reverse, to N depth) |
 | [`query_impact.ps1`](../tools/query_impact.ps1) | Blast radius: callers + globals written + readers of those globals |
-| [`query_config.ps1`](../tools/query_config.ps1) | Config registry search by keyword, section, consumer, type |
-| [`query_interface.ps1`](../tools/query_interface.ps1) | File's public API: exported functions and globals |
-| [`query_ipc.ps1`](../tools/query_ipc.ps1) | IPC message constants: who sends and handles each |
+| [`query_mutations.ps1`](../tools/query_mutations.ps1) | Detailed global mutation analysis with guard conditions |
 | [`query_state.ps1`](../tools/query_state.ps1) | State machine branches (state × event → behavior) |
+
+**Code structure:**
+
+| Tool | What it answers |
+|------|----------------|
+| [`query_function.ps1`](../tools/query_function.ps1) | Full function body without loading the file |
+| [`query_function_visibility.ps1`](../tools/query_function_visibility.ps1) | Where a function is defined, public/private, all callers |
+| [`query_interface.ps1`](../tools/query_interface.ps1) | File's public API: exported functions and globals |
+| [`query_includes.ps1`](../tools/query_includes.ps1) | `#Include` dependency tree |
+| [`query_visibility.ps1`](../tools/query_visibility.ps1) | Functions with 0–1 external callers (inlining candidates) |
+
+**Domain inventories:**
+
+| Tool | What it answers |
+|------|----------------|
+| [`query_config.ps1`](../tools/query_config.ps1) | Config registry search by keyword, section, consumer, type |
+| [`query_ipc.ps1`](../tools/query_ipc.ps1) | IPC message constants: who sends and handles each |
 | [`query_timers.ps1`](../tools/query_timers.ps1) | SetTimer inventory: callback, interval, file, line |
 | [`query_messages.ps1`](../tools/query_messages.ps1) | Windows message handlers and senders |
 | [`query_shader.ps1`](../tools/query_shader.ps1) | Shader metadata: category, compute pipeline, textures |
-| [`query_mutations.ps1`](../tools/query_mutations.ps1) | Detailed global mutation analysis with guard conditions |
-| [`query_includes.ps1`](../tools/query_includes.ps1) | `#Include` dependency tree |
 | [`query_events.ps1`](../tools/query_events.ps1) | Flight recorder event definitions + emitter locations |
-| [`query_visibility.ps1`](../tools/query_visibility.ps1) | Functions with 0–1 external callers (inlining candidates) |
 | [`query_instrumentation.ps1`](../tools/query_instrumentation.ps1) | Profiler coverage map |
 
 **Example output:**
@@ -112,7 +124,7 @@ Total query tool code: **6,100 lines** plus a shared helper library.
 
 ## Skills System
 
-Claude Code "skills" are markdown files that define reusable workflows. Each skill loads its full instructions only when invoked — the system prompt just sees the name and description. The project has [44 skills](../.claude/skills/) covering:
+Claude Code "skills" are markdown files that define reusable workflows. Each skill loads its full instructions only when invoked — the system prompt just sees the name and description. The project has [58 skills](../.claude/skills/) covering:
 
 **Review skills** — domain-specific code review workflows that know what to look for:
 - [`/review-ownership-manifest`](../.claude/skills/review-ownership-manifest) — audit cross-file coupling against the manifest
@@ -121,7 +133,7 @@ Claude Code "skills" are markdown files that define reusable workflows. Each ski
 - [`/review-paint`](../.claude/skills/review-paint) — audit the rendering pipeline for resource leaks and race conditions
 - [`/review-criticals`](../.claude/skills/review-criticals) — verify Critical "On"/"Off" pairing across all code paths
 - [`/review-race-conditions`](../.claude/skills/review-race-conditions) — find check-then-act patterns missing atomicity
-- Plus 20+ more review skills for D3D, latency, dead code, resource leaks, shaders, professionalism, etc.
+- Plus 30+ more review skills for D3D, latency, dead code, resource leaks, shaders, professionalism, etc.
 
 **Workflow skills** — multi-step processes with domain knowledge baked in:
 - [`/shader-convert`](../.claude/skills/shader-convert) — convert Shadertoy shaders to Alt-Tabby's HLSL format (with optional Playwright scraping)
@@ -130,7 +142,7 @@ Claude Code "skills" are markdown files that define reusable workflows. Each ski
 
 ### Context Budget Discovery
 
-We discovered that skill descriptions loaded into every session were silently consuming context. Of 44 skills, only 2 benefit from auto-discovery. The other 42 use `disable-model-invocation: true` in their frontmatter — they only load when explicitly invoked with `/skillname`. A static analysis check ([`check_skill_frontmatter.ps1`](../tests/check_skill_frontmatter.ps1)) enforces that new skills declare their discovery preference and blocks unapproved auto-discovery additions.
+We discovered that skill descriptions loaded into every session were silently consuming context. Of 58 skills, only 2 benefit from auto-discovery. The other 56 use `disable-model-invocation: true` in their frontmatter — they only load when explicitly invoked with `/skillname`. A static analysis check ([`check_skill_frontmatter.ps1`](../tests/check_skill_frontmatter.ps1)) enforces that new skills declare their discovery preference and blocks unapproved auto-discovery additions.
 
 ---
 
@@ -220,16 +232,16 @@ ownership.manifest             # Cross-file mutation contracts
 
 | Metric | Value |
 |--------|-------|
-| AHK source code | ~50,000 lines |
-| Static analysis checks | 71 (in 10 scripts, 8 batch bundles) |
+| AHK source code | ~41,000 lines |
+| Static analysis checks | 86 (in 12 bundles: 8 batch + 2 standalone + 2 dual-duty query tools) |
 | Query tools | 17 |
-| Tooling code | 34,000 lines |
+| Tooling code | ~40,000 lines |
 | Pre-gate execution time | ~8 seconds |
 | Check code | 12,700 lines |
 | Query tool code | 6,100 lines |
 | Test code (AHK) | 12,700 lines across 25 files |
-| Skills | 44 (2 auto-discoverable, 42 manual-invoke) |
-| Ownership manifest entries | 11 cross-file globals |
+| Skills | 58 (2 auto-discoverable, 56 manual-invoke) |
+| Ownership manifest entries | 13 cross-file globals |
 
 ---
 

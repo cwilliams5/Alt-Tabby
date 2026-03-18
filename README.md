@@ -55,7 +55,7 @@ A fast, deeply customizable Alt-Tab replacement for Windows. Built with AutoHotk
 - **Ghost Window Detection** — automatically removes zombie windows from apps that reuse HWNDs
 
 ### Configuration
-- **200+ Settings** — control every aspect of appearance, behavior, and performance
+- **350+ Settings** — control every aspect of appearance, behavior, and performance
 - **WebView2 Config Editor** — modern web-based UI with sections, search, and live validation
 - **Native AHK Fallback** — pure AutoHotkey editor for systems without WebView2
 - **Portable** — single `config.ini` file next to the executable, no registry entries
@@ -140,6 +140,12 @@ Settings are organized into sections:
 | **Komorebi** | Workspace integration, activation method, timing |
 | **Performance** | Process priority, animation mode, FPS, memory policy |
 | **Diagnostics** | Flight recorder, logging toggles, stats tracking |
+| **Launcher** | Splash screen, editor defaults, debug menu |
+| **Setup** | Installation and first-run wizard behavior |
+| **Store** | Window store tuning, process resolution, enrichment |
+| **IPC** | Named pipe communication parameters |
+| **Tools** | External tool paths |
+| **Capture** | Screenshot and video capture settings |
 
 Configuration is stored in `config.ini` next to the executable. See [Configuration Options](docs/options.md) for the full reference.
 
@@ -154,7 +160,7 @@ Alt-Tabby is also an experiment in two areas:
 
 **Pushing AutoHotkey.** The rendering stack includes a full D3D11 pipeline with compute shaders, 183 HLSL shaders, zero-copy DXGI surface sharing, DWM compositor integration, and an embedded Chromium control — all from pure AHK v2 via `DllCall` and `ComCall`. Read more: [What AutoHotkey Can Do](docs/what-autohotkey-can-do.md)
 
-**AI-assisted development.** The codebase was built primarily by Claude Code, with 71 static analysis checks, 17 semantic query tools, and an ownership manifest that make categories of mistakes mechanically impossible across sessions. Read more: [Building Alt-Tabby with Claude Code](docs/llm-development.md)
+**AI-assisted development.** The codebase was built primarily by Claude Code, with 86 static analysis checks, 17 semantic query tools, and an ownership manifest that make categories of mistakes mechanically impossible across sessions. Read more: [Building Alt-Tabby with Claude Code](docs/llm-development.md)
 
 ## Development
 
@@ -176,7 +182,7 @@ src/
   editors/                # Config and blacklist editors
   shared/                 # Window data, IPC, config, blacklist, stats, theme
   shaders/                # HLSL pixel and compute shaders (183 shaders)
-tests/                    # Unit, GUI, live tests + 71 static analysis checks
+tests/                    # Unit, GUI, live tests + 86 static analysis checks
 tools/                    # 17 query tools + shader bundler
 ```
 

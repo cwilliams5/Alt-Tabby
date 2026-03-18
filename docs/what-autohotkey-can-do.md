@@ -46,7 +46,7 @@ The compute shader updates particle state (physics, spawning, death) while the p
 
 Buffer initialization uses an exponential doubling pattern (`RtlCopyMemory` doubling the filled region each pass) to initialize thousands of dead particles in O(log N) DllCalls instead of per-element `NumPut` loops.
 
-**Effects built on this pipeline:** ember trails, campfire embers, smoke, fireflies, fluid dynamics, gravity wells, water surfaces, neon trails, ripples, scatter particles, and more.
+**Effects built on this pipeline:** particle systems (ember trails, campfire embers, smoke, fireflies, scatter, neon trails, long-range embers), fluid simulation (aquarium, calm fluid, emitters), and surface physics (gravity wells, water surfaces, ripples). Two additional mouse effects (caustics, spotlight) are pixel-only — no compute shader needed.
 
 ---
 
@@ -330,16 +330,18 @@ A zero-cost in-memory diagnostics system: ([`gui_flight_recorder.ahk`](../src/gu
 
 - **Pre-allocated ring buffer** of 2000 events (configurable 500–10,000)
 - **~1 microsecond per record** — QPC timestamp + array slot write under Critical, no allocations
-- **100+ event codes** covering keyboard hooks, state machine transitions, window lifecycle, workspace switches, paint timing, producer health, and recovery events
+- **44 event codes** covering keyboard hooks, state machine transitions, window lifecycle, workspace switches, paint timing, producer health, and recovery events
 - **F12 dump** writes a timestamped snapshot to disk with full state capture: globals, window store, display list, and the complete event trace with hwnd→title resolution
 
 Event codes are small integers at record time. Human-readable names are resolved only during the dump — keeping the hot path allocation-free. See [Using the Flight Recorder](USING_RECORDER.md) for the analysis guide.
 
 ---
 
-## 34,000 Lines of Tooling
+## 40,000 Lines of Tooling
 
-The project includes 71 static analysis checks (bundled into 13 parallel batch scripts), 17 semantic query tools, an ownership manifest for cross-file mutation tracking, and a test framework with unit, GUI, and live integration tests. The pre-gate runs all 71 checks in ~8 seconds and blocks the entire test suite if any check fails.
+The project includes 86 static analysis checks (bundled into 12 parallel bundles), 17 semantic query tools, an ownership manifest for cross-file mutation tracking, and a test framework with unit, GUI, and live integration tests. The pre-gate runs all 86 checks in ~8 seconds and blocks the entire test suite if any check fails.
+
+Query tools fall into three categories: **data-flow analysis** (ownership, call graphs, impact, mutations, state), **code structure** (functions, visibility, interfaces, includes), and **domain inventories** (config, IPC, timers, messages, shaders, events, profiler coverage).
 
 This tooling was built as part of an [AI-assisted development workflow](llm-development.md) — an experiment in what happens when you make the AI build its own guardrails.
 
@@ -349,14 +351,14 @@ This tooling was built as part of an [AI-assisted development workflow](llm-deve
 
 | Metric | Value |
 |--------|-------|
-| Total AHK source | ~50,000 lines |
-| HLSL shaders | 183 (157 background + 15 mouse + 10 selection + 1 vertex) |
+| Total AHK source | ~41,000 lines |
+| HLSL shaders | 183 (157 background + 15 mouse + 10 selection + 1 common header) |
 | Compute shader pairs | 13 |
 | D3D11 COM vtable calls | 26 unique indices |
-| Static analysis checks | 71 |
+| Static analysis checks | 86 |
 | Query tools | 17 |
-| Tooling code | 34,000 lines |
-| Config settings | 200+ |
+| Tooling code | ~40,000 lines |
+| Config settings | 350+ |
 | Alt+Tab detection | <5ms |
 | Pre-gate time | ~8 seconds |
 | Flight recorder cost | ~1 microsecond/event |
