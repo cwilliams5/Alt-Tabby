@@ -15,6 +15,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     float2 luv = (px - selRect.xy) / selRect.zw;
 
@@ -49,19 +51,19 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Rain overlay — bright blue-white streaks
     float3 rainCol = float3(0.6, 0.8, 1.0);
-    col += rainCol * rain * 0.7 * t * intensity * selIntensity;
-    a = max(a, rain * 0.5 * t * intensity * selIntensity);
+    col += rainCol * rain * 0.7 * tIS;
+    a = max(a, rain * 0.5 * tIS);
 
     // Border — rain hitting the border creates drip highlights
     float dripPhase = sin(px.x * 0.3 + time * 3.0) * 0.5 + 0.5;
     float3 borderMix = lerp(borderColor.rgb, rainCol * 0.5, dripPhase * 0.3 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 

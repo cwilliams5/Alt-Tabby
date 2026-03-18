@@ -7,8 +7,10 @@
 
 float4 tex_fractal(float3 p) {
     float t = time + 78.;
-    float4 o = float4(p.xyz, 3.*sin(t*.1));
-    float4 dec = float4(1., .9, .1, .15) + float4(.06*cos(t*.1), 0, 0, .14*cos(t*.23));
+    float s01, c01;
+    sincos(t * .1, s01, c01);
+    float4 o = float4(p.xyz, 3. * s01);
+    float4 dec = float4(1., .9, .1, .15) + float4(.06 * c01, 0, 0, .14 * cos(t * .23));
     [loop]
     for (int i = 0; i++ < ITER;) o.xzyw = abs(o / dot(o, o) - dec);
     return o;

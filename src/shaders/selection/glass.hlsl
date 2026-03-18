@@ -33,16 +33,17 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Hover muting
     float intensity = isHovered;
+    float tI = t * intensity;
 
     // Compose
     float3 col = float3(0.0, 0.0, 0.0);
     float a = 0.0;
 
     // Shadow layer
-    a += shadow * t * intensity;
+    a += shadow * tI;
 
     // Fill layer
-    float fillA = fill * selColor.a * breathe * t * intensity;
+    float fillA = fill * selColor.a * breathe * tI;
     col = lerp(col, fillCol, fillA);
     a = max(a, fillA);
 
@@ -50,7 +51,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col += gradientTint * fill * selIntensity * 0.5;
 
     // Border layer
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderCol3, borderA);
     a = max(a, borderA);
 

@@ -11,6 +11,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 n, p;
     float3 l = float3(sin(t * .035), sin(t * .089) * cos(t * .073), cos(t * .1)) * .3 + (float3).3;
 
+    // Hoist loop-invariant trig (depend only on uniform time)
+    float _fracScale = sin(t * .05) * .1 + .9;
+    float _fracBias = cos(t * .09) * .02 + .8;
+    float _yCoeff = smoothstep(0., 4., time) * 3. + .8 * cos(t * .07);
+
     // 2x2 AA loop
     [unroll] for (int ax = 1; ax <= 2; ax++) {
         [unroll] for (int ay = 1; ay <= 2; ay++) {
@@ -24,8 +29,8 @@ float4 PSMain(PSInput input) : SV_Target {
                 c = 0.0;
 
                 [loop] for (int jj = 0; jj < 7; jj++) {
-                    p = (sin(t * .05) * .1 + .9) * abs(p) / dot(p, p) - (cos(t * .09) * .02 + .8);
-                    p.xy = float2(p.x * p.x - p.y * p.y, (smoothstep(0., 4., time) * 3. + .8 * cos(t * .07)) * p.x * p.y);
+                    p = _fracScale * abs(p) / dot(p, p) - _fracBias;
+                    p.xy = float2(p.x * p.x - p.y * p.y, _yCoeff * p.x * p.y);
                     p = p.yxz;
                     c += exp(-9. * abs(dot(p, p.zxy)));
                 }

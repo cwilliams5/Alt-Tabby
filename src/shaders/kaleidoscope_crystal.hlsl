@@ -118,7 +118,7 @@ float4 PSMain(PSInput input) : SV_Target {
         nm();
         ro = cp - cn * 0.01;
         cr = refract(rd, cn, i % 2 == 0 ? 1.0 / io : io);
-        if (length(cr) == 0.0 && es <= 0) { cr = reflect(rd, cn); es = ec; }
+        if (dot(cr, cr) == 0.0 && es <= 0) { cr = reflect(rd, cn); es = ec; }
         if (max(es, 0) % 3 == 0 && cd < 128.0) rd = cr;
         es--;
         if (vb.x > 0.0 && i % 2 == 1) oa = pow(saturate(cd / vb.y), vb.z);

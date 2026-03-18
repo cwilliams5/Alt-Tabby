@@ -25,6 +25,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Perimeter coordinate for arcs
     float perim = (px.x - selRect.x + px.y - selRect.y) / (selRect.z + selRect.w);
@@ -64,7 +66,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
@@ -72,17 +74,17 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 boltCol = float3(0.6, 0.85, 1.0);
     float3 coreCol = float3(0.9, 0.95, 1.0);
     float3 arcCol = lerp(boltCol, coreCol, arc);
-    col += arcCol * arc * 0.8 * t * intensity * selIntensity;
-    a = max(a, arc * 0.7 * t * intensity * selIntensity);
+    col += arcCol * arc * 0.8 * tIS;
+    a = max(a, arc * 0.7 * tIS);
 
     // Ambient electric glow on border
     float glow = smoothstep(6.0 * selGlow, 0.0, abs(dist)) * 0.2;
     float flicker = 0.7 + 0.3 * sin(time * 8.0);
-    col += boltCol * glow * flicker * t * intensity * selIntensity;
-    a = max(a, glow * flicker * 0.5 * t * intensity * selIntensity);
+    col += boltCol * glow * flicker * tIS;
+    a = max(a, glow * flicker * 0.5 * tIS);
 
     // Border
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     float3 borderMix = lerp(borderColor.rgb, boltCol * 0.5, 0.3 * selIntensity);
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);

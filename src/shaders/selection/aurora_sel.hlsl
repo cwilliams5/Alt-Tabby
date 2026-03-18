@@ -35,25 +35,27 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     float3 col = float3(0.0, 0.0, 0.0);
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Inner reflections
-    col += prismatic * innerRef * t * intensity * selIntensity;
+    col += prismatic * innerRef * tIS;
 
     // Outer glow
-    col += prismatic * outerGlow * t * intensity * selIntensity;
-    a = max(a, outerGlow * t * intensity * selIntensity);
+    col += prismatic * outerGlow * tIS;
+    a = max(a, outerGlow * tIS);
 
     // Prismatic border
     float3 borderCol3 = lerp(borderColor.rgb, prismatic, 0.7 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderCol3, saturate(borderA));
     a = max(a, borderA);
 

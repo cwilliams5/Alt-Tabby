@@ -35,6 +35,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Local UV for smoke
     float2 luv = (px - selRect.xy) / selRect.zw;
@@ -51,22 +53,22 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Bright smoke overlay — white wisps
     float3 smokeCol = float3(0.7, 0.75, 0.85);
-    col += smokeCol * wisp * 0.5 * t * intensity * selIntensity;
-    a = max(a, wisp * 0.3 * t * intensity * selIntensity);
+    col += smokeCol * wisp * 0.5 * tIS;
+    a = max(a, wisp * 0.3 * tIS);
 
     // Outer glow
     float outerGlow = smoothstep(8.0 * selGlow, 0.0, dist) * (1.0 - fill) * 0.15;
-    col += smokeCol * outerGlow * t * intensity * selIntensity;
-    a = max(a, outerGlow * t * intensity * selIntensity);
+    col += smokeCol * outerGlow * tIS;
+    a = max(a, outerGlow * tIS);
 
     // Border
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderColor.rgb, saturate(borderA));
     a = max(a, borderA);
 

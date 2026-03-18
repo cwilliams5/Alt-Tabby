@@ -62,10 +62,13 @@ float2 lonlat(float3 p) {
 float3 pointOnSphere(float2 ll, float r) {
     float f1 = ll.x * TAU;
     float f2 = ll.y * PI;
-    float z = r * cos(f2);
-    float d = abs(r * sin(f2));
-    float x = d * cos(f1);
-    float y = d * sin(f1);
+    float sf1, cf1, sf2, cf2;
+    sincos(f1, sf1, cf1);
+    sincos(f2, sf2, cf2);
+    float z = r * cf2;
+    float d = abs(r * sf2);
+    float x = d * cf1;
+    float y = d * sf1;
     return float3(x, y, z);
 }
 
@@ -210,7 +213,7 @@ float4 PSMain(PSInput input) : SV_Target {
     if (O.x < 0.0) {
         O = 0.5 * envMap(D);
     } else {
-        O += envMap(reflect(D, N / length(N)));
+        O += envMap(reflect(D, normalize(N)));
     }
 
     f = flare(angle, alpha, t) * 1.3;
@@ -224,8 +227,9 @@ float4 PSMain(PSInput input) : SV_Target {
     // Star overlay
     uv *= 2.0 * (cos(time * 2.0) - 2.5);
     float anim = sin(time * 12.0) * 0.1 + 1.0;
-    O *= 0.5 * float4(happy_star(uv, anim) * float3(0.55, 0.5, 1.15), 1.0);
-    O += 0.5 * float4(happy_star(uv, anim) * float3(0.55, 0.5, 1.15) * 0.01, 1.0);
+    float3 starColor = happy_star(uv, anim) * float3(0.55, 0.5, 1.15);
+    O *= 0.5 * float4(starColor, 1.0);
+    O += 0.5 * float4(starColor * 0.01, 1.0);
 
     float3 color = O.rgb;
 

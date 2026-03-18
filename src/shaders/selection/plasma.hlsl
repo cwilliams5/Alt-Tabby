@@ -11,6 +11,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Local UV with aspect correction
     float2 luv = (px - selRect.xy) / selRect.zw;
@@ -25,11 +27,13 @@ float4 PSMain(PSInput input) : SV_Target {
     v += sin(length(uv - float2(aspect * 2.0, 2.0)) * 1.5 + time * 1.2);
     v *= 0.25; // normalize to ~[-1, 1]
 
-    // Bold vivid colors from the plasma value
+    // Bold vivid colors from the plasma value (120-degree phase decomposition)
+    float sv, cv;
+    sincos(v * 3.14159, sv, cv);
     float3 plasmaCol;
-    plasmaCol.r = sin(v * 3.14159 + 0.0) * 0.5 + 0.5;
-    plasmaCol.g = sin(v * 3.14159 + 2.094) * 0.5 + 0.5;
-    plasmaCol.b = sin(v * 3.14159 + 4.189) * 0.5 + 0.5;
+    plasmaCol.r = sv * 0.5 + 0.5;
+    plasmaCol.g = (sv * (-0.5) + cv * 0.86603) * 0.5 + 0.5;
+    plasmaCol.b = (sv * (-0.5) + cv * (-0.86603)) * 0.5 + 0.5;
 
     // Boost saturation and brightness
     plasmaCol = pow(plasmaCol, float3(0.8, 0.8, 0.8)) * 1.2;
@@ -38,19 +42,19 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill — blend user color with plasma
-    float fillA = fill * t * intensity;
+    float fillA = fill * tI;
     float3 baseFill = lerp(selColor.rgb, plasmaCol * selColor.a, 0.55 * selIntensity);
     col = baseFill * fillA;
     a = max(selColor.a, 0.6) * fillA;
 
     // Outer plasma glow
     float outerGlow = smoothstep(10.0 * selGlow, 0.0, dist) * (1.0 - fill) * 0.25;
-    col += plasmaCol * outerGlow * t * intensity * 0.5 * selIntensity;
-    a = max(a, outerGlow * t * intensity * selIntensity);
+    col += plasmaCol * outerGlow * tIS * 0.5;
+    a = max(a, outerGlow * tIS);
 
     // Border — tinted by plasma
     float3 borderMix = lerp(borderColor.rgb, plasmaCol * 0.4, 0.5 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 

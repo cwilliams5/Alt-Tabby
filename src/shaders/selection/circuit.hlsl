@@ -26,6 +26,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Perimeter position (0-1 around the border)
     float perim = getPerimeter(px, selRect);
@@ -72,22 +74,22 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Circuit grid overlay
-    col += pulseCol * grid * 0.6 * t * intensity * selIntensity;
-    a = max(a, grid * 0.3 * t * intensity * selIntensity);
+    col += pulseCol * grid * 0.6 * tIS;
+    a = max(a, grid * 0.3 * tIS);
 
     // Orbiting pulse glow
-    col += pulseCol * pulse * 0.8 * t * intensity * selIntensity;
-    a = max(a, pulse * 0.7 * t * intensity * selIntensity);
+    col += pulseCol * pulse * 0.8 * tIS;
+    a = max(a, pulse * 0.7 * tIS);
 
     // Border — lit up by passing pulse
     float borderLit = max(glowA, glowB) * selIntensity;
     float3 borderMix = lerp(borderColor.rgb, pulseCol * 0.6, borderLit);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     float boostedBorderA = borderA * (1.0 + borderLit * 2.0);
     col = lerp(col, borderMix, saturate(boostedBorderA));
     a = max(a, boostedBorderA);

@@ -35,6 +35,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     float2 luv = (px - selRect.xy) / selRect.zw;
 
@@ -82,23 +84,23 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Fire overlay
-    col += fireCol * flame * 0.7 * t * intensity * selIntensity;
-    a = max(a, flame * 0.6 * t * intensity * selIntensity);
+    col += fireCol * flame * 0.7 * tIS;
+    a = max(a, flame * 0.6 * tIS);
 
     // Outer fire glow — flames extend beyond border
     float outerFire = rawFlame;
     float outerGlow = smoothstep(12.0 * selGlow, 0.0, dist) * (1.0 - fill) * outerFire * 0.5;
-    col += float3(1.0, 0.4, 0.05) * outerGlow * t * intensity * selIntensity;
-    a = max(a, outerGlow * t * intensity * selIntensity);
+    col += float3(1.0, 0.4, 0.05) * outerGlow * tIS;
+    a = max(a, outerGlow * tIS);
 
     // Border — hot edge
     float3 borderMix = lerp(borderColor.rgb, float3(1.0, 0.6, 0.1) * 0.5, 0.4 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 

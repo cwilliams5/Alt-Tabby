@@ -42,6 +42,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Local UV scaled for lava cells
     float2 luv = (px - selRect.xy) / selRect.zw;
@@ -74,19 +76,19 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Lava fill — blends user color with lava pattern
-    float lavaAlpha = fill * 0.85 * t * intensity;
+    float lavaAlpha = fill * 0.85 * tI;
     float3 baseFill = lerp(selColor.rgb, lavaCol * selColor.a, 0.6 * selIntensity);
     col = baseFill;
-    a = max(selColor.a * fill, lavaAlpha) * t * intensity;
+    a = max(selColor.a * fill, lavaAlpha) * tI;
 
     // Hot glow on cracks extends slightly outside
     float outerHeat = smoothstep(4.0 * selGlow, 0.0, dist) * (1.0 - fill) * crack * 0.4;
-    col += hotCol * outerHeat * t * intensity * selIntensity;
-    a = max(a, outerHeat * t * intensity * selIntensity);
+    col += hotCol * outerHeat * tIS;
+    a = max(a, outerHeat * tIS);
 
     // Border — hot edge
     float3 borderMix = lerp(borderColor.rgb, hotCol * 0.5, 0.4 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 

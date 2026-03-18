@@ -18,6 +18,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
+    float tI = t * intensity;
+    float tIS = tI * selIntensity;
 
     // Angle from center (0-1)
     float2 delta = px - rc;
@@ -48,26 +50,26 @@ float4 PSMain(PSInput input) : SV_Target {
     float a = 0.0;
 
     // Fill with user color
-    float fillA = fill * selColor.a * t * intensity;
+    float fillA = fill * selColor.a * tI;
     col = selColor.rgb;
     a = fillA;
 
     // Inner gradient wash
-    col += innerCol * fill * 0.3 * t * intensity * selIntensity;
+    col += innerCol * fill * 0.3 * tIS;
 
     // Gradient border glow
-    float glowA2 = borderZone * t * intensity * selIntensity;
+    float glowA2 = borderZone * tIS;
     col += gradCol * glowA2 * 0.6;
     a = max(a, glowA2 * 0.7);
 
     // Outer glow — extends further near lead point
     float outerGlow = smoothstep((8.0 + leadBright * 8.0) * selGlow, 0.0, dist) * (1.0 - fill) * 0.25;
-    col += gradCol * outerGlow * t * intensity * selIntensity;
-    a = max(a, outerGlow * t * intensity * selIntensity);
+    col += gradCol * outerGlow * tIS;
+    a = max(a, outerGlow * tIS);
 
     // Main border stroke
     float3 borderMix = lerp(borderColor.rgb, gradCol * 0.6, 0.6 * selIntensity);
-    float borderA = borderMask * borderColor.a * t * intensity;
+    float borderA = borderMask * borderColor.a * tI;
     col = lerp(col, borderMix, saturate(borderA));
     a = max(a, borderA);
 
