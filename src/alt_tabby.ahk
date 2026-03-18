@@ -20,7 +20,7 @@
 ;@Ahk2Exe-AddResource ..\resources\img\logo.png, 10
 ;@Ahk2Exe-AddResource ..\resources\img\icon.png, 11
 ; Animation splash resources (WebP + DLLs)
-;@Ahk2Exe-AddResource ..\resources\animation.webp, 15
+;@Ahk2Exe-AddResource ..\resources\img\animation.webp, 15
 ;@Ahk2Exe-AddResource ..\resources\dll\libsharpyuv-0.dll, 16
 ;@Ahk2Exe-AddResource ..\resources\dll\libwebp-7.dll, 17
 ;@Ahk2Exe-AddResource ..\resources\dll\libwebpdemux-2.dll, 18

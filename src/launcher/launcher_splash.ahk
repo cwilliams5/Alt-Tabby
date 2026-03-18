@@ -233,7 +233,7 @@ _Splash_ShowAnimation() {
         webpPath := _Splash_ExtractResourceToTemp(RES_ID_ANIMATION, "animation.webp")
         g_SplashExtractedWebP := webpPath  ; Save for cleanup
     } else {
-        webpPath := A_ScriptDir "\..\resources\animation.webp"
+        webpPath := A_ScriptDir "\..\resources\img\animation.webp"
     }
 
     if (!webpPath || !FileExist(webpPath)) {
