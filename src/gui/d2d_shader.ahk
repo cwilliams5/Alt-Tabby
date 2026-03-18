@@ -1111,12 +1111,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     Profiler.Enter("Shader_PreRender") ; @profile
     cb := gShader_CBuffer
 
-    if (!gShader_Ready || !gShader_Registry.Has(name)) {
+    ; PERF: single .Get() replaces .Has() + [] double hash lookup
+    entry := gShader_Registry.Get(name, 0)
+    if (!gShader_Ready || !entry) {
         Profiler.Leave() ; @profile
         return false
     }
-
-    entry := gShader_Registry[name]
 
     ; One-time log per shader name (reuse entry from above)
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
@@ -1241,8 +1241,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     vpChanged := (vpW != w || vpH != h)
     if (vpChanged) {
         vpW := w, vpH := h
-        NumPut("float", Float(w), vp, 8)
-        NumPut("float", Float(h), vp, 12)
+        NumPut("float", Float(w), "float", Float(h), vp, 8)  ; PERF: combined NumPut
     }
     if (gShader_StateDirty || vpChanged)
         ComCall(44, ctx, "uint", 1, "ptr", vp, "int")

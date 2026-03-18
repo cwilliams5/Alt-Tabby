@@ -146,7 +146,8 @@ _PP_Tick() {
         ; (_PP_FailedPidCache, _PP_FailedPidCacheTTL declared at function top)
         ; RACE FIX: Protect cache read - ProcPump_PruneFailedPidCache runs from heartbeat timer
         Critical "On"
-        if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL) {
+        cachedTick := _PP_FailedPidCache.Get(pid, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (cachedTick && (A_TickCount - cachedTick) < _PP_FailedPidCacheTTL) {
             Critical "Off"
             if (logEnabled)
                 _PP_Log("SKIP pid=" pid " (failed cache)")

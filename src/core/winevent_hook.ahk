@@ -332,7 +332,10 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         SetTimer(_WEH_FastPathBatch, -1)
 
     ; Wake timer if it was paused due to idle
-    _WinEventHook_EnsureTimerRunning()
+    ; PERF: Skip EnsureTimerRunning when timer is already on (matching destroy/hide paths
+    ; at lines 249/263). Avoids entering Pump_EnsureRunning's Critical section.
+    if (!_WEH_TimerOn)
+        _WinEventHook_EnsureTimerRunning()
     } catch as e {
         Profiler.Leave() ; @profile
         Critical "Off"
@@ -583,15 +586,30 @@ _WEH_ProcessBatch() {
         if (_WEH_PendingLocChange.Has(hwnd))
             locSnapshot[hwnd] := true
     }
-    for _, arr in [destroyed, hidden, toProcess] {
-        for _, h in arr {
-            if (_WEH_PendingHwnds.Has(h))
-                _WEH_PendingHwnds.Delete(h)
-            if (_WEH_PendingZNeeded.Has(h))
-                _WEH_PendingZNeeded.Delete(h)
-            if (_WEH_PendingLocChange.Has(h))
-                _WEH_PendingLocChange.Delete(h)
-        }
+    ; PERF: Sequential loops avoid ephemeral [destroyed, hidden, toProcess] Array allocation
+    for _, h in destroyed {
+        if (_WEH_PendingHwnds.Has(h))
+            _WEH_PendingHwnds.Delete(h)
+        if (_WEH_PendingZNeeded.Has(h))
+            _WEH_PendingZNeeded.Delete(h)
+        if (_WEH_PendingLocChange.Has(h))
+            _WEH_PendingLocChange.Delete(h)
+    }
+    for _, h in hidden {
+        if (_WEH_PendingHwnds.Has(h))
+            _WEH_PendingHwnds.Delete(h)
+        if (_WEH_PendingZNeeded.Has(h))
+            _WEH_PendingZNeeded.Delete(h)
+        if (_WEH_PendingLocChange.Has(h))
+            _WEH_PendingLocChange.Delete(h)
+    }
+    for _, h in toProcess {
+        if (_WEH_PendingHwnds.Has(h))
+            _WEH_PendingHwnds.Delete(h)
+        if (_WEH_PendingZNeeded.Has(h))
+            _WEH_PendingZNeeded.Delete(h)
+        if (_WEH_PendingLocChange.Has(h))
+            _WEH_PendingLocChange.Delete(h)
     }
     Critical "Off"
 
@@ -638,9 +656,10 @@ _WEH_ProcessBatch() {
         updatedHwnds := []
         batchPatches := Map()
         for _, hwnd in toProcess {
-            if (gWS_Store.Has(hwnd + 0)) {
+            row := gWS_Store.Get(hwnd + 0, 0)  ; PERF: single lookup replaces Has+[] double hash
+            if (row) {
                 ; Lightweight path: window already in store — skip immutable fields
-                result := _WEH_UpdateExisting(hwnd, locSnapshot.Has(hwnd))
+                result := _WEH_UpdateExisting(hwnd, locSnapshot.Has(hwnd), row)
                 if (result = -1)
                     ineligibleHwnds.Push(hwnd)
                 else if (result = 0) {
@@ -823,7 +842,7 @@ _WEH_RetryFocusProbe(hwnd, originalTick, attempt) {
 ; Skips immutable fields (class, PID) - only fetches title + vis/min/cloak.
 ; Returns: Object patch (success), -1 (ineligible/destroyed), false (skipped/error)
 ; Caller batches patches and calls WL_BatchUpdateFields once for the whole batch.
-_WEH_UpdateExisting(hwnd, hasLocationChange := true) {
+_WEH_UpdateExisting(hwnd, hasLocationChange := true, row := 0) {
     Profiler.Enter("_WEH_UpdateExisting") ; @profile
     global gWS_Store
     ; Check window still exists
@@ -855,7 +874,9 @@ _WEH_UpdateExisting(hwnd, hasLocationChange := true) {
     }
 
     ; Re-check eligibility using stored class (immutable) + fresh title
-    row := gWS_Store[hwnd + 0]
+    ; PERF: Accept row from caller when available to avoid double hash lookup
+    if (!row)
+        row := gWS_Store[hwnd + 0]
     class := row.class
     isVisible := false
     isMin := false
