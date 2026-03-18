@@ -38,7 +38,6 @@ global gGUI_ScrollTop := 0
 global gGUI_OverlayVisible := false
 global gGUI_StealFocus := false
 global gGUI_FocusBeforeShow := 0
-global gGUI_OverlayH := 0  ; Window handle - production code checks this
 global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
 global gGUI_WorkspaceMode := "all"
@@ -451,7 +450,6 @@ class _MockGui {
     }
 }
 global gGUI_Base := _MockGui()
-global gGUI_Overlay := _MockGui()
 
 ; Logging mocks (gui_data.ahk, gui_state.ahk call these)
 LogAppend(params*) {
@@ -541,7 +539,7 @@ ResetGUIState() {
     global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap
     global gGUI_EventBuffer, gGUI_Pending
     global gMock_VisibleRows, gMock_BypassResult
-    global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
+    global gGUI_Base, gINT_BypassMode, gMock_PruneCalledWith
     global gMock_PreCachedIcons, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
     global gMock_RepaintCount
@@ -601,7 +599,6 @@ ResetGUIState() {
     gGUI_HoverRow := 0
     gGUI_HoverBtn := ""
     gGUI_Base.visible := false
-    gGUI_Overlay.visible := false
     ; #303: Reset physical key state mocks and recovery tracking
     global gMock_AltPhysicallyDown, gMock_RecoverLostAltUpCalls
     global gINT_AltIsDown, gINT_SessionActive, gINT_PressCount, gINT_TabHeld

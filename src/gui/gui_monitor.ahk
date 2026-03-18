@@ -60,5 +60,3 @@ GUI_GetOverlayMonitorLabel() {
     global gGUI_OverlayMonitorHandle
     return Win_GetMonitorLabel(gGUI_OverlayMonitorHandle)
 }
-
-; GUI_StampMonitorLabels removed — monitorLabel is now a store field stamped by producers

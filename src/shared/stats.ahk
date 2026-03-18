@@ -52,6 +52,31 @@ Stats_SetCallbacks(logError, logInfo) {
 
 ; ---------- Internal helpers ----------
 
+; Compute session/lifetime time stats and build the serialized INI content string.
+; MUST be called inside a Critical "On" section by the caller.
+; Returns the complete [Lifetime] section string ready for disk write.
+_Stats_ComputeAndSerialize() {
+    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS
+
+    ; Compute run time: existing lifetime + current session segment
+    sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
+    gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
+    ; Reset session start so we don't double-count on next flush
+    gStats_Session["startTick"] := A_TickCount
+
+    ; Update longest session (use total session time, not just segment since last flush)
+    totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
+    if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
+        gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
+
+    ; Build complete INI content as a single string
+    content := "[Lifetime]`n"
+    for _, key in STATS_LIFETIME_KEYS
+        content .= key "=" gStats_Lifetime.Get(key, 0) "`n"
+    content .= "_FlushStatus=complete`n"
+    return content
+}
+
 _Stats_LogError(msg) {
     global gStats_LogError
     if (gStats_LogError)
@@ -154,8 +179,7 @@ Stats_Init() {
 }
 
 Stats_FlushToDisk() {
-    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
-    global gStats_Dirty, gGUI_State
+    global STATS_INI_PATH, cfg, gStats_Dirty, gGUI_State
     Profiler.Enter("Stats_FlushToDisk") ; @profile
 
     if (!cfg.StatsTrackingEnabled) {
@@ -177,22 +201,7 @@ Stats_FlushToDisk() {
     ; HeartbeatTick timer and can be interrupted by Stats_Accumulate/Stats_GetSnapshot
     ; which also modify gStats_Lifetime/gStats_Session.
     Critical "On"
-    ; Compute run time: existing lifetime + current session
-    sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
-    gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
-    ; Reset session start so we don't double-count on next flush
-    gStats_Session["startTick"] := A_TickCount
-
-    ; Update longest session (use total session time, not just segment since last flush)
-    totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
-    if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
-        gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
-
-    ; Build complete INI content as a single string (under Critical for consistent snapshot)
-    content := "[Lifetime]`n"
-    for _, key in STATS_LIFETIME_KEYS
-        content .= key "=" gStats_Lifetime.Get(key, 0) "`n"
-    content .= "_FlushStatus=complete`n"
+    content := _Stats_ComputeAndSerialize()
     Critical "Off"
 
     ; Try pump offload first (pipe write ~10-15μs vs 10-75ms of IniWrite loop)
@@ -211,26 +220,14 @@ Stats_FlushToDisk() {
 ; Force-flush stats directly to disk (bypass dirty flag, state gate, and pump offload).
 ; Used during shutdown when the pump may be unavailable.
 Stats_ForceFlushToDisk() {
-    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
-    global gStats_Dirty
+    global STATS_INI_PATH, cfg, gStats_Dirty
 
     if (!cfg.StatsTrackingEnabled)
         return
 
-    ; Compute time stats (same as regular flush)
+    ; Compute time stats and serialize (same logic as regular flush)
     Critical "On"
-    sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
-    gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
-    gStats_Session["startTick"] := A_TickCount
-
-    totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
-    if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
-        gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
-
-    content := "[Lifetime]`n"
-    for _, key in STATS_LIFETIME_KEYS
-        content .= key "=" gStats_Lifetime.Get(key, 0) "`n"
-    content .= "_FlushStatus=complete`n"
+    content := _Stats_ComputeAndSerialize()
     Critical "Off"
 
     if (_Stats_DirectWrite(STATS_INI_PATH, content))

@@ -7,9 +7,7 @@
 ; ========================= WINDOW STATE =========================
 
 global gGUI_Base := 0          ; Gui object (the single window)
-global gGUI_Overlay := 0       ; Alias → same as gGUI_Base (single-window compat)
 global gGUI_BaseH := 0         ; Window handle
-global gGUI_OverlayH := 0      ; Alias → same as gGUI_BaseH (single-window compat)
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
 global gGUI_CachedVisibleRows := -1   ; Cached result of GUI_GetVisibleRows; -1 = stale
 global gGUI_StealFocus := false      ; Effective steal-focus (cfg OR Mica)
@@ -299,7 +297,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
 ; Create the single overlay window with SWCA acrylic + D2D render target.
 ; Replaces the old GUI_CreateBase() + GUI_CreateOverlay() two-window system.
 GUI_CreateWindow() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+    global gGUI_Base, gGUI_BaseH
     global gGUI_LiveItems, cfg
     global gD2D_Factory, gDW_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
     global gD2D_SwapChain, gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
@@ -317,10 +315,6 @@ GUI_CreateWindow() {
     gGUI_Base.BackColor := "000000"  ; Black background — DWM material shows through hollow brush
     gGUI_Base.Show("Hide w1 h1")  ; Dummy size — repositioned below
     gGUI_BaseH := gGUI_Base.Hwnd
-
-    ; Set overlay aliases for backward compatibility (single-window architecture)
-    gGUI_Overlay := gGUI_Base
-    gGUI_OverlayH := gGUI_BaseH
 
     ; Compute initial layout
     xDip := 0

@@ -700,8 +700,7 @@ GUI_CompleteHideState() {
 ; Helper to abort a show sequence (hide windows and reset state flags).
 ; Called when state changes to non-ACTIVE during _GUI_ShowOverlayWithFrozen.
 _GUI_AbortShowSequence() {
-    global gGUI_Overlay, gGUI_Base, gGUI_OverlayVisible, gGUI_Revealed
-    try gGUI_Overlay.Hide()
+    global gGUI_Base, gGUI_OverlayVisible, gGUI_Revealed
     try gGUI_Base.Hide()
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
@@ -709,7 +708,7 @@ _GUI_AbortShowSequence() {
 
 _GUI_ShowOverlayWithFrozen() {
     Profiler.Enter("_GUI_ShowOverlayWithFrozen") ; @profile
-    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
     global gGUI_State, gGUI_StealFocus, gGUI_FocusBeforeShow
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
