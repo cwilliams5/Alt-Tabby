@@ -19,6 +19,7 @@ This page documents what we built in pure AHK v2 — no C++ shims, no native DLL
 - [The Window Store](#the-window-store) — concurrent data structure with two-phase mutation, channel queues, atomic hot-reload
 - [355 Configurable Settings](#355-configurable-settings) — registry-driven config with live file monitoring, format-preserving writes
 - [Embedding Chromium](#embedding-chromium-webview2) — WebView2 integration with anti-flash and callback stability
+- [A Configuration Editor from Scratch](#a-configuration-editor-from-scratch) — viewport scrolling, block-based search reflow, custom-drawn sliders, ARGB color pickers — all pure Win32
 - [Native Windows Theming](#native-windows-theming) — 5-layer dark mode API stack, window procedure subclassing, undocumented ordinals
 - [Low-Level Keyboard Hooks](#low-level-keyboard-hooks) — sub-5ms detection, STA reentrancy, timer corruption, activation engine, cross-workspace COM uncloaking
 - [Escaping the 16ms Timer](#escaping-the-16ms-timer) — QPC spin-waits, NtYieldExecution, graduated cooldowns
@@ -141,6 +142,19 @@ The shader library includes 157 background shaders (raymarching, domain warping,
 
 Shaders can reference external textures (noise patterns, photos, procedural maps) via JSON metadata declaring `iChannels` with a channel index and filename. At load time: GDI+ decodes the PNG/JPG via `GdipCreateBitmapFromFile` → `GdipBitmapLockBits` extracts raw BGRA pixels → `ID3D11Device::CreateTexture2D` creates a GPU texture → `CreateShaderResourceView` makes it bindable → SRVs are bound to pixel shader sampler slots 0–N by channel index. In compiled builds, textures are embedded as resources and extracted to `%TEMP%` at startup. 26 textures across the shader library. Adding a new textured shader requires zero AHK code changes — just reference the file in the JSON metadata. ([`d2d_shader.ahk`](../src/gui/d2d_shader.ahk))
 
+### Custom Scrollbar with Circular Wrapping
+
+The overlay's scrollbar is entirely custom-drawn in D2D — no native Win32 scrollbar control. The thumb position is computed from `Win_Wrap0(scrollTop, count)`, a modular wrapping function that handles circular list semantics. When the list wraps (scrolling past the last window returns to the first), the thumb **splits into two D2D rounded-rect segments** — one at the bottom of the track, one wrapping to the top — each drawn only if its height is positive. The gutter and thumb brushes are cached with the D2D brush generation counter, so device loss (GPU reset, monitor disconnect) automatically invalidates them. ([`gui_paint.ahk`](../src/gui/gui_paint.ahk))
+
+### Dual-Layer Hover Detection
+
+Mouse tracking uses two independent mechanisms because neither is reliable alone: ([`gui_input.ahk`](../src/gui/gui_input.ahk))
+
+- **Layer 1:** `TrackMouseEvent` with `TME_LEAVE` (0x02) requests `WM_MOUSELEAVE` notification via a manually marshaled `TRACKMOUSEEVENT` struct (16 bytes on x64: `cbSize`, `dwFlags`, `hwndTrack`, `dwHoverTime`). The struct is allocated as a `static Buffer` and reused across calls.
+- **Layer 2:** A polling fallback timer (`GetCursorPos` + `GetWindowRect` every 50ms) clears hover state when the cursor leaves bounds — because `WM_MOUSELEAVE` doesn't fire reliably in all scenarios (an undocumented Windows limitation).
+
+The hover recalculation itself short-circuits when both cursor position *and* scroll offset are unchanged — the overwhelmingly common case during Alt-Tab when the user is pressing Tab, not moving the mouse.
+
 ### DWM Composition
 
 Alt-Tabby uses undocumented and semi-documented Windows DWM APIs for native desktop integration:
@@ -248,7 +262,7 @@ The komorebi subscription engine eliminates timer-based polling entirely using W
 
 ### Cross-Process Icon Handle Sharing
 
-Icon resolution is expensive (50–100ms per window, blocking). The EnrichmentPump resolves icons in its own process, but rather than serializing pixel data over IPC, it sends the raw `HICON` handle as a JSON integer. This works because `HICON` handles are kernel-wide USER objects in `win32k.sys` shared memory — a handle resolved in one process is valid in any other process in the same session. The GUI process receives the numeric handle and uses it immediately for D2D rendering. Per-EXE master icon caching deduplicates across windows from the same application, and per-window no-change detection (comparing raw handle values) skips redundant updates.
+Icon resolution is expensive (50–100ms per window, blocking). The EnrichmentPump resolves icons in its own process, but rather than serializing pixel data over IPC, it sends the raw `HICON` handle as a JSON integer. This works because `HICON` handles are kernel-wide USER objects in `win32k.sys` shared memory — a handle resolved in one process is valid in any other process in the same session. The GUI process receives the numeric handle and uses it immediately for D2D rendering. Per-EXE master icon caching deduplicates across windows from the same application, and per-window no-change detection (comparing raw handle values) skips redundant updates. The pump also tracks icon source metadata (method, raw handle, exe path) per hwnd — when MainProcess signals `needsIcon` for a window, stale cached sources are invalidated, catching HWND reuse where apps destroy and recreate windows with the same handle. On the GUI side, pre-cached D2D1Bitmaps survive window destruction — if a window disappears during Alt-Tab, its icon continues rendering from cache indefinitely rather than showing a blank frame. ([`enrichment_pump.ahk`](../src/pump/enrichment_pump.ahk))
 
 ### UWP/MSIX Package Icon Resolution
 
@@ -303,7 +317,57 @@ AHK GUI Window
 - **Callback reentrancy:** Calling `ExecuteScript()` or `GUI.Show()` from inside a `WebMessageReceived` callback permanently corrupts the handler. All heavy work is deferred to a fresh timer thread via `SetTimer(func, -1)`.
 - **Resource embedding:** Ahk2Exe's RT_HTML resource type breaks on CSS `%` values (it tries to dereference them). HTML resources use `.txt` extension instead.
 
-The fallback is a pure AHK native editor with sidebar navigation and scroll viewport — no external dependencies.
+The fallback is a [pure AHK native editor](#a-configuration-editor-from-scratch) — and it's not a fallback in capability, just in technology choice.
+
+---
+
+## A Configuration Editor from Scratch
+
+The WebView2 editor explores one path — embedded Chromium with AHK glue. The native editor is the reaction: we can do almost as well with pure Win32. No browser engine, no HTML, no JavaScript. Just AHK v2 creating windows, subclassing controls, and marshaling structs. ([`config_editor_native.ahk`](../src/editors/config_editor_native.ahk))
+
+### Viewport Scrolling
+
+The editor implements a scrolling viewport using the same technique game engines use for sidescrollers: a clipping parent with a repositioned child. The viewport GUI is created with `WS_CLIPCHILDREN` (0x02000000) and `WS_VSCROLL` (0x00200000). Each configuration section is a separate child GUI sized to its full content height. Scrolling moves the entire page via a single `pageGui.Move(0, -scrollPos)` call — controls never reposition relative to their parent, eliminating the jittery redraw that comes from repositioning individual controls. Per-page scroll positions are tracked independently, and mouse wheel deltas accumulate via a drain timer (`SetTimer(_CEN_DrainScroll, -10)`) to prevent lost scroll messages during rapid scrolling. A `SCROLLINFO` struct (28 bytes, `SIF_ALL = 0x17`) keeps the native scrollbar thumb synchronized.
+
+### Block-Based Search with Layout Reflow
+
+Search transforms the editor between two structural layouts in real-time:
+
+**Normal mode:** The sidebar shows sections, clicking a section shows its page in the viewport.
+
+**Flat mode (during search):** All pages containing matches are stacked vertically into a single scrollable surface. Each page tracks its content as *blocks* — data structures holding `{kind, startY, endY, ctrls}` where `kind` is `"header"`, `"subsection"`, `"setting"`, or `"addlayer"`, and `ctrls` is an array of `{ctrl, origX, origY}` references to the actual GUI controls. During search reflow, non-matching blocks are hidden and an offset accumulator shifts all subsequent blocks upward: `ctrl.Move(origX, origY - offset)`. The page's `contentH` is recalculated as `origContentH - totalOffset`. When search clears, every control snaps back to its original Y position — no destroy/recreate cycle, no layout drift.
+
+The search input itself debounces at 200ms to prevent reflow spam during rapid typing.
+
+### Custom-Drawn Sliders via NM_CUSTOMDRAW
+
+Windows' built-in slider (trackbar) control ignores dark mode entirely — the `DarkMode_Explorer` theme produces a barely-visible thumb with no hover feedback. The editor subclasses sliders via `WM_NOTIFY` with `NM_CUSTOMDRAW` (code -12), intercepting the draw at two stages:
+
+**Channel fill (TBCD_CHANNEL = 3):** The handler queries the thumb center via `TBM_GETTHUMBRECT` (0x0419), then fills the channel in two colors — accent color left of the thumb (the "filled" portion), gutter gray to the right. The split point is clamped to channel bounds to prevent overdraw.
+
+**Thumb draw (TBCD_THUMB = 2):** A custom ellipse replaces the default thumb via `DllCall("Ellipse")` with accent color on normal/hover and a darkened variant on press. Item state flags (`CDIS_HOT = 0x40`, `CDIS_SELECTED = 0x01`) drive the color selection. The NMCUSTOMDRAW struct offsets on x64 — `HDC` at offset 32, `Left/Top/Right/Bottom` at 40–52, `dwItemSpec` at 56, `uItemState` at 64 — are the kind of platform-specific detail that makes NM_CUSTOMDRAW from a scripting language genuinely unusual.
+
+### Bidirectional Float-Slider Synchronization
+
+Numeric settings with min/max bounds get a slider + edit box pair with bidirectional sync. For float settings (e.g., 0.5–2.0), the integer slider range is computed dynamically: `sliderMax = Round(floatRange * 10)` for ranges > 1.0, or 100 for ranges ≤ 1.0. Conversion runs both directions — slider-to-edit (`fMin + (sliderVal / sMax) * (fMax - fMin)`, formatted to 2 decimal places) and edit-to-slider (the reverse with clamping). A re-entrancy guard object (`floatSyncGuard := {v: false}`) prevents infinite update loops between the two controls. After each slider update, `InvalidateRect` forces a full repaint to show the custom two-tone channel fill at the new position.
+
+### Dynamic Array Sections
+
+Repeatable config sections (e.g., 4 stackable shader layers) use a template expansion system. Registry entries with `{N}` placeholders in their group names (e.g., `Shader{N}_ShaderName`) are stored as templates. `_CEN_DetectLayerCount()` probes the INI file for `[Shader.1]`, `[Shader.2]`, etc. to determine how many layers exist. Templates are cloned per active layer with `StrReplace(tmpl.g, "{N}", n)`.
+
+Adding a layer increments the count and calls `_CEN_RebuildArrayPage()` — which destroys the old page GUI entirely, re-expands templates with the new count, and rebuilds from scratch. Removing a layer shifts all config values down (layer 3 becomes layer 2, layer 4 becomes layer 3), tracks the vacated last section in `gCEN["RemovedSections"]` for INI cleanup on save, and rebuilds. Scroll position is preserved across rebuilds (clamped to the new maximum).
+
+### ARGB Color Pickers
+
+Hex color fields get a live-preview swatch, a native Windows color picker dialog, and (for ARGB values where max > `0xFFFFFF`) a separate alpha slider.
+
+The swatch is rendered via window subclassing (`SetWindowSubclass`) with a custom `WM_PAINT` callback. It draws a checkerboard background (alternating 5×5px tiles of `0xC0C0C0` and `0x808080` — the universal transparency indicator), then composites the user's color on top using `AlphaBlend` with a premultiplied-alpha DIB section. The `BLENDFUNCTION` struct packs `AC_SRC_OVER` + `AC_SRC_ALPHA` into a single DWORD. A 1px border frames the result.
+
+The color picker uses the native `ChooseColorW` dialog via a manually marshaled `CHOOSECOLOR` struct (72 bytes on x64). `rgbResult` is stored in BGR `COLORREF` format (converted via `Theme_RgbToColorRef`), and a persistent 64-byte custom colors buffer (16 `COLORREF` slots) survives across picker invocations. After the picker closes, RGB is recombined with the preserved alpha channel: `(alpha << 24) | newRGB`.
+
+### Seven Control Types
+
+The editor handles 5 base types — `bool` (checkbox), `enum` (dropdown), `int` (slider + edit + up/down), `float` (slider + edit with decimal formatting), `file` (read-only edit + browse/clear buttons) — plus two variants: dynamic enum (shader selection with live-discovered options) and hex color (swatch + picker + optional alpha slider). All rendered, themed, and synchronized in pure AHK.
 
 ---
 
@@ -361,7 +425,9 @@ Alt-Tabby intercepts Alt+Tab before Windows processes it. The keyboard hook, win
 
 ### Sub-5ms Detection
 
-When Alt is pressed, the hook fires immediately (AHK low-level keyboard hook via `$*` prefix). A 5ms deferred decision window determines whether Tab is part of an Alt+Tab sequence or standalone input. Total detection latency from keypress to state machine transition: under 5ms.
+When Alt is pressed, the hook fires immediately (AHK low-level keyboard hook via `$*` prefix). Only the *first* Tab gets a deferred decision window (configurable, default 24ms) to disambiguate Alt+Tab from standalone Tab input. Once `gINT_SessionActive := true`, **all subsequent Tabs bypass the decision logic entirely** — matching native Windows Alt+Tab behavior where rapid Tab cycling works without per-press delays.
+
+The decision itself uses a two-timer pattern to resolve a race condition between Alt release and Tab decision: the configured decision window fires first, then defers the *actual* decision by 5ms via a second one-shot timer (`INT_TAB_DECIDE_SETTLE_MS := 5`). This settle delay guarantees the Alt_Up handler has time to set `gINT_AltUpDuringPending := true` before the final decision runs — making the race between hook callbacks deterministic. Total detection latency from first keypress to state machine transition: under 5ms. ([`gui_interceptor.ahk`](../src/gui/gui_interceptor.ahk))
 
 ### SetWinEventHook from AHK
 
@@ -397,7 +463,8 @@ The fix: defer heavy work to a fresh timer thread via `SetTimer(DoWork.Bind(args
 
 1. **Dummy `SendInput` trick** — sends an empty `INPUT_MOUSE` structure (40 bytes of zeros) via `SendInput`. This satisfies Windows' requirement that the calling process has received "recent input" before `SetForegroundWindow` is permitted. No actual mouse movement occurs — it's a zero-op that tricks the foreground lock policy.
 2. **TOPMOST/NOTOPMOST Z-order dance** — `SetWindowPos` briefly sets the target window as `HWND_TOPMOST`, then immediately clears it to `HWND_NOTOPMOST`. This forces the window to the top of the Z-order without permanently making it topmost. During overlay fade-out, a simpler `HWND_TOP` is used instead to avoid Z-order flicker.
-3. **`SetForegroundWindow` with verification** — the actual focus call, followed by `GetForegroundWindow` to verify it worked (the return value alone isn't reliable).
+3. **Dead window retry** — if the selected window disappears between Tab and Alt-Up (`IsWindow()` returns false), the engine tries the next eligible window in the display list rather than failing silently. The flight recorder tracks the retry with original hwnd, retry hwnd, and success flag.
+4. **`SetForegroundWindow` with verification** — the actual focus call, followed by `GetForegroundWindow` to verify it worked (the return value alone isn't reliable).
 
 ### Cross-Workspace Activation
 
@@ -422,7 +489,7 @@ This is the same COM path that Windows' own Alt+Tab uses internally, accessed en
 
 **Per-workspace focus caching** — komorebi workspace switch events are state-inconsistent (the snapshot is taken mid-operation). Rather than trusting the event's `ring.focused` field, the engine maintains a per-workspace cache of the last reliably focused hwnd, populated only from trustworthy events (`FocusChange`, `Show`). During rapid workspace switching, stale `EVENT_SYSTEM_FOREGROUND` events from Windows are suppressed with a 2-second cooldown that auto-expires — never cleared early, because premature clearing during rapid switches caused MRU flip-flop and visible selection jiggle.
 
-**Event buffering with lost-Tab synthesis** — during a workspace switch, `komorebic`'s internal `SendInput` temporarily uninstalls all keyboard hooks (a Windows limitation). If the user presses Tab during this window, the keystroke is lost. The engine detects this pattern — `ALT_DOWN` + `ALT_UP` buffered without any `TAB_STEP` in between — and synthesizes the missing Tab event at the correct position before replaying the buffer.
+**Event buffering with lost-Tab synthesis** — during a workspace switch, `komorebic`'s internal `SendInput` temporarily uninstalls all keyboard hooks (a Windows limitation). If the user presses Tab during this window, the keystroke is lost. The engine detects this pattern — `ALT_DOWN` + `ALT_UP` buffered without any `TAB_STEP` in between — and synthesizes the missing Tab event at the correct position before replaying the buffer. The buffer state machine uses four phases — `polling`, `waiting`, `flushing`, `""` (idle) — where the `flushing` phase prevents events that arrive after activation completes but before buffer replay from bypassing the queue. Escape is the exception: it immediately cancels a pending activation without buffering, giving responsive tactile feedback even during 500–1000ms workspace transitions.
 
 **Workspace mismatch auto-correction** — during focus processing, the system detects if a focused window's workspace assignment differs from the current workspace in metadata. This means a komorebi event was missed (pipe overflow, reconnection, etc.). Rather than showing stale data until the next full state poll, the system silently corrects the current workspace — implicit self-healing via consistency checking, without user intervention. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
 
@@ -611,6 +678,7 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Background icon pre-cache batching** — HICON → GDI+ bitmap conversion (expensive: GDI interop + premultiply) runs in batches of 4 icons per 50ms timer tick during non-ACTIVE state. The timer self-arms if the batch cap is hit and stops when the cache is complete. This prevents icon conversion from competing with the paint path during Alt-Tab, while ensuring icons are ready before the user presses Tab. ([`gui_data.ahk`](../src/gui/gui_data.ahk))
 - **Display list hwnd→record Map** — a parallel `gWS_DLCache_ItemsMap` maintains O(1) hwnd-keyed lookup alongside the ordered display list array. Operations like close/kill button clicks and workspace filtering use the Map instead of O(N) linear scans. ([`window_list.ahk`](../src/shared/window_list.ahk))
 - **Pre-computed hwndHex** — `Format("0x{:X}", hwnd)` is computed once at store record creation and stored as `hwndHex`. Every logging path, flight recorder dump, and diagnostic display reuses this pre-formatted string instead of calling `Format()` per reference.
+- **Object identity for MRU move-to-front** — the MRU update uses `==` (AHK object identity) instead of hwnd comparison when scanning the live items array. Object identity is atomic — no field access overhead — and safe against HWND aliasing if Windows recycles a handle across window lifetimes. ([`gui_activation.ahk`](../src/gui/gui_activation.ahk))
 
 ### Rendering Pipeline
 
@@ -632,6 +700,7 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Debounced cosmetic repaint** — title updates and icon resolution for off-screen items trigger a leading-edge repaint immediately, then debounce subsequent changes on a trailing-edge timer. Prevents paint spam during rapid cosmetic update bursts (e.g., 10 icons resolving in quick succession). ([`gui_main.ahk`](../src/gui/gui_main.ahk))
 - **Hover detection short-circuit** — the hover recalculation path caches the previous cursor position and scroll offset in static locals. When nothing has changed (cursor sitting still over the overlay — the overwhelmingly common case), the entire hit-test and repaint path is skipped before any DllCall or layout computation. ([`gui_input.ahk`](../src/gui/gui_input.ahk))
 - **Pre-render at new dimensions before resize** — during overlay resize, shader and mouse effect layers are pre-rendered at the *new* dimensions *before* `SetWindowPos` actually resizes the HWND. Each layer has independent D3D11 resources that don't depend on the render target being resized yet. This eliminates a single frame of stale-dimension content that would otherwise be visible during the STA message pump between the resize and first paint. ([`gui_paint.ahk`](../src/gui/gui_paint.ahk))
+- **Icon bitmap survival across window destruction** — HICON→D2D1Bitmap conversion is expensive (GDI interop + premultiplied alpha). Pre-cached bitmaps are keyed by hwnd and served even after the source window is destroyed — no blank icon frames during Alt-Tab. Cache pruning uses two-pass iteration (collect stale keys, then delete) to avoid AHK's Map mutation-during-iteration crash. ([`gui_gdip.ahk`](../src/gui/gui_gdip.ahk))
 
 ### Frame Pacing
 
@@ -646,6 +715,7 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Critical section double-buffer for pipe writes** — `RtlMoveMemory` copies the message into the pre-allocated buffer under `Critical` (~6 microseconds), then Critical is released *before* `WriteFile`. Blocked I/O on the pipe never freezes the keyboard hook thread. The copy is cheap; the potential I/O block is not.
 - **Stats pump offload** — stats flush involves 13 `IniWrite` calls (10–75ms total). Rather than blocking MainProcess, the flush is offloaded to the EnrichmentPump via a single pipe message (~10–15μs). The pump writes to disk in its own process. Falls back to direct write if the pump is unavailable. Keeps the GUI thread responsive during periodic stats persistence. ([`stats.ahk`](../src/shared/stats.ahk))
 - **Event buffer swap pattern** — during async workspace activation, keyboard events are buffered. When activation completes, the buffer is swapped by reference under Critical (assign old buffer to a local, replace global with a fresh array, release Critical) rather than cloned. This prevents the race where new events arrive between clearing the phase flag and processing the buffer — and avoids the allocation overhead of `Clone()`. ([`gui_activation.ahk`](../src/gui/gui_activation.ahk))
+- **Deferred logging outside Critical** — log calls inside Critical sections buffer into `_GST_LogBuf` and flush to disk via a `-1ms` one-shot timer. `FileAppend` is disk I/O that can block 5–50ms on slow drives — executing it inside Critical would stall the keyboard hook thread. The timer fires after Critical is released, keeping the hook responsive. ([`gui_state.ahk`](../src/gui/gui_state.ahk))
 
 ### Memory Residency
 
@@ -684,6 +754,8 @@ A zero-cost in-memory diagnostics system: ([`gui_flight_recorder.ahk`](../src/gu
 - **Diagnostic churn tracking** — a `field→count` Map in the window store tracks which specific fields cause revision bumps during idle. When the store is churning (revisions incrementing without user action), the churn map identifies the source — title changes? icon updates? focus ping-pong? Zero-cost when not inspected; maintained as a side-effect of existing dirty tracking. Dumped with the flight recorder snapshot.
 
 Event codes are small integers at record time. Human-readable names are resolved only during the dump — keeping the hot path allocation-free. See [Using the Flight Recorder](USING_RECORDER.md) for the analysis guide.
+
+All 11 diagnostic log paths (events, store, icons, processes, komorebi, IPC, paint timing, WebView, shaders, launcher, WinEventHook) use `LogTrim()` for automatic rotation — when a log exceeds a configurable threshold (default 100KB), the function keeps only the tail (default 50KB of the most recent entries) and inserts a `... (log trimmed) ...` marker at the splice point. Both thresholds are configurable via `DiagLogMaxKB` and `DiagLogKeepKB`. ([`config_loader.ahk`](../src/shared/config_loader.ahk))
 
 ### In-Process Debug Viewer
 
