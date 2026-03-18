@@ -1237,6 +1237,7 @@ _KSub_ScheduleCloakPush() {
     _KSub_CloakPushPending := true
     _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch
     SetTimer(_KSub_CloakBatchTimerFn, -cfg.KomorebiSubBatchCloakEventsMs)
+    Critical "Off"
 }
 
 ; Timer callback: push all accumulated cloak changes in one delta
