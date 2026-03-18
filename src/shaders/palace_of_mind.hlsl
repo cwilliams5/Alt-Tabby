@@ -6,6 +6,8 @@ float3 glsl_mod3(float3 x, float y) {
     return x - y * floor(x / y);
 }
 
+static const float2x2 _rot076 = float2x2(0.72483601, -0.68892145, 0.68892145, 0.72483601);  // rot(0.76)
+
 float2 rot(float2 p, float r) {
     // GLSL mat2(cos,sin,-sin,cos) is column-major; transpose for HLSL row-major
     float s, c;
@@ -61,7 +63,7 @@ float dist(float3 p) {
     p = glsl_mod3(p, k) - 0.5 * k;
     float s = 7.0;
     p *= s;
-    p.yz = rot(p.yz, 0.76);
+    p.yz = mul(_rot076, p.yz);
     // Hoist loop-invariant trig: angles depend only on t and sz, not loop variable
     float sinOffset = (0.25 + 0.1 * sz) * sin(t * (0.5 + sz));
     float s1, c1; sincos(t * (0.7 + sz), s1, c1);

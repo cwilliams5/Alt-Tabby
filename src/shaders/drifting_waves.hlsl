@@ -23,14 +23,16 @@ static const float HEIGHT_DIV = 2.3;
 static const float WAVE_ROT_ANGLE = 6.21;
 // Same constructor args as GLSL for mul(v, m) pattern
 static const float2x2 WAVE_ROT = float2x2(
-    cos(WAVE_ROT_ANGLE), -sin(WAVE_ROT_ANGLE),
-    sin(WAVE_ROT_ANGLE), cos(WAVE_ROT_ANGLE));
+    0.99732315, 0.07311999,     // cos(6.21), -sin(6.21)
+    -0.07311999, 0.99732315);   // sin(6.21), cos(6.21)
 static const float WAVE_FREQ = 0.6;
 static const float OCC_SPEED = 1.4;
 static const float DX_DET = 0.65;
 static const float WW_STEP = 0.86503782; // pow(WEIGHT_SCALE, DX_DET)
 
 static const float2 sunrot_val = float2(-0.3, 0.10);
+static const float2x2 _rotSunY = float2x2(0.99500417, -0.09983342, 0.09983342, 0.99500417);  // rot(0.10)
+static const float2x2 _rotSunX = float2x2(0.95533649, 0.29552021, -0.29552021, 0.95533649);   // rot(-0.3)
 
 // --- Utilities (from Common) ---
 
@@ -194,8 +196,8 @@ float3 sky(float3 rd) {
     float3 col = (float3)0;
 
     float sky_palette = 0.08;
-    rd.yz = mul(rd.yz, rot(sunrot_val.y));
-    rd.xz = mul(rd.xz, rot(sunrot_val.x));
+    rd.yz = mul(rd.yz, _rotSunY);
+    rd.xz = mul(rd.xz, _rotSunX);
     float px = min(fwidth(rd).x, fwidth(rd).y);
     float sFade = px * 2.0;
     float zFade = rd.z * 0.5 + 0.5;
