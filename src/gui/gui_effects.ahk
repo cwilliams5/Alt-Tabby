@@ -1176,7 +1176,9 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime
     global gShader_Registry, cfg
 
-    if (gFX_HoverEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+    he := gFX_HoverEffect  ; PERF: cache global to local (13+ accesses — matches me/se pattern in siblings)
+
+    if (he.key = "" || !gShader_Ready || !gFX_GPUReady) {
         Profiler.Leave() ; @profile
         return
     }
@@ -1184,7 +1186,7 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     ; Set selGlow/selIntensity right before render (shared-entry fix)
     ; Single .Get() lookup + guarded mutation (config-stable values)
     hovIntensity := cfg.GUI_HoverSelectionIntensity
-    entry := gShader_Registry.Get(gFX_HoverEffect.key, 0)
+    entry := gShader_Registry.Get(he.key, 0)
     if (entry) {
         static _hovLastGlow := -1, _hovLastInt := -1.0
         if (cfg.GUI_HoverSelectionGlow != _hovLastGlow || hovIntensity != _hovLastInt) {
@@ -1197,10 +1199,10 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
 
     ambientSec := gFX_AmbientTime / 1000.0
     baseTime := ambientSec
-    t := gFX_ShaderTime.Get(gFX_HoverEffect.key, 0)
+    t := gFX_ShaderTime.Get(he.key, 0)
     if (t)
         baseTime := t.offset + t.carry + ambientSec
-    baseTime *= gFX_HoverEffect.speed
+    baseTime *= he.speed
 
     ; Decompose ARGB → premultiplied float4 RGBA (cached — config-stable values)
     static _hovLastARGB := -1, _hovR := 0.0, _hovG := 0.0, _hovB := 0.0, _hovA := 0.0
@@ -1224,31 +1226,31 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
 
     ; BG-as-hover Resize mode: render at hover rect size
     renderW := w, renderH := h
-    if (gFX_HoverEffect.isBGShader && cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
+    if (he.isBGShader && cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
         renderW := Max(Round(selW), 1)
         renderH := Max(Round(selH), 1)
     }
 
     ; BG shaders don't read isHovered/selIntensity, so apply intensity as opacity multiplier
-    effectOpacity := gFX_HoverEffect.opacity
-    if (gFX_HoverEffect.isBGShader)
+    effectOpacity := he.opacity
+    if (he.isBGShader)
         effectOpacity *= hovIntensity
 
     try {
-        Shader_PreRender(gFX_HoverEffect.key, renderW, renderH, baseTime,
-            gFX_HoverEffect.darkness, gFX_HoverEffect.desat, effectOpacity,
+        Shader_PreRender(he.key, renderW, renderH, baseTime,
+            he.darkness, he.desat, effectOpacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0, rowRadius * 1.0)
         ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawHoverEffect)
-        gFX_HoverEffect._bitmap := Shader_GetBitmap(gFX_HoverEffect.key)
+        he._bitmap := Shader_GetBitmap(he.key)
     } catch as e {
-        gFX_HoverEffect._bitmap := 0
+        he._bitmap := 0
         if (cfg.DiagShaderLog) {
             global LOG_PATH_SHADER
-            errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
+            errDetail := "Hover shader ERR [" he.key "]: " e.Message " @ " e.What
             ToolTip(errDetail)
             static clearTT := () => ToolTip()
             SetTimer(clearTT, -5000)
@@ -1263,19 +1265,21 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
     Profiler.Enter("FX_DrawHoverEffect") ; @profile
     global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg
 
-    if (gFX_HoverEffect.key = "" || !gShader_Ready) {
+    he := gFX_HoverEffect  ; PERF: cache global to local (5+ accesses)
+
+    if (he.key = "" || !gShader_Ready) {
         Profiler.Leave() ; @profile
         return
     }
 
     ; Use bitmap cached during pre-render (avoids Map+try lookup)
-    pBitmap := gFX_HoverEffect._bitmap
+    pBitmap := he._bitmap
     if (!pBitmap) {
         Profiler.Leave() ; @profile
         return
     }
 
-    if (gFX_HoverEffect.isBGShader) {
+    if (he.isBGShader) {
         static hov_srcRect := Buffer(16), hov_tgtPt := Buffer(8), hov_dstRect := Buffer(16)
         static hovBmpWrap := {ptr: 0}  ; reusable COM wrapper (avoids per-frame object alloc)
         ; Clip shader output to RowRadius rounded rect

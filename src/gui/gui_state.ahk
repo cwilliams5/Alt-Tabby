@@ -129,6 +129,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_Pending, gGUI_EventBuffer, gAnim_HidePending, gGUI_InGraceCallback
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
+    global gGUI_WSContextSwitch, gStats_AltTabs, gStats_TabSteps, gStats_QuickSwitches, gStats_Cancellations
 
     Profiler.Enter("GUI_OnInterceptorEvent") ; @profile
 
@@ -143,10 +144,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     ; File-based debug logging (no performance impact from tooltips)
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
-    if (diagLog)
+    if (diagLog) {
         evName := _GUI_GetEventName(evCode)
-    if (diagLog)
         GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_Pending.phase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
+    }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
@@ -201,7 +202,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_State := "ALT_PENDING"
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
-        global gGUI_WSContextSwitch
         gGUI_WSContextSwitch := false
 
         ; Pre-warm: refresh display list and icon cache before Tab arrives.
@@ -226,7 +226,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_ACTIVE)
             gGUI_State := "ACTIVE"
-            global gStats_AltTabs, gStats_TabSteps
             gStats_AltTabs += 1
             gStats_TabSteps += 1
 
@@ -348,7 +347,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 ; Quick switch: Alt+Tab released quickly, no GUI shown
                 if (gFR_Enabled)
                     FR_Record(FR_EV_QUICK_SWITCH, timeSinceTab)
-                global gStats_QuickSwitches
                 gStats_QuickSwitches += 1
                 _GUI_ActivateFromFrozen()
             } else if (gGUI_OverlayVisible) {
@@ -383,7 +381,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
-        global gStats_Cancellations
         gStats_Cancellations += 1
         GUI_DismissOverlay()
         Profiler.Leave() ; @profile
@@ -727,10 +724,12 @@ _GUI_ShowOverlayWithFrozen() {
         return
     }
 
+    diagTiming := cfg.DiagPaintTimingLog  ; PERF: cache config read (5+ uses)
+
     ; ===== TIMING: Show sequence start =====
     tShow_Start := QPC()
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    if (cfg.DiagPaintTimingLog)
+    if (diagTiming)
         Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
 
     ; Set visible flag FIRST to prevent re-entrancy issues
@@ -782,7 +781,7 @@ _GUI_ShowOverlayWithFrozen() {
 
     ; RACE FIX: abort if state changed during resize (pumps messages)
     if (gGUI_State != "ACTIVE") {
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT before Show (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         Profiler.Leave() ; @profile
@@ -790,7 +789,7 @@ _GUI_ShowOverlayWithFrozen() {
     }
     ; Layer 3 (#303): detect lost ALT_UP via physical key state after resize
     if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT: Alt physically up (post-resize)")
         _GUI_AbortShowSequence()
         SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
@@ -812,7 +811,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: Show pumps messages — check if Alt was released
     if (gGUI_State != "ACTIVE") {
         try gGUI_Base.Hide()
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT after Show (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         Profiler.Leave() ; @profile
@@ -821,7 +820,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; Layer 3 (#303): detect lost ALT_UP via physical key state after Show
     if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
         try gGUI_Base.Hide()
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT: Alt physically up (post-Show)")
         _GUI_AbortShowSequence()
         SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
@@ -851,7 +850,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: If Alt was released during paint, hide and abort.
     if (gGUI_State != "ACTIVE") {
         try gGUI_Base.Hide()
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         Profiler.Leave() ; @profile
@@ -860,7 +859,7 @@ _GUI_ShowOverlayWithFrozen() {
     ; Layer 3 (#303): detect lost ALT_UP via physical key state after Repaint
     if (gINT_AltIsDown && !INT_IsAltPhysicallyDown()) {
         try gGUI_Base.Hide()
-        if (cfg.DiagPaintTimingLog)
+        if (diagTiming)
             Paint_Log("ShowOverlay ABORT: Alt physically up (post-Repaint)")
         _GUI_AbortShowSequence()
         SetTimer(INT_RecoverLostAltUp.Bind(3), -1)  ; Deferred — see Layer 2 comment
@@ -876,7 +875,7 @@ _GUI_ShowOverlayWithFrozen() {
 
     ; ===== TIMING: Log show sequence =====
     tShow_Total := QPC() - tShow_Start
-    if (cfg.DiagPaintTimingLog)
+    if (diagTiming)
         Paint_Log("ShowOverlay END: total=" Round(tShow_Total, 2) "ms | resize=" Round(tShow_Resize, 2) " repaint=" Round(tShow_Repaint, 2))
     Profiler.Leave() ; @profile
 }
@@ -1039,14 +1038,16 @@ Stats_AccumulateSession() {
     global gStats_MonitorToggles
     global gStats_LastSent
 
+    ls := gStats_LastSent  ; PERF: cache global Map to local (14 operations)
+
     ; Calculate deltas since last send
-    dAltTabs := gStats_AltTabs - gStats_LastSent.Get("AltTabs", 0)
-    dQuick := gStats_QuickSwitches - gStats_LastSent.Get("QuickSwitches", 0)
-    dTabs := gStats_TabSteps - gStats_LastSent.Get("TabSteps", 0)
-    dCancels := gStats_Cancellations - gStats_LastSent.Get("Cancellations", 0)
-    dCrossWS := gStats_CrossWorkspace - gStats_LastSent.Get("CrossWorkspace", 0)
-    dToggles := gStats_WorkspaceToggles - gStats_LastSent.Get("WorkspaceToggles", 0)
-    dMonToggles := gStats_MonitorToggles - gStats_LastSent.Get("MonitorToggles", 0)
+    dAltTabs := gStats_AltTabs - ls.Get("AltTabs", 0)
+    dQuick := gStats_QuickSwitches - ls.Get("QuickSwitches", 0)
+    dTabs := gStats_TabSteps - ls.Get("TabSteps", 0)
+    dCancels := gStats_Cancellations - ls.Get("Cancellations", 0)
+    dCrossWS := gStats_CrossWorkspace - ls.Get("CrossWorkspace", 0)
+    dToggles := gStats_WorkspaceToggles - ls.Get("WorkspaceToggles", 0)
+    dMonToggles := gStats_MonitorToggles - ls.Get("MonitorToggles", 0)
 
     ; Skip if nothing to send
     if (dAltTabs = 0 && dQuick = 0 && dTabs = 0 && dCancels = 0 && dCrossWS = 0 && dToggles = 0 && dMonToggles = 0)
@@ -1072,11 +1073,11 @@ Stats_AccumulateSession() {
     Stats_Accumulate(msg)
 
     ; Record what was sent
-    gStats_LastSent["AltTabs"] := gStats_AltTabs
-    gStats_LastSent["QuickSwitches"] := gStats_QuickSwitches
-    gStats_LastSent["TabSteps"] := gStats_TabSteps
-    gStats_LastSent["Cancellations"] := gStats_Cancellations
-    gStats_LastSent["CrossWorkspace"] := gStats_CrossWorkspace
-    gStats_LastSent["WorkspaceToggles"] := gStats_WorkspaceToggles
-    gStats_LastSent["MonitorToggles"] := gStats_MonitorToggles
+    ls["AltTabs"] := gStats_AltTabs
+    ls["QuickSwitches"] := gStats_QuickSwitches
+    ls["TabSteps"] := gStats_TabSteps
+    ls["Cancellations"] := gStats_Cancellations
+    ls["CrossWorkspace"] := gStats_CrossWorkspace
+    ls["WorkspaceToggles"] := gStats_WorkspaceToggles
+    ls["MonitorToggles"] := gStats_MonitorToggles
 }

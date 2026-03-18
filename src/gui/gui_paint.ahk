@@ -395,7 +395,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick, _gPaint_SubCache
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
-    global gFX_GPUReady, gD2D_BrushGeneration
+    global gFX_GPUReady, gD2D_BrushGeneration, gFX_HoverEffect, gFX_SelectionEffect
+    global gAnim_SelPrevIndex, gAnim_SelNewIndex
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -583,6 +584,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         colY := cachedLayout.colY
         colH := cachedLayout.colH
         hoverRow := gGUI_HoverRow
+        iconOffY := (RowH - ISize) // 2  ; PERF: hoist loop-invariant icon Y offset
 
         ; Hoist loop-invariant gD2D_Res lookups (12 keys × N rows → 12 lookups total)
         tfMain := gD2D_Res["tfMain"], tfMainHi := gD2D_Res["tfMainHi"]
@@ -609,7 +611,6 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
         ; The highlight is a background element — text/icons draw on top.
         ; When animation is active, the highlight Y is interpolated between prev and new positions.
-        global gAnim_SelPrevIndex, gAnim_SelNewIndex
         selW := wPhys - 2 * Mx + selExpandX * 2
         selH := RowH
         selX := Mx - selExpandX
@@ -630,7 +631,6 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 selY := baseSelY
             }
 
-            global gFX_SelectionEffect
             if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                 ; Shader-based selection effect
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
@@ -648,7 +648,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         }
 
         while (i < rowsToDraw && (yRow + RowH <= contentBottomY)) {
-            idx0 := Win_Wrap0(start0 + i, count)
+            idx0 := Mod(start0 + i, count)  ; PERF: inlined Win_Wrap0 — operands always non-negative here
             idx1 := idx0 + 1
             cur := items[idx1]
             curHwnd := cur.hwnd
@@ -659,10 +659,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
             ; Hover highlight (non-selected rows) — 4-way path
             if (!isSel && idx1 = hoverRow) {
-                global gFX_HoverEffect
-                hoverX := Mx - selExpandX
+                hoverX := selX      ; PERF: reuse selection geometry (identical computation)
                 hoverY := yRow - selExpandY
-                hoverW := wPhys - 2 * Mx + selExpandX * 2
+                hoverW := selW      ; PERF: reuse selection geometry (identical computation)
                 if (gFX_HoverEffect.key != "" && gFX_GPUReady) {
                     ; Path 1: Independent hover shader
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
@@ -693,7 +692,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; Text formatting still uses isSel for highlighted fonts/colors
 
             ix := leftX
-            iy := yRow + (RowH - ISize) // 2
+            iy := yRow + iconOffY
 
             ; ===== TIMING: Icon draw =====
             if (diagTiming)

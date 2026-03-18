@@ -409,10 +409,11 @@ _KomorebiSub_Poll() {
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
         return
+    logEnabled := cfg.DiagKomorebiLog  ; PERF: cache config read (3 uses)
     try {
 
     ; Log every 5 seconds to avoid spam (tick-based, no unbounded counter per ahk-patterns.md)
-    if (cfg.DiagKomorebiLog && A_TickCount - lastLogTick > 5000) {
+    if (logEnabled && A_TickCount - lastLogTick > 5000) {
         KSub_DiagLog("Poll: hPipe=" _KSub_hPipe " connected=" _KSub_Connected)
         lastLogTick := A_TickCount
     }
@@ -487,7 +488,7 @@ _KomorebiSub_Poll() {
         ; Protect against unbounded buffer growth (use tracked length to avoid O(n) StrLen)
         ; This prevents OOM when komorebi sends incomplete JSON with opening brace
         if (_KSub_ReadBufferLen + chunkLen > KSUB_BUFFER_MAX_BYTES) {
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("Buffer overflow protection: reset (was " _KSub_ReadBufferLen ")")
             _KSub_ReadBuffer := ""
             _KSub_ReadBufferLen := 0
@@ -509,7 +510,7 @@ _KomorebiSub_Poll() {
             _KSub_ReadBufferLen -= consumed
         if (json = "")
             break
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }

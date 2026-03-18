@@ -52,10 +52,11 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     class := ""
     pid := 0
 
+    ahkWin := "ahk_id " hwnd  ; PERF: cache concat once (used 3 times)
     try {
-        title := WinGetTitle("ahk_id " hwnd)
-        class := WinGetClass("ahk_id " hwnd)
-        pid := WinGetPID("ahk_id " hwnd)
+        title := WinGetTitle(ahkWin)
+        class := WinGetClass(ahkWin)
+        pid := WinGetPID(ahkWin)
     } catch {
         return ""
     }

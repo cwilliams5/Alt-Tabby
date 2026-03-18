@@ -291,14 +291,15 @@ WL_UpsertWindow(records, source := "") {
         hwnd := rec.Get("hwnd", 0) + 0
         if (!hwnd)
             continue
-        isNew := !gWS_Store.Has(hwnd)
+        row := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        isNew := !row
         if (isNew) {
-            gWS_Store[hwnd] := _WS_NewRecord(hwnd)
+            row := _WS_NewRecord(hwnd)
+            gWS_Store[hwnd] := row
             added += 1
             if (gFR_Enabled)
                 FR_Record(FR_EV_WINDOW_ADD, hwnd, gWS_Store.Count)
         }
-        row := gWS_Store[hwnd]
 
         ; If window has komorebi workspace data, don't let winenum overwrite state/isCloaked
         ; Komorebi is authoritative for workspace state
@@ -1320,7 +1321,7 @@ WL_CleanupAllIcons() {
 
 WL_GetDisplayList(opts := 0) {
     Profiler.Enter("WL_GetDisplayList") ; @profile
-    global gWS_Store, gWS_Meta, gWS_SortOrderDirty
+    global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_Rev
     global gWS_MRUBumpOnly, gWS_MRUBumpedHwnd, gWS_DirtyHwnds, gWS_TitleSortActive
     global gWS_DLCache_Items, gWS_DLCache_ItemsMap, gWS_DLCache_OptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
@@ -1339,9 +1340,10 @@ WL_GetDisplayList(opts := 0) {
     Critical "On"
     if (!gWS_SortOrderDirty
         && IsObject(gWS_DLCache_Items) && gWS_DLCache_OptsKey = optsKey) {
-        result := { rev: _WL_GetRev(), items: gWS_DLCache_Items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "cache" }
+        result := { rev: gWS_Rev, items: gWS_DLCache_Items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "cache" }
         if (columns = "hwndsOnly") {
             hwnds := []
+            hwnds.Capacity := gWS_DLCache_Items.Length  ; PERF: pre-size to avoid reallocs
             for _, row in gWS_DLCache_Items
                 hwnds.Push(row.hwnd)
             Critical "Off"
@@ -1415,9 +1417,10 @@ WL_GetDisplayList(opts := 0) {
             gWS_MRUBumpedHwnd := 0
             gWS_DirtyHwnds.Clear()
             ; gWS_DLCache_Items is sortedRecs (same array, reordered in-place)
-            result := { rev: _WL_GetRev(), items: sortedRecs, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
+            result := { rev: gWS_Rev, items: sortedRecs, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
             if (columns = "hwndsOnly") {
                 hwnds := []
+                hwnds.Capacity := sortedRecs.Length  ; PERF: pre-size to avoid reallocs
                 for _, row in sortedRecs
                     hwnds.Push(row.hwnd)
                 Critical "Off"
@@ -1481,12 +1484,13 @@ WL_GetDisplayList(opts := 0) {
 
     if (columns = "hwndsOnly") {
         hwnds := []
+        hwnds.Capacity := items.Length  ; PERF: pre-size to avoid reallocs
         for _, row in items
             hwnds.Push(row.hwnd)
         Profiler.Leave() ; @profile
-        return { rev: _WL_GetRev(), hwnds: hwnds, meta: gWS_Meta, cachePath: "full" }
+        return { rev: gWS_Rev, hwnds: hwnds, meta: gWS_Meta, cachePath: "full" }
     }
 
     Profiler.Leave() ; @profile
-    return { rev: _WL_GetRev(), items: items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "full" }
+    return { rev: gWS_Rev, items: items, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "full" }
 }

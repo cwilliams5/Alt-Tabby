@@ -173,9 +173,9 @@ Anim_EnsureTimer() {
     global gAnim_FPSFrameCount, gAnim_FPSLastSample
     global gPaint_RepaintInProgress, gAnim_DeferredTimerStart
     global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
-    if (cfg.PerfAnimationType = "None" && !FX_HasActiveShaders())
+    if (gAnim_TimerRunning)  ; PERF: check cheapest guard first (1 global read, most common early-exit)
         return
-    if (gAnim_TimerRunning)
+    if (cfg.PerfAnimationType = "None" && !FX_HasActiveShaders())
         return
     ; If a paint is in progress, the STA pump would dispatch the frame loop
     ; (a blocking while-loop) inside the paint, suspending the paint quasi-thread
