@@ -222,9 +222,8 @@ IconPump_CleanupWindow(hwnd) {
         rec.iconHicon := 0  ; Defensive: prevent use-after-free
     }
 
-    ; Clean up attempt tracking
-    if (_IP_Attempts.Has(hwnd))
-        _IP_Attempts.Delete(hwnd)
+    ; Clean up attempt tracking (Delete throws on missing key; try swallows harmlessly)
+    try _IP_Attempts.Delete(hwnd)
     Critical "Off"
 }
 
@@ -300,7 +299,7 @@ _IP_Tick() {
 
         isHidden := rec.isCloaked || rec.isMinimized || !rec.isVisible
         hasIcon := rec.iconHicon != 0
-        currentMethod := rec.HasOwnProp("iconMethod") ? rec.iconMethod : ""
+        currentMethod := rec.iconMethod  ; PERF: field always exists per _WS_NewRecord — skip HasOwnProp
 
         ; PERF: Hoist title computation before mode switch (used in multiple log branches)
         title := logEnabled ? _IP_TruncTitle(rec) : ""

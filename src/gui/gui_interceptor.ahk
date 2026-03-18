@@ -411,8 +411,9 @@ INT_SetBypassMode(shouldBypass) {
     global gINT_BypassMode, cfg
 
     global FR_EV_BYPASS, gFR_Enabled
-    diagLog := cfg.DiagEventLog
+    ; PERF: diagLog read deferred inside branches — skip on no-change fast path
     if (shouldBypass && !gINT_BypassMode) {
+        diagLog := cfg.DiagEventLog
         ; Entering bypass mode - disable Tab hooks
         if (gFR_Enabled)
             FR_Record(FR_EV_BYPASS, 1)
@@ -427,6 +428,7 @@ INT_SetBypassMode(shouldBypass) {
                 GUI_LogEvent("INT: BYPASS Hotkey Off FAILED: " e.Message)
         }
     } else if (!shouldBypass && gINT_BypassMode) {
+        diagLog := cfg.DiagEventLog
         ; Leaving bypass mode - re-enable Tab hooks
         if (gFR_Enabled)
             FR_Record(FR_EV_BYPASS, 0)

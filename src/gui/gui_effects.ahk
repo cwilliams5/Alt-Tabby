@@ -564,11 +564,13 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     ; Single .Get() lookup + guarded mutation (config-stable values)
     if (!se.isBGShader && (entry := gShader_Registry.Get(se.key, 0))) {
         static _selLastGlow := -1, _selLastInt := -1.0
-        if (cfg.GUI_SelectionGlow != _selLastGlow || cfg.GUI_SelectionIntensity != _selLastInt) {
-            entry.selGlow := cfg.GUI_SelectionGlow
-            entry.selIntensity := cfg.GUI_SelectionIntensity
-            _selLastGlow := cfg.GUI_SelectionGlow
-            _selLastInt := cfg.GUI_SelectionIntensity
+        glow := cfg.GUI_SelectionGlow  ; PERF: cache locals, avoid double cfg read
+        intensity := cfg.GUI_SelectionIntensity
+        if (glow != _selLastGlow || intensity != _selLastInt) {
+            entry.selGlow := glow
+            entry.selIntensity := intensity
+            _selLastGlow := glow
+            _selLastInt := intensity
         }
     }
 
@@ -1189,10 +1191,11 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     entry := gShader_Registry.Get(he.key, 0)
     if (entry) {
         static _hovLastGlow := -1, _hovLastInt := -1.0
-        if (cfg.GUI_HoverSelectionGlow != _hovLastGlow || hovIntensity != _hovLastInt) {
-            entry.selGlow := cfg.GUI_HoverSelectionGlow
+        hovGlow := cfg.GUI_HoverSelectionGlow  ; PERF: cache local, avoid double cfg read
+        if (hovGlow != _hovLastGlow || hovIntensity != _hovLastInt) {
+            entry.selGlow := hovGlow
             entry.selIntensity := hovIntensity
-            _hovLastGlow := cfg.GUI_HoverSelectionGlow
+            _hovLastGlow := hovGlow
             _hovLastInt := hovIntensity
         }
     }
@@ -1225,8 +1228,12 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     bdrR := _hovBdrR, bdrG := _hovBdrG, bdrB := _hovBdrB, bdrA := _hovBdrA
 
     ; BG-as-hover Resize mode: render at hover rect size
+    ; PERF: cache Resize mode in static (matching FX_DrawHoverEffect pattern)
+    static _hovPreRenderResizeMode := -1
+    if (_hovPreRenderResizeMode = -1)
+        _hovPreRenderResizeMode := cfg.GUI_HoverBGShaderAsSelectionSize = "Resize"
     renderW := w, renderH := h
-    if (he.isBGShader && cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
+    if (he.isBGShader && _hovPreRenderResizeMode) {
         renderW := Max(Round(selW), 1)
         renderH := Max(Round(selH), 1)
     }

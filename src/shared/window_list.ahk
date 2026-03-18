@@ -267,7 +267,7 @@ WL_UpsertWindow(records, source := "") {
     Profiler.Enter("WL_UpsertWindow") ; @profile
     global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD, gFR_Enabled
-    global gWS_DirtyHwnds
+    global gWS_DirtyHwnds, gWS_FieldClass
     if (!IsObject(records) || !(records is Array)) {
         Profiler.Leave() ; @profile
         return { added: 0, updated: 0, rev: gWS_Rev }
@@ -336,13 +336,15 @@ WL_UpsertWindow(records, source := "") {
                             gWS_DiagChurn[k] := gWS_DiagChurn.Get(k, 0) + 1
                         row.%k% := v
                         rowChanged := true
-                        ; Mark dirty for delta tracking (new records or non-internal field changes)
-                        if (gWS_SortAffectingFields.Has(k))
+                        ; PERF: Single gWS_FieldClass.Get() replaces 3 separate Map.Has() lookups
+                        ; (matches _WS_ApplyPatch pattern at line ~419)
+                        cls := gWS_FieldClass.Get(k, "")
+                        if (cls = "sort" || cls = "mruSort")
                             sortDirty := true
-                        else if (gWS_ContentOnlyFields.Has(k))
+                        else if (cls = "content")
                             contentDirty := true
                         ; Mark hwnd dirty for cosmetic patch during ACTIVE state
-                        if (!gWS_InternalFields.Has(k))
+                        if (cls != "internal")
                             gWS_DirtyHwnds[hwnd] := true
                     }
                 }
@@ -525,9 +527,9 @@ WL_BatchUpdateFields(patches, source := "") {
 
     for hwnd, patch in patches {
         hwnd := hwnd + 0
-        if (!gWS_Store.Has(hwnd))
+        row := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!row)
             continue
-        row := gWS_Store[hwnd]
 
         ; Apply patch using shared helper
         result := _WS_ApplyPatch(row, patch, hwnd)

@@ -762,7 +762,8 @@ _GUI_ShowOverlayWithFrozen() {
     ; resized.  That nested paint either renders at the old RT size (stretched)
     ; or blocks on shader compilation and holds the reentrancy guard (blank).
     ; The tween starts after resize + show + reveal, right before the first paint.
-    Anim_PrepareShowFade(cfg.PerfAnimationType != "None")
+    hasAnim := cfg.PerfAnimationType != "None"  ; PERF: cache, read twice (here + line ~847)
+    Anim_PrepareShowFade(hasAnim)
 
     ; ===== TIMING: Resize =====
     t1 := QPC()
@@ -844,7 +845,7 @@ _GUI_ShowOverlayWithFrozen() {
 
     ; NOW start the show-fade tween — first paint is done, content is rendered.
     ; Animation timer can safely call GUI_Repaint from here on.
-    if (cfg.PerfAnimationType != "None")
+    if (hasAnim)
         Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
 
     ; RACE FIX: If Alt was released during paint, hide and abort.

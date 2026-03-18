@@ -265,15 +265,16 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
                 return false
             }
         }
+        ahkWin := "ahk_id " hwnd  ; PERF: cache once, used by both WinGetTitle and WinGetClass
         try {
             if (title = "")
-                title := WinGetTitle("ahk_id " hwnd)
+                title := WinGetTitle(ahkWin)
             if (title = "") {
                 Profiler.Leave() ; @profile
                 return false
             }
             if (class = "")
-                class := WinGetClass("ahk_id " hwnd)
+                class := WinGetClass(ahkWin)
         } catch {
             Profiler.Leave() ; @profile
             return false

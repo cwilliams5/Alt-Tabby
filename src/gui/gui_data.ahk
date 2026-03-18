@@ -182,9 +182,10 @@ GUI_ReconcileDestroys() {
 
     Critical "On"
     removed := 0
-    i := gGUI_DisplayItems.Length
+    items := gGUI_DisplayItems  ; PERF: cache global ref, avoid repeated global dereference in loop
+    i := items.Length
     while (i >= 1) {
-        if (!gWS_Store.Has(gGUI_DisplayItems[i].hwnd + 0)) {
+        if (!gWS_Store.Has(items[i].hwnd + 0)) {
             GUI_EvictDisplayItem(i)
             removed++
         }
