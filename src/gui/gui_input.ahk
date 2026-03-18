@@ -40,7 +40,7 @@ _GUI_GetDisplayItems() {
 
 _GUI_MoveSelection(delta) {
     Profiler.Enter("_GUI_MoveSelection") ; @profile
-    global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg, gGUI_MouseTracking
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_BaseH, cfg, gGUI_MouseTracking
 
     items := _GUI_GetDisplayItems()
     if (items.Length = 0 || delta = 0) {
@@ -100,9 +100,9 @@ _GUI_MoveSelection(delta) {
 ; NOTE: No Critical "Off" here — callers may hold Critical (e.g., interceptor's TAB_STEP).
 ; AHK v2 Critical is thread-level, so "Off" here would leak and break the caller's protection.
 GUI_RecalcHover() {
-    global gGUI_OverlayH, gGUI_HoverRow, gGUI_HoverBtn, gGUI_ScrollTop
+    global gGUI_BaseH, gGUI_HoverRow, gGUI_HoverBtn, gGUI_ScrollTop
 
-    if (!gGUI_OverlayH) {
+    if (!gGUI_BaseH) {
         return false
     }
 
@@ -110,7 +110,7 @@ GUI_RecalcHover() {
     if (!DllCall("user32\GetCursorPos", "ptr", pt)) {
         return false
     }
-    if (!DllCall("user32\ScreenToClient", "ptr", gGUI_OverlayH, "ptr", pt.Ptr)) {
+    if (!DllCall("user32\ScreenToClient", "ptr", gGUI_BaseH, "ptr", pt.Ptr)) {
         return false
     }
 
@@ -129,7 +129,7 @@ GUI_RecalcHover() {
     ; Check if mouse is inside the GUI window bounds
     ; If outside, clear hover state
     ox := 0, oy := 0, ow := 0, oh := 0
-    Win_GetRectPhys(gGUI_OverlayH, &ox, &oy, &ow, &oh)
+    Win_GetRectPhys(gGUI_BaseH, &ox, &oy, &ow, &oh)
     if (x < 0 || y < 0 || x >= ow || y >= oh) {
         ; Mouse is outside the window
         Critical "On"
@@ -164,7 +164,7 @@ _GUI_PointInRect(px, py, rx, ry, rw, rh) {
 }
 
 _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
-    global gGUI_ScrollTop, gGUI_OverlayH, cfg
+    global gGUI_ScrollTop, gGUI_BaseH, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect
 
     action := ""
@@ -190,7 +190,7 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
         return
     }
 
-    scale := Win_GetScaleForWindow(gGUI_OverlayH)
+    scale := Win_GetScaleForWindow(gGUI_BaseH)
     layout := GUI_GetCachedLayout(scale)
     RowH := layout.RowH
     My := layout.My
@@ -223,7 +223,7 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     oy := 0
     ow := 0
     oh := 0
-    Win_GetRectPhys(gGUI_OverlayH, &ox, &oy, &ow, &oh)
+    Win_GetRectPhys(gGUI_BaseH, &ox, &oy, &ow, &oh)
 
     btnX := ow - marR - size
     btnY := topY + (rowVis - 1) * RowH + (RowH - size) // 2
@@ -344,7 +344,7 @@ _GUI_PerformAction(action, idx1 := 0) {
 }
 
 _GUI_RemoveItemAt(idx1) {
-    global gGUI_State, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_State, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_BaseH
 
     Critical "On"
     if (gGUI_State = "ACTIVE") {
@@ -379,7 +379,7 @@ _GUI_RemoveItemAt(idx1) {
 
 GUI_OnClick(x, y) {
     Profiler.Enter("GUI_OnClick") ; @profile
-    global gGUI_LiveItems, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
+    global gGUI_LiveItems, gGUI_Sel, gGUI_BaseH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_DisplayItems
 
     Critical "On"
@@ -429,7 +429,7 @@ GUI_OnClick(x, y) {
         return
     }
 
-    scale := Win_GetScaleForWindow(gGUI_OverlayH)
+    scale := Win_GetScaleForWindow(gGUI_BaseH)
     yDip := Round(y / scale)
 
     rowsTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
@@ -495,11 +495,11 @@ _GUI_DeferredClickActivate() {
 }
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
-    global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
+    global gGUI_BaseH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
     global gGUI_MouseTracking, gAnim_HidePending
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow
 
-    if (hwnd != gGUI_OverlayH) {
+    if (hwnd != gGUI_BaseH) {
         return 0
     }
 
@@ -597,7 +597,7 @@ GUI_ClearHoverState() {
 }
 
 _GUI_HoverPollTick() {
-    global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_OverlayH, gAnim_TimerRunning
+    global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_BaseH, gAnim_TimerRunning
 
     ; Stop polling if overlay not visible
     if (!gGUI_OverlayVisible) {
@@ -622,7 +622,7 @@ _GUI_HoverPollTick() {
     my := NumGet(pt, 4, "Int")
 
     ; Get window rect in screen coords
-    if (!DllCall("user32\GetWindowRect", "ptr", gGUI_OverlayH, "ptr", rect)) {
+    if (!DllCall("user32\GetWindowRect", "ptr", gGUI_BaseH, "ptr", rect)) {
         return
     }
     left := NumGet(rect, 0, "Int")
@@ -667,7 +667,7 @@ GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param
 }
 
 _GUI_ScrollBy(step) {
-    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel, cfg
+    global gGUI_ScrollTop, gGUI_BaseH, gGUI_Sel, cfg
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {

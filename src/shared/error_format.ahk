@@ -8,7 +8,7 @@
 
 ; Win32ErrorString(errCode) → "Access is denied." or "Error 5" as fallback
 Win32ErrorString(err) {
-    DllCall("FormatMessage", "uint", 0x1100, "ptr", 0, "uint", err, "uint", 0, "ptr*", &pstr := 0, "uint", 0, "ptr", 0)
+    DllCall("FormatMessage", "uint", 0x1100, "ptr", 0, "uint", err, "uint", 0, "ptr*", &pstr := 0, "uint", 0, "ptr", 0) ; 0x1100 = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
     if (pstr) {
         msg := RTrim(StrGet(pstr), " `r`n")
         DllCall("LocalFree", "ptr", pstr)
