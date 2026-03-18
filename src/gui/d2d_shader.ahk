@@ -1332,7 +1332,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; fence.  gui_paint.ahk's DwmFlush on grow resize compensates for its removal.
     ; If a GPU stall is ever re-added here, the DwmFlush becomes redundant but harmless.
     Profiler.Leave() ; @profile
-    return true
+    return entry.bitmap  ; PERF: return bitmap ptr directly (truthy when valid, 0 on failure paths)
 }
 
 ; Helper: create a static 16-byte float4 clear color (0,0,0,0)
@@ -1356,13 +1356,6 @@ Shader_ReleaseInactive(activeNames) {
         if (!activeSet.Has(name) && (entry.tex || entry.bitmap))
             _Shader_ReleaseRT(entry)
     }
-}
-
-; Return the ID2D1Bitmap1 ptr for DrawImage. Returns 0 if not available.
-Shader_GetBitmap(name) {
-    global gShader_Registry
-    entry := gShader_Registry.Get(name, 0)
-    return entry ? entry.bitmap : 0
 }
 
 ; ========================= CLEANUP =========================

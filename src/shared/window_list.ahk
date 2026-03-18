@@ -287,6 +287,7 @@ WL_UpsertWindow(records, source := "") {
     ; Enrichment enqueue happens AFTER Critical ends (accesses different queues).
     Critical "On"
     tick := A_TickCount
+    diagChurn := cfg.DiagChurnLog  ; PERF: hoist config read out of inner field loop
     for _, rec in records {
         if (!IsObject(rec))
             continue
@@ -332,7 +333,7 @@ WL_UpsertWindow(records, source := "") {
                     ; Only update if value differs
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
-                        if (!isNew && cfg.DiagChurnLog)
+                        if (!isNew && diagChurn)
                             gWS_DiagChurn[k] := gWS_DiagChurn.Get(k, 0) + 1
                         row.%k% := v
                         rowChanged := true
@@ -698,11 +699,11 @@ WL_PurgeBlacklisted() {
 
     ; Collect hwnds that match blacklist
     for _, hwnd in hwnds {
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+        if (!rec)
             continue  ; May have been removed by another producer
-        rec := gWS_Store[hwnd]
-        title := rec.HasOwnProp("title") ? rec.title : ""
-        class := rec.HasOwnProp("class") ? rec.class : ""
+        title := rec.title  ; Guaranteed by _WS_NewRecord
+        class := rec.class
         if (Blacklist_IsMatch(title, class)) {
             Stats_BumpLifetimeStat("TotalBlacklistSkips")
             toRemove.Push(hwnd)
@@ -1019,10 +1020,9 @@ WL_EnqueueIconRefresh(hwnd) {
     global gWS_Store, gWS_IconQueue, gWS_IconQueueDedup, cfg
     hwnd := hwnd + 0
 
-    if (!gWS_Store.Has(hwnd))
+    row := gWS_Store.Get(hwnd, 0)  ; PERF: single lookup replaces Has+[] double hash
+    if (!row)
         return false
-
-    row := gWS_Store[hwnd]
 
     ; Don't refresh if no icon yet (normal enqueue handles that)
     if (!row.iconHicon)
@@ -1064,6 +1064,7 @@ WL_PopIconBatch(count := 16) {
     Critical "On"
     global gWS_IconQueue, gWS_IconQueueDedup
     batch := []
+    batch.Capacity := count  ; PERF: pre-size to avoid reallocs
     while (gWS_IconQueue.Length > 0 && batch.Length < count) {
         hwnd := gWS_IconQueue.Pop()
         gWS_IconQueueDedup.Delete(hwnd)  ; lint-ignore: map-delete (queue+dedup invariant under Critical)
@@ -1079,6 +1080,7 @@ WL_PopPidBatch(count := 16) {
     Critical "On"
     global gWS_PidQueue, gWS_PidQueueDedup
     batch := []
+    batch.Capacity := count  ; PERF: pre-size to avoid reallocs
     while (gWS_PidQueue.Length > 0 && batch.Length < count) {
         pid := gWS_PidQueue.Pop()
         gWS_PidQueueDedup.Delete(pid)  ; lint-ignore: map-delete (queue+dedup invariant under Critical)
@@ -1122,8 +1124,8 @@ WL_HasPendingZ() {
 WL_ClearZQueue() {
     Critical "On"
     global gWS_ZQueue, gWS_ZQueueDedup
-    gWS_ZQueue := []
-    gWS_ZQueueDedup := Map()
+    gWS_ZQueue.Length := 0  ; PERF: reuse existing allocation instead of new Array/Map
+    gWS_ZQueueDedup.Clear()
     Critical "Off"
 }
 
@@ -1443,6 +1445,7 @@ WL_GetDisplayList(opts := 0) {
     ; No transform step — display items ARE store record references.
     Critical "On"
     items := []
+    items.Capacity := gWS_Store.Count  ; PERF: pre-size to avoid reallocs (matches hwndsOnly paths)
     for _, rec in gWS_Store {
         if (!rec.present)
             continue

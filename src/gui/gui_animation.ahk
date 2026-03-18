@@ -253,11 +253,13 @@ _Anim_FrameLoop() {
     global gGUI_OverlayVisible, cfg
     global gD2D_WaitableHandle
     global gAnim_pWaitForClock, gAnim_QuitEvent
+    global gFX_AmbientTime  ; PERF: inlined from FX_UpdateAmbient (single addition, only caller)
 
     useCompositorClock := (gAnim_pWaitForClock != 0 && gAnim_QuitEvent != 0)
     useWaitable := (gD2D_WaitableHandle != 0)
     autoFPS := (cfg.PerfAnimationFPS = "Auto" || cfg.PerfAnimationFPS = "auto")
     animType := cfg.PerfAnimationType  ; PERF: hoist — config stable during overlay lifetime
+    isFull := (animType = "Full")  ; PERF: pre-compute string compare (used twice per frame)
 
     ; Pre-allocate compositor clock handles buffer (1 app handle: quit event)
     if (useCompositorClock) {
@@ -320,8 +322,9 @@ _Anim_FrameLoop() {
         hasShaders := FX_HasActiveShaders()
 
         ; Update ambient animations (Full mode, or any mode with active shaders)
-        if (gGUI_OverlayVisible && (animType = "Full" || hasShaders))
-            FX_UpdateAmbient(gAnim_FrameDt)
+        ; PERF: FX_UpdateAmbient inlined — was a 3-line function with only this caller
+        if (gGUI_OverlayVisible && (isFull || hasShaders))
+            gFX_AmbientTime += gAnim_FrameDt
 
         ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
         ; measuring AcquireBackBuffer through EndDraw, excludes Present)
@@ -332,7 +335,7 @@ _Anim_FrameLoop() {
         _Anim_UpdateFPSCounter(now)
 
         ; Auto-stop (Minimal mode: exit when no active tweens AND no active shaders)
-        if (animType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
+        if (!isFull && activeCount = 0 && !gAnim_HidePending && !hasShaders)
             break
 
         Critical "Off"

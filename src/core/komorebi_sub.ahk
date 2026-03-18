@@ -1672,6 +1672,7 @@ _KomorebiSub_PollFallback() {
         return
     try {
 
+    logEnabled := cfg.DiagKomorebiLog  ; PERF: cache config read (consistent with _KomorebiSub_Poll)
     ; Periodically try to promote back to subscription
     if ((A_TickCount - _KSub_LastPromotionTick) >= _KSub_PromotionIntervalMs) {
         _KSub_LastPromotionTick := A_TickCount
@@ -1679,18 +1680,18 @@ _KomorebiSub_PollFallback() {
             ; komorebic.exe removed — give up
             SetTimer(_KomorebiSub_PollFallback, 0)
             _KSub_FallbackMode := false
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("Promotion: komorebic unavailable, stopping fallback")
             return
         }
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("Promotion: attempting subscription restart")
         if (_KomorebiSub_Start()) {
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("Promotion: subscription restored")
             return
         }
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("Promotion: failed, staying in fallback")
     }
 
@@ -1699,7 +1700,7 @@ _KomorebiSub_PollFallback() {
 
     txt := _KSub_GetStateDirect()
     if (txt = "") {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("PollFallback: GetStateDirect returned empty")
         return
     }
@@ -1708,7 +1709,7 @@ _KomorebiSub_PollFallback() {
     stateObj := ""
     try stateObj := JSON.Load(txt)
     if !(stateObj is Map) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("PollFallback: JSON.Load failed or result not Map (len=" StrLen(txt) ")")
         return
     }

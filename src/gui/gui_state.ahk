@@ -168,9 +168,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Normal rapid Alt+Tab produces ~4-6 events max (ALT_DN, TAB, TAB, ALT_UP)
         ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
         ; Drop event and cancel pending activation to recover gracefully
-        if (gGUI_EventBuffer.Length >= GUI_EVENT_BUFFER_MAX) {
+        bufLen := gGUI_EventBuffer.Length  ; PERF: cache for overflow check + log
+        if (bufLen >= GUI_EVENT_BUFFER_MAX) {
             if (diagLog)
-                GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
+                GUI_LogEvent("BUFFER OVERFLOW: " bufLen " events, dropping event and clearing")
             GUI_CancelPendingActivation()
             _GUI_StopActiveWatchdog()  ; #303
             if (gFR_Enabled)
@@ -242,13 +243,14 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
             GUI_CaptureOverlayMonitor()
             gGUI_DisplayItems := _GUI_FilterDisplayItems(gGUI_ToggleBase)
+            dispLen := gGUI_DisplayItems.Length  ; PERF: cache .Length (used 4x below)
 
             ; DEBUG: Log workspace data of display items
             if (diagLog) {
-                GUI_LogEvent("FREEZE: " gGUI_DisplayItems.Length " items frozen")
+                GUI_LogEvent("FREEZE: " dispLen " items frozen")
                 for i, item in gGUI_DisplayItems {
                     if (i > 5) {
-                        GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
+                        GUI_LogEvent("  ... and " (dispLen - 5) " more")
                         break
                     }
                     ws := GUI_GetItemWSName(item)
@@ -262,14 +264,14 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Position 1 = current window (we're already on it)
             ; Position 2 = previous window (what Alt+Tab should switch to)
             gGUI_Sel := 2
-            if (gGUI_Sel > gGUI_DisplayItems.Length) {
+            if (gGUI_Sel > dispLen) {
                 ; Only 1 window? Select it
                 gGUI_Sel := 1
             }
             ; Pin selection at top (virtual scroll)
             gGUI_ScrollTop := gGUI_Sel - 1
             if (gFR_Enabled)
-                FR_Record(FR_EV_FREEZE, gGUI_DisplayItems.Length, gGUI_Sel)
+                FR_Record(FR_EV_FREEZE, dispLen, gGUI_Sel)
 
             ; Start grace timer - show GUI after delay
             SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
@@ -410,11 +412,12 @@ _GUI_GraceTimerFired() {
     Critical "On"
     global gGUI_State, gGUI_OverlayVisible, gINT_AltIsDown
     global FR_EV_GRACE_FIRE, FR_ST_ACTIVE, gFR_Enabled
+    isActive := (gGUI_State = "ACTIVE")  ; PERF: cache string compare (used twice)
     if (gFR_Enabled)
-        FR_Record(FR_EV_GRACE_FIRE, (gGUI_State = "ACTIVE" ? FR_ST_ACTIVE : 0), gGUI_OverlayVisible)
+        FR_Record(FR_EV_GRACE_FIRE, (isActive ? FR_ST_ACTIVE : 0), gGUI_OverlayVisible)
 
     ; Double-check state — may have changed between scheduling and firing
-    if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
+    if (isActive && !gGUI_OverlayVisible) {
         ; Layer 2 (#303): Check physical Alt state before committing to expensive
         ; first paint. If Alt is already physically up but gINT_AltIsDown is still
         ; true, the ALT_UP callback was lost — skip paint and recover immediately.

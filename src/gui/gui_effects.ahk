@@ -360,13 +360,6 @@ FX_ResetMouseVelocity() {
     gFX_MousePrevValid := false
 }
 
-; Ambient animation update — called every frame.
-; Advances gFX_AmbientTime by the frame delta.
-FX_UpdateAmbient(dt) {
-    global gFX_AmbientTime
-    gFX_AmbientTime += dt
-}
-
 ; ========================= MULTI-LAYER SHADER SYSTEM =========================
 
 ; Pre-render all active shader layers (D3D11 pipeline). Called BEFORE D2D BeginDraw.
@@ -396,9 +389,8 @@ FX_PreRenderShaderLayers(w, h) {
         effectiveTime := baseTime * layer.speed
 
         try {
-            Shader_PreRender(layer.renderKey, w, h, effectiveTime, layer.darkness, layer.desat, layer.opacity)
-            ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawShaderLayers)
-            layer._bitmap := Shader_GetBitmap(layer.renderKey)
+            ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
+            layer._bitmap := Shader_PreRender(layer.renderKey, w, h, effectiveTime, layer.darkness, layer.desat, layer.opacity)
         } catch as e {
             layer._bitmap := 0
             global LOG_PATH_SHADER
@@ -504,11 +496,10 @@ FX_PreRenderMouseEffect(w, h) {
 
     tBefore := QPC()
     try {
-        Shader_PreRender(me.key, w, h, baseTime,
+        ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
+        me._bitmap := Shader_PreRender(me.key, w, h, baseTime,
             me.darkness, me.desat, me.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
-        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawMouseEffect)
-        me._bitmap := Shader_GetBitmap(me.key)
     } catch as e {
         me._bitmap := 0
         if (cfg.DiagShaderLog) {
@@ -615,15 +606,14 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         effectOpacity *= isHovered
 
     try {
-        Shader_PreRender(se.key, renderW, renderH, baseTime,
+        ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
+        se._bitmap := Shader_PreRender(se.key, renderW, renderH, baseTime,
             se.darkness, se.desat, effectOpacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0, rowRadius * 1.0)
-        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawSelectionEffect)
-        se._bitmap := Shader_GetBitmap(se.key)
     } catch as e {
         se._bitmap := 0
         if (cfg.DiagShaderLog) {
@@ -1244,15 +1234,14 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
         effectOpacity *= hovIntensity
 
     try {
-        Shader_PreRender(he.key, renderW, renderH, baseTime,
+        ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
+        he._bitmap := Shader_PreRender(he.key, renderW, renderH, baseTime,
             he.darkness, he.desat, effectOpacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
             borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0, rowRadius * 1.0)
-        ; Cache bitmap ptr for draw phase (avoids Map+try lookup in FX_DrawHoverEffect)
-        he._bitmap := Shader_GetBitmap(he.key)
     } catch as e {
         he._bitmap := 0
         if (cfg.DiagShaderLog) {

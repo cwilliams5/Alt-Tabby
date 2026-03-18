@@ -337,13 +337,14 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
         return false
     }
 
-    ; Get owner window
-    owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", GW_OWNER, "ptr")
-
-    ; Owned windows need WS_EX_APPWINDOW to be eligible
-    if (owner != 0 && !isApp) {
-        Profiler.Leave() ; @profile
-        return false
+    ; Owned windows need WS_EX_APPWINDOW to be eligible.
+    ; PERF: Skip GetWindow DllCall when isApp — the result can't cause rejection.
+    if (!isApp) {
+        owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", GW_OWNER, "ptr")
+        if (owner != 0) {
+            Profiler.Leave() ; @profile
+            return false
+        }
     }
 
     ; Must be visible, minimized, or cloaked

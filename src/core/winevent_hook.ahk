@@ -586,26 +586,25 @@ _WEH_ProcessBatch() {
         if (_WEH_PendingLocChange.Has(hwnd))
             locSnapshot[hwnd] := true
     }
-    ; PERF: Sequential loops avoid ephemeral [destroyed, hidden, toProcess] Array allocation
+    ; PERF: Sequential loops avoid ephemeral [destroyed, hidden, toProcess] Array allocation.
+    ; PendingHwnds: h guaranteed (iterated from this Map's snapshot above).
+    ; ZNeeded/LocChange: h may not exist (only populated for specific event types).
     for _, h in destroyed {
-        if (_WEH_PendingHwnds.Has(h))
-            _WEH_PendingHwnds.Delete(h)
+        _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
         if (_WEH_PendingZNeeded.Has(h))
             _WEH_PendingZNeeded.Delete(h)
         if (_WEH_PendingLocChange.Has(h))
             _WEH_PendingLocChange.Delete(h)
     }
     for _, h in hidden {
-        if (_WEH_PendingHwnds.Has(h))
-            _WEH_PendingHwnds.Delete(h)
+        _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
         if (_WEH_PendingZNeeded.Has(h))
             _WEH_PendingZNeeded.Delete(h)
         if (_WEH_PendingLocChange.Has(h))
             _WEH_PendingLocChange.Delete(h)
     }
     for _, h in toProcess {
-        if (_WEH_PendingHwnds.Has(h))
-            _WEH_PendingHwnds.Delete(h)
+        _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
         if (_WEH_PendingZNeeded.Has(h))
             _WEH_PendingZNeeded.Delete(h)
         if (_WEH_PendingLocChange.Has(h))
@@ -621,7 +620,8 @@ _WEH_ProcessBatch() {
     ; Handle hidden windows — probe and remove if no longer eligible.
     ; Apps like Outlook HIDE windows instead of destroying them when closing
     ; sub-windows (emails, etc.). Without this, ghosts linger until ValidateExistence.
-    hiddenRemoved := []
+    static hiddenRemoved := []  ; lint-ignore: static-in-timer
+    hiddenRemoved.Length := 0
     if (hidden.Length > 0) {
         ; Lightweight check: window was eligible when added to store. For HIDE events,
         ; only check if it became invisible AND not cloaked. Cloaked = komorebi-managed
@@ -650,11 +650,15 @@ _WEH_ProcessBatch() {
     ; In-store windows: lightweight update (title + vis/min/cloak only — class/PID are immutable).
     ; New windows: full probe (WinGetTitle + WinGetClass + WinGetPID + eligibility check).
     batchChanged := false
-    ineligibleHwnds := []
+    static ineligibleHwnds := []  ; lint-ignore: static-in-timer
+    ineligibleHwnds.Length := 0
     if (toProcess.Length > 0) {
-        newRecords := []
-        updatedHwnds := []
-        batchPatches := Map()
+        static newRecords := []  ; lint-ignore: static-in-timer
+        static updatedHwnds := []  ; lint-ignore: static-in-timer
+        static batchPatches := Map()  ; lint-ignore: static-in-timer
+        newRecords.Length := 0
+        updatedHwnds.Length := 0
+        batchPatches.Clear()
         for _, hwnd in toProcess {
             row := gWS_Store.Get(hwnd + 0, 0)  ; PERF: single lookup replaces Has+[] double hash
             if (row) {

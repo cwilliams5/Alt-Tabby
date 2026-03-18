@@ -135,8 +135,9 @@ _INT_Alt_Up(*) {
     global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP, cfg
     global gGUI_Pending  ; Check if GUI is buffering events
     global FR_EV_ALT_UP, gFR_Enabled
+    pendingPhase := gGUI_Pending.phase  ; PERF: cache property read (used twice)
     if (gFR_Enabled)
-        FR_Record(FR_EV_ALT_UP, gINT_SessionActive, gINT_PressCount, gINT_TabPending, gGUI_Pending.phase != "")
+        FR_Record(FR_EV_ALT_UP, gINT_SessionActive, gINT_PressCount, gINT_TabPending, pendingPhase != "")
 
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
     if (diagLog)
@@ -154,7 +155,7 @@ _INT_Alt_Up(*) {
         if (diagLog)
             GUI_LogEvent("INT: Alt_Up -> sending ALT_UP event")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
-    } else if (gGUI_Pending.phase != "") {
+    } else if (pendingPhase != "") {
         ; GUI is buffering events during async - pass Alt_Up anyway
         ; This handles the case where Tab was lost during workspace switch
         ; (komorebic's SendInput briefly uninstalls keyboard hooks)

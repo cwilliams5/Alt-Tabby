@@ -22,6 +22,7 @@
 
 cfg: launcher_tray, config_loader, setup_utils
 gD2D_RT: gui_bgimage, gui_overlay, gui_paint
+gFX_AmbientTime: gui_animation, gui_effects
 gGUI_CurrentWSName: gui_activation, gui_state
 gGUI_DisplayItems: gui_data, gui_state
 gGUI_EventBuffer: gui_activation, gui_state
