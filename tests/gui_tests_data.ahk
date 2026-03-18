@@ -20,7 +20,7 @@ RunGUITests_Data() {
     global gGUI_EventBuffer, gGUI_Pending
     global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
-    global gGUI_Base, gGUI_Overlay, gGdip_IconCache
+    global gGUI_Base, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
     global _gGUI_LastCosmeticRepaintTick, gWS_Store, gWS_DirtyHwnds, gMock_RepaintCount
     global gMock_LastStatsMsg

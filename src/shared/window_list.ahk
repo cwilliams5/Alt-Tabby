@@ -998,6 +998,8 @@ _WS_EnqueueIfNeeded(row) {
         if (!wakeIcon)
             try GUIPump_EnsureRunning()
     }
+    try MRU_Lite_EnsureRunning()
+    try KomorebiLite_EnsureRunning()
 }
 
 ; Enqueue hwnd for icon enrichment without row-level checks.
@@ -1107,6 +1109,8 @@ WL_EnqueueForZ(hwnd) {
     gWS_ZQueue.Push(hwnd)
     gWS_ZQueueDedup[hwnd] := true
     Critical "Off"
+    ; Wake Z-pump outside Critical — EnsureRunning has its own Critical
+    try ZPump_EnsureRunning()
 }
 
 ; Check if any windows need Z-order enrichment

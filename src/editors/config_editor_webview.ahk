@@ -93,7 +93,7 @@ CE_RunWebView2() {
     gCEW_SavedChanges := false
     gCEW_HasChanges := false
 
-    ; Initialize config system if not already done
+    ; Redundant guard — dispatcher already calls ConfigLoader_Init(), kept for standalone editor testing
     if (!gConfigLoaded)
         ConfigLoader_Init()
 

@@ -262,7 +262,7 @@ Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     global cfg, g_GuiPID, g_PumpPID
     if (cfg.DiagLauncherLog)
         Launcher_Log("UPDATE_INSTALLED source=" sourcePath " target=" targetPath)
-    Update_ApplyCore({
+    return Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
         useLockFile: true,

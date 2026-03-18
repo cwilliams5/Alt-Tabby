@@ -14,7 +14,7 @@ global PRECACHE_TICK_MS := 50              ; Background icon pre-cache batch int
 GUI_RefreshLiveItems() {
     Profiler.Enter("GUI_RefreshLiveItems") ; @profile
     global gGUI_LiveItems, gGUI_LiveItemsMap
-    global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
+    global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_BaseH
     global gGdip_IconCache, FR_EV_REFRESH, FR_EV_FG_GUARD, gFR_Enabled
 
     static dlOpts := { sort: "MRU", columns: "items", includeCloaked: true }

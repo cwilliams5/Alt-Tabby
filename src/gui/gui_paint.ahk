@@ -111,7 +111,7 @@ GUI_Repaint() {
 
     Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
-    global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
+    global gGUI_BaseH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount, _gPaint_SubCache
     global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
@@ -278,8 +278,10 @@ GUI_Repaint() {
                 gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
 
-                ; DComp clip + Commit + Present: no STA pump between them,
-                ; guaranteed to land on the same compositor frame.
+                ; DComp clip + Commit + Present: kept adjacent so they land on
+                ; the same compositor frame.  Commit and Present ARE STA pump
+                ; points, but gPaint_RepaintInProgress blocks reentrant callbacks
+                ; from modifying DComp/DXGI state between them.
                 if (needsResize && phW > 0 && phH > 0) {
                     D2D_SetClipRect(phW, phH)
                     D2D_Commit()

@@ -424,7 +424,12 @@ if (g_AltTabbyMode = "update-installed") {
             ExitApp()
         }
 
-        Launcher_DoUpdateInstalled(sourcePath, targetPath)
+        updateOk := Launcher_DoUpdateInstalled(sourcePath, targetPath)
+        if (!updateOk) {
+            ; Update failed — relaunch source so user isn't left with no running instance
+            if (FileExist(sourcePath))
+                try Run('"' sourcePath '"')
+        }
     } catch as e {
         ThemeMsgBox("The update could not be completed.`n`n"
             "Possible causes:`n"
@@ -433,6 +438,9 @@ if (g_AltTabbyMode = "update-installed") {
             "The previous version is still intact. Try closing all Alt-Tabby`n"
             "processes and running the update again.`n`n"
             "Details: " e.Message, APP_NAME, "Iconx")
+        ; Relaunch source so user isn't left with no running instance
+        if (FileExist(sourcePath))
+            try Run('"' sourcePath '"')
     }
     ExitApp()
 }
@@ -466,7 +474,7 @@ if (g_AltTabbyMode = "install-to-pf") {
             overwriteUserData := (configResult = "Yes")
         }
 
-        Update_ApplyCore({
+        result := Update_ApplyCore({
             sourcePath: state.source,
             targetPath: state.target,
             useLockFile: true,
@@ -477,6 +485,11 @@ if (g_AltTabbyMode = "install-to-pf") {
             ensureShortcuts: true,
             successMessage: "Alt-Tabby has been installed to:`n" state.target
         })
+        if (!result) {
+            ; ApplyCore failed (relaunchAfter=true but returned instead of ExitApp) — relaunch source
+            if (IsSet(state) && state.HasOwnProp("source") && FileExist(state.source))
+                try Run('"' state.source '"')
+        }
     } catch as e {
         ThemeMsgBox("The installation could not be completed.`n`n"
             "Possible causes:`n"

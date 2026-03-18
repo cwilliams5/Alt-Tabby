@@ -393,13 +393,23 @@ _GUI_FullScan() {
 
 ; ========================= PERIODIC TIMERS =========================
 
+global _ZPump_IdleTicks := 0
+global _ZPump_IdleThreshold := 5
+global _ZPump_TimerOn := false
+
 _GUI_StartZPump() {
-    global cfg
+    global cfg, _ZPump_TimerOn
+    _ZPump_TimerOn := true
     SetTimer(_GUI_ZPumpTick, cfg.ZPumpIntervalMs)
 }
 
+ZPump_EnsureRunning() {
+    global _ZPump_TimerOn, _ZPump_IdleTicks, cfg
+    Pump_EnsureRunning(&_ZPump_TimerOn, &_ZPump_IdleTicks, cfg.ZPumpIntervalMs, _GUI_ZPumpTick)
+}
+
 _GUI_ZPumpTick() {
-    global gGUI_State
+    global gGUI_State, _ZPump_IdleTicks, _ZPump_IdleThreshold, _ZPump_TimerOn
     ; PERF: Skip during overlay session - FullScan costs 5-20ms of main thread.
     ; Display list is frozen during ACTIVE anyway; Z updates can wait.
     if (gGUI_State = "ACTIVE" || gGUI_State = "ALT_PENDING")
@@ -409,8 +419,11 @@ _GUI_ZPumpTick() {
     if (A_TickCount < _backoffUntil)
         return
     try {
-        if (!WL_HasPendingZ())
+        if (!WL_HasPendingZ()) {
+            Pump_HandleIdle(&_ZPump_IdleTicks, _ZPump_IdleThreshold, &_ZPump_TimerOn, _GUI_ZPumpTick)
             return
+        }
+        _ZPump_IdleTicks := 0
         _GUI_FullScan()
         WL_ClearZQueue()
         _errCount := 0
@@ -695,10 +708,10 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     ; dispatch it to child controls.  Returning "" means "not handled, continue
     ; normal processing."  Returning 0 here previously ate WM_LBUTTONDOWN for
     ; every window in MainProcess, breaking buttons/edits in themed dialogs.
-    OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : ""))
-    OnMessage(WM_MOUSEWHEEL, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : ""))  ; lint-ignore: onmessage-collision
-    OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : ""))
-    OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : ""))
+    OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : ""))
+    OnMessage(WM_MOUSEWHEEL, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? (GUI_OnWheel(wParam, lParam), 0) : ""))  ; lint-ignore: onmessage-collision
+    OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : ""))
+    OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? GUI_OnMouseLeave() : ""))
 
     ; WM_COPYDATA handler for launcher commands (e.g., toggle viewer)
     global WM_COPYDATA, IPC_WM_STATS_REQUEST

@@ -20,7 +20,7 @@ RunGUITests_State() {
     global gGUI_EventBuffer, gGUI_Pending
     global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode
-    global gGUI_Base, gGUI_Overlay
+    global gGUI_Base
     global gMock_StoreItems, gMock_StoreItemsMap
     global gFR_DumpInProgress
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps, gStats_Cancellations
@@ -387,7 +387,6 @@ RunGUITests_State() {
     GUI_AssertEq(gGUI_InGraceCallback, false, "Grace callback guard cleared after late-fire abort")
     ; Mock GUI windows must not be visible (force-hide cleans up in-flight Show)
     GUI_AssertEq(gGUI_Base.visible, false, "Race fix: gGUI_Base not visible after abort")
-    GUI_AssertEq(gGUI_Overlay.visible, false, "Race fix: gGUI_Overlay not visible after abort")
 
     ; ----- Test: Event buffer overflow triggers recovery -----
     GUI_Log("Test: Event buffer overflow recovery")

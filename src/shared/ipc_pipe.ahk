@@ -439,7 +439,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
             , "uint", 0xC0000000 ; GENERIC_READ|GENERIC_WRITE
             , "uint", 0
             , "ptr", 0
-            , "uint", 3
+            , "uint", 3           ; OPEN_EXISTING
             , "uint", 0
             , "ptr", 0
             , "ptr")

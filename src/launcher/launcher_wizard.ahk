@@ -132,7 +132,11 @@ _WizardApply(*) {
         ))
         choicesFile := TEMP_WIZARD_STATE
         try FileDelete(choicesFile)
-        FileAppend(choices, choicesFile, "UTF-8")
+        try FileAppend(choices, choicesFile, "UTF-8")
+        catch as e {
+            ThemeMsgBox("Could not save wizard state: " e.Message, "Error", "OK Iconx")
+            return
+        }
 
         ; Self-elevate and continue wizard
         ; User may cancel UAC - handle gracefully
@@ -239,22 +243,15 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
             ; Already in Program Files
             installSucceeded := true
         } else {
-            installOk := false
-            try {
-                Update_ApplyCore({
-                    sourcePath: A_ScriptFullPath,
-                    targetPath: targetPath,
-                    useLockFile: false,
-                    validatePE: false,
-                    copyMode: true,
-                    cleanupSourceOnFailure: false,
-                    relaunchAfter: false
-                })
-                installOk := true
-            } catch as e {
-                if (cfg.DiagLauncherLog)
-                    Launcher_Log("WIZARD PF install failed: " e.Message)
-            }
+            installOk := Update_ApplyCore({
+                sourcePath: A_ScriptFullPath,
+                targetPath: targetPath,
+                useLockFile: false,
+                validatePE: false,
+                copyMode: true,
+                cleanupSourceOnFailure: false,
+                relaunchAfter: false
+            })
             if (installOk && FileExist(targetPath)) {
                 exePath := targetPath
                 installedElsewhere := targetPath

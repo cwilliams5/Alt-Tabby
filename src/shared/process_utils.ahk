@@ -411,37 +411,38 @@ ProcessUtils_Run(cmdLine, &outPid := 0) {
     return outPid
 }
 
-; Internal: CreateProcessW with custom STARTUPINFO flags
-_PU_CreateProcess(cmdLine, siFlags, creationFlags, &outPid := 0) {
-    outPid := 0
+; Internal: Prepare common CreateProcessW buffers (cmdBuf, STARTUPINFO, PROCESS_INFORMATION)
+_PU_PrepareCreateProcess(cmdLine, siFlags) {
     cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
     StrPut(cmdLine, cmdBuf, "UTF-16")
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)      ; cb
     NumPut("UInt", siFlags, si, 60) ; dwFlags
     pi := Buffer(24, 0)
+    return {cmdBuf: cmdBuf, si: si, pi: pi}
+}
+
+; Internal: CreateProcessW with custom STARTUPINFO flags
+_PU_CreateProcess(cmdLine, siFlags, creationFlags, &outPid := 0) {
+    outPid := 0
+    cp := _PU_PrepareCreateProcess(cmdLine, siFlags)
     result := DllCall("CreateProcessW",
-        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", cp.cmdBuf,
         "Ptr", 0, "Ptr", 0,
         "Int", 0, "UInt", creationFlags,
         "Ptr", 0, "Ptr", 0,
-        "Ptr", si, "Ptr", pi, "Int")
+        "Ptr", cp.si, "Ptr", cp.pi, "Int")
     if (result) {
-        outPid := NumGet(pi, 16, "UInt")
-        DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))
-        DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))
+        outPid := NumGet(cp.pi, 16, "UInt")
+        DllCall("CloseHandle", "Ptr", NumGet(cp.pi, 0, "Ptr"))
+        DllCall("CloseHandle", "Ptr", NumGet(cp.pi, 8, "Ptr"))
     }
     return result
 }
 
 ; Internal: CreateProcessW + wait for exit
 _PU_CreateProcessWait(cmdLine, siFlags, creationFlags, workDir := "") {
-    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
-    StrPut(cmdLine, cmdBuf, "UTF-16")
-    si := Buffer(104, 0)
-    NumPut("UInt", 104, si, 0)
-    NumPut("UInt", siFlags, si, 60)
-    pi := Buffer(24, 0)
+    cp := _PU_PrepareCreateProcess(cmdLine, siFlags)
     wdBuf := 0
     wdPtr := 0
     if (workDir != "") {
@@ -450,15 +451,15 @@ _PU_CreateProcessWait(cmdLine, siFlags, creationFlags, workDir := "") {
         wdPtr := wdBuf.Ptr
     }
     result := DllCall("CreateProcessW",
-        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", cp.cmdBuf,
         "Ptr", 0, "Ptr", 0,
         "Int", 0, "UInt", creationFlags,
         "Ptr", 0, "Ptr", wdPtr,
-        "Ptr", si, "Ptr", pi, "Int")
+        "Ptr", cp.si, "Ptr", cp.pi, "Int")
     if (!result)
         return -1
-    hProcess := NumGet(pi, 0, "Ptr")
-    DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))
+    hProcess := NumGet(cp.pi, 0, "Ptr")
+    DllCall("CloseHandle", "Ptr", NumGet(cp.pi, 8, "Ptr"))
     DllCall("WaitForSingleObject", "Ptr", hProcess, "UInt", 0xFFFFFFFF)
     exitCode := 0
     DllCall("GetExitCodeProcess", "Ptr", hProcess, "UInt*", &exitCode)
