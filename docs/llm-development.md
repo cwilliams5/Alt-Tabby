@@ -4,6 +4,19 @@ Alt-Tabby is a 41,000-line AHK v2 codebase built primarily by [Claude Code](http
 
 For a generalized, project-agnostic version of the lessons learned, see [Making my unteachable AI build its own cage](making-my-unteachable-ai-build-its-own-cage.md).
 
+## Contents
+
+- [The Core Problem](#the-core-problem) — why session amnesia requires mechanical guardrails, not longer instructions
+- [The Guardrail System](#the-guardrail-system) — 86-check static analysis pre-gate, ownership manifest, function visibility
+- [Query Tools](#query-tools) — 17 semantic search tools that return answers in ~40 tokens instead of ~4,800
+- [Skills System](#skills-system) — 58 reusable workflows with context-budget-aware auto-discovery
+- [MCP Server Management](#mcp-server-management) — toggle-on-demand pattern for external tool integrations
+- [The Feedback Loop](#the-feedback-loop) — bug → check → fix cycle that makes mistake classes mechanically impossible
+- [What to Watch For](#what-to-watch-for) — the AI modifying its own guardrails
+- [Repeated Invocation](#repeated-invocation) — why running the same review skill 10 times beats running it once
+- [Project Structure](#project-structure) — file layout of checks, query tools, and manifest
+- [By the Numbers](#by-the-numbers)
+
 ---
 
 ## The Core Problem
