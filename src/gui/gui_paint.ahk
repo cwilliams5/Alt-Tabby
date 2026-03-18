@@ -278,8 +278,10 @@ GUI_Repaint() {
                 gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
 
-                ; DComp clip + Commit + Present: no STA pump between them,
-                ; guaranteed to land on the same compositor frame.
+                ; DComp clip + Commit + Present: kept adjacent so they land on
+                ; the same compositor frame.  Commit and Present ARE STA pump
+                ; points, but gPaint_RepaintInProgress blocks reentrant callbacks
+                ; from modifying DComp/DXGI state between them.
                 if (needsResize && phW > 0 && phH > 0) {
                     D2D_SetClipRect(phW, phH)
                     D2D_Commit()
