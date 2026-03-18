@@ -27,19 +27,19 @@ MyFunc() {
     if (type = IPC_MSG_SNAPSHOT) { ... }
 }
 ```
-**Enforcement:** The static analysis pre-gate (`check_globals.ps1`) catches missing declarations before tests run. `#Warn VarUnset, Off` remains as a safety net â€” it does NOT replace the checker.
+**Enforcement:** The static analysis pre-gate (`check_globals` sub-check in `check_batch_functions.ps1`) catches missing declarations before tests run. `#Warn VarUnset, Off` remains as a safety net â€” it does NOT replace the checker.
 
 ### Cross-File Global Visibility
 
 Variables set inside a function are NOT visible to other files, even with `global`. For globals that other files need:
 ```ahk
 ; FILE SCOPE declaration (outside any function)
-global StorePipeName
+global gMySharedValue
 
 ; Function sets the value
-_CL_InitializeDefaults() {
-    global StorePipeName
-    StorePipeName := "tabby_store_v1"
+MyInit() {
+    global gMySharedValue
+    gMySharedValue := "some_value"
 }
 ```
 
@@ -122,28 +122,10 @@ The `legacy/` folder contains original POCs and Mocks. All ported to production 
 
 ## Syntax Rules
 
-- Use direct function refs, not `Func("Name")` (v1 pattern)
 - String comparisons: use `StrCompare()` not `<`/`>` operators
 - `#Include` is compile-time only - cannot be conditional at runtime
 - Producers submit Map records; store converts to Objects internally via `WL_UpsertWindow()`. Use `rec["key"]` in producer code, `rec.key` in store/GUI code
 - `_WS_GetOpt()` helper handles both Map and plain Object options (polymorphic)
-
-## No Inline Globals in Switch Cases
-
-```ahk
-; WRONG - syntax error
-switch name {
-    case "Foo": global Foo; return Foo
-}
-
-; CORRECT - declare at function scope
-MyFunc(name) {
-    global Foo, Bar, Baz
-    switch name {
-        case "Foo": return Foo
-    }
-}
-```
 
 ## COM STA Message Pump Reentrancy
 
@@ -189,10 +171,6 @@ for _, hPipe in handles
 
 **Don't forget `Critical "Off"` at ALL exit points** including `continue` and early `return`.
 
-## Avoid Static Variables in Timer Callbacks
-
-Use tick-based timing instead of static counters that can leak state if timer is cancelled.
-
 ## One-Shot Timer Callback Corruption (CRITICAL)
 
 Running complex nested call chains (state machine transitions, `GUI_OnInterceptorEvent`, activation) inside a one-shot `SetTimer(func, -period)` callback permanently corrupts AHK v2's timer dispatch for that function. Future `SetTimer(func, -period)` calls silently fail. Discovered in #303.
@@ -219,28 +197,12 @@ MyTimer() {
 In frequently-called functions (paint, input, per-window loops):
 - **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use
 - **D2D objects**: Cache brushes/fonts (see `D2D_GetCachedBrush`, `gD2D_Res`), never create+destroy per-call
-- **Regex**: Pre-compile patterns at load time, not per-match (see `Blacklist_Reload`)
+- **Regex**: Pre-compile patterns at load time, not per-match (see `_Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 
-## Caller-Side Log Guards (CRITICAL)
+## Caller-Side Log Guards
 
-AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late â€” the string is already built:
-```ahk
-; WRONG - string built unconditionally, discarded when logging disabled
-GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
-
-; CORRECT - string never built when logging disabled
-if (cfg.DiagEventLog)
-    GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
-```
-
-Move variables computed **only for logging** inside the guard too. Keep the guard inside the log function as a safety net.
-
-## #SingleInstance in Multi-Process Architecture
-
-- Entry point (`alt_tabby.ahk`): `#SingleInstance Off`
-- Module files: NO `#SingleInstance` directive
-- This allows store + gui from same exe with different args
+AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late â€” the string is already built. Move variables computed **only for logging** inside the guard too. Enforced by `log_guards` check.
 
 ## Compilation
 
@@ -289,7 +251,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `--gui-only` - MainProcess only (window data + overlay + producers)
 - `--config` / `--blacklist` - Editor GUIs
 
-**Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`
+**Internal modes:** `--pump`, `--wizard-continue`, `--enable-admin-task`, `--disable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`, `--install-to-pf`, `--testing-mode`
 
 **Editor flags:** `--force-native` (with --config): skip WebView2 detection, use native AHK editor
 
@@ -302,7 +264,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Key Files
 
-- `VERSION` - Single source for version (e.g., `0.6.0`)
+- `VERSION` - Single source for version (e.g., `0.9.2`)
 - `src/alt_tabby.ahk` - Unified entry point
 - `src/lib/` - Third-party libraries only (cjson, WebView2, Direct2D, etc.). NOT `src/shared/`.
 - `src/shared/window_list.ahk` - Core window data API (store, display list, dirty tracking)
@@ -316,6 +278,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
 - `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
 - `src/editors/config_editor_webview.ahk` - WebView2 editor (HTML/JS UI)
+- `src/editors/blacklist_editor.ahk` - Blacklist editor (launched via `--blacklist`)
 - `src/core/` - Producer modules (WinEventHook, Komorebi, IconPump, ProcPump, etc.)
 - `src/pump/` - EnrichmentPump subprocess
 - `resources/img/` - Image assets (icon.ico, icon.png, logo.png)
@@ -333,8 +296,6 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Producer Observability
 
-States in display list meta: `"running"`, `"failed"`, `"disabled"`
-- `meta.producers`: `{ wineventHook, mruLite, komorebiSub, komorebiLite, iconPump, procPump }`
 - No automatic retry - if producer fails at startup, it stays failed
 
 ## Centralized Window Eligibility
@@ -396,7 +357,6 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 - Main overlay is excluded (has its own ARGB colors); debug viewer uses the theme system
 - `Theme_Init()` must be called **before any `Gui()` constructor** (sets SetPreferredAppMode)
 - `Theme_ApplyToGui(gui)` after constructor, `Theme_ApplyToControl(ctrl, type)` after each control
-- `ThemeMsgBox()` is a drop-in MsgBox replacement â€” use it for all new message boxes
 - WebView2 editors: `Theme_GetWebViewJS()` generates CSS custom properties
 - Reacts to system theme changes via WM_SETTINGCHANGE automatically
 
@@ -413,14 +373,15 @@ Stats engine (`stats.ahk`) runs in-process within MainProcess. `Stats_Accumulate
 Paint pipeline composites layers bottom-to-top in `_GUI_PaintOverlay`:
 
 1. **DWM Surface** (unchanged)
-2. **User Background Image** (`BGImg_Draw`)
+2. **User Background Image** (`BGImg_Draw`) â€” configurable: below or above shaders
 3. **Shader Layers 1..N** (0-4 stackable D3D11 HLSL shaders, `FX_DrawShaderLayers`)
 4. **Mouse Effect** (0-1 dedicated slot receiving cursor position, `FX_DrawMouseEffect`)
-5. **Selection/Hover Effect** (shader-based or simple D2D fill, `FX_DrawSelectionEffect`)
-6. **Inner Shadow + Hover** (D2D1 SoftRect chains)
-7. **Window List + text** (GDI+/D2D)
+5. **Selection Effect** (shader-based or simple D2D fill, `FX_DrawSelectionEffect`) â€” before row loop
+6. **Row loop** (per-row hover â†’ icon â†’ text with shadow)
+7. **Scrollbar + Footer**
+8. **Inner Shadow** (D2D1 SoftRect chains, drawn last as overlay)
 
-Shader rendering: D3D11 pixel shaders compiled from HLSLâ†’DXBC. Each layer renders to an intermediate texture, composited via `DrawImage` with per-layer opacity. Common cbuffer (112 bytes) provides `time`, `resolution`, `iMouse`, `selRect`, `selColor`, etc. â€” see `src/shaders/alt_tabby_common.hlsl`.
+Shader rendering: D3D11 pixel shaders compiled from HLSLâ†’DXBC. Each layer renders to an intermediate texture, composited via `DrawImage` with per-layer opacity. Common cbuffer (144 bytes, 9Ã—16-byte rows) provides `time`, `resolution`, `iMouse`, `selRect`, `selColor`, compute grid config, selection tuning, etc. â€” see `src/shaders/alt_tabby_common.hlsl`.
 
 Shader directories:
 - `src/shaders/` â€” background shaders (stackable layers)
@@ -444,7 +405,6 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **ChurnLog** â†’ `tabby_store_error.log` â€” Window data rev incrementing rapidly when idle
 - **KomorebiLog** â†’ `tabby_ksub_diag.log` â€” Workspace tracking, CurWS not updating
 - **AltTabTooltips** â†’ On-screen tooltips â€” Overlay not appearing, wrong state transitions
-- **ViewerLog** (`DebugLog=true` in `[Viewer]`) â†’ `tabby_viewer.log` â€” Viewer refresh issues
 - **EventLog** â†’ `tabby_events.log` â€” Rapid Alt-Tab, events lost. Pattern: missing `Tab_Down` between `Alt_Down`/`Alt_Up` = lost Tab
 - **WinEventLog** â†’ `tabby_weh_focus.log` â€” Focus tracking, bypass mode problems
 - **StoreLog** â†’ `tabby_store_error.log` â€” MainProcess startup, blacklist loading
@@ -458,7 +418,7 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 
 - **FlightRecorder** â†’ `recorder/fr_YYYYMMDD_HHMMSS.txt` â€” In-memory ring buffer (default 2000 events). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
 
-`_GUI_LogError()` always logs to `tabby_store_error.log` (no config flag). `_GUI_LogInfo()` respects `StoreLog`.
+`LogAppend(LOG_PATH_STORE, msg)` is the general logging function. Errors always log; info-level logging respects `DiagStoreLog`.
 
 ---
 
@@ -470,7 +430,7 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **Auto-update trick**: Renames running exe to `.old` (Windows allows this), moves new exe in place, relaunches.
 - **Elevation pattern**: Save state to `%TEMP%` file â†’ relaunch with `--flag` via `*RunAs` â†’ elevated instance reads state file.
 - **Config path for updates**: Write to TARGET config.ini, not source.
-- **Single-instance**: Named mutex "AltTabby_Launcher" â€” does NOT affect gui/pump subprocesses.
+- **Single-instance**: Per-installation mutex `"AltTabby_Launcher_<installId>"` + global `"AltTabby_Active"` for conflict detection â€” does NOT affect gui/pump subprocesses.
 
 ## InstallationId Recovery Rules
 
@@ -491,13 +451,13 @@ The fix ensures:
 
 ## Core Rules
 
-- **`SendMode("Event")` is mandatory** â€” AHK's default `SendInput` temporarily uninstalls all keyboard hooks. User keypresses during that window are lost forever.
-- **`Critical "On"` in all hotkey callbacks** â€” Without it, one callback can interrupt another mid-execution. Apply to: `_INT_Alt_Down/_INT_Alt_Up`, `_INT_Tab_Down/_INT_Tab_Up`, `_INT_Tab_Decide`, `_INT_Ctrl_Down`, `_INT_Escape_Down`, `GUI_OnInterceptorEvent`.
+- **`SendMode("Event")` is mandatory** â€” AHK's default `SendInput` temporarily uninstalls all keyboard hooks. User keypresses during that window are lost forever. Enforced by `send_patterns` check.
+- **`Critical "On"` in all hotkey callbacks** â€” Without it, one callback can interrupt another mid-execution. Enforced by `callback_critical` check.
 - **komorebic also uninstalls hooks** â€” `komorebic focus-named-workspace` uses SendInput internally. Fix: async activation with event buffering.
 
 ## Key Patterns
 
-- **Async activation**: Buffer events in `gGUI_EventBuffer` while `gGUI_PendingPhase != ""`. Escape cancels pending activation.
+- **Async activation**: Buffer events in `gGUI_EventBuffer` while `gGUI_Pending.phase != ""`. Escape cancels pending activation.
 - **Lost Tab detection**: ALT_DN + ALT_UP without TAB = Tab was lost. Synthesize it.
 - **In-process MRU**: Window data lives in MainProcess â€” MRU is always authoritative, no stale snapshot risk.
 
@@ -543,15 +503,15 @@ Disables Tab hooks when fullscreen game or blacklisted process is focused. WinEv
 **Workspace focus events:**
 - Trust EVENT content for new workspace name/index
 - DON'T trust state's `ring.focused` or per-workspace focus data â€” may be stale
-- Pass `skipWorkspaceUpdate=true` to ProcessFullState from notifications
+- Pass workspace-handled flag to `_KSub_ProcessFullState` from notifications
 
 **Move events:**
 - Window is already on TARGET workspace in state data
 - TARGET workspace focus indices ARE reliable; source workspace indices are not
-- Must update focused hwnd cache for target workspace BEFORE ProcessFullState runs
-- Push to clients AFTER ProcessFullState completes
+- Must update focused hwnd cache for target workspace BEFORE `_KSub_ProcessFullState` runs
+- Push to clients AFTER `_KSub_ProcessFullState` completes
 
-Use `KSafe_Str()`, `KSafe_Int()` for safe property access on event content.
+Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access on event content.
 
 ## MRU During Workspace Switches
 
@@ -567,7 +527,7 @@ Use `KSafe_Str()`, `KSafe_Int()` for safe property access on event content.
 
 Activation sequence: `komorebic focus-named-workspace` â†’ poll until switch â†’ SendInput trick to bypass foreground lock â†’ SetWindowPos (TOPMOST/NOTOPMOST) + SetForegroundWindow.
 
-**Hide cmd.exe:** Use `WScript.Shell.Run(cmd, 0, true)` not `shell.Exec()`.
+**Hide cmd.exe:** Use `ProcessUtils_RunHidden(cmd)` from `process_utils.ahk`.
 
 ## Integration Testing
 
@@ -604,7 +564,7 @@ Or run AHK directly (double-slash for Git Bash):
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
 
-Logs: `%TEMP%\alt_tabby_tests_<worktree>.log` (unit tests). `--live` adds suite suffixes: `_core`, `_features`, `_execution`, etc.
+Logs: `%TEMP%\alt_tabby_tests_<worktree>.log` (unit tests). `--live` adds suite suffixes: `_core`, `_network`, `_features`, `_execution`, `_pump`, `_watcher`.
 
 **Pre-gate:** Static analysis (`tests/static_analysis.ps1`) runs before all tests. If any function uses a file-scope global without a `global` declaration, the suite is blocked. Fix by adding `global <name>` inside the flagged function. New checks are auto-discovered as `tests/check_*.ps1`.
 

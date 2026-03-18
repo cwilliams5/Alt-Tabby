@@ -43,7 +43,7 @@ When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `BypassFullscreen` | bool | `true` | - | Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior. |
+| `BypassFullscreen` | bool | `true` | - | Bypass Alt-Tabby when the foreground window is fullscreen (coverage >= BypassFullscreenThreshold). Useful for games that need native Alt-Tab behavior. |
 | `BypassFullscreenThreshold` | float | `0.99` | `0.50` - `1.00` | Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen. |
 | `BypassFullscreenTolerancePx` | int | `5` | `0` - `50` | Maximum pixels from screen edge for a window to still be considered fullscreen. Increase if borderless windows are offset by more than 5px. |
 | `BypassProcesses` | string | `(empty)` | - | Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead. |
@@ -573,7 +573,7 @@ Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `UseAltTabEligibility` | bool | `true` | - | Filter windows like native Alt-Tab (skip tool windows, etc.) |
-| `UseBlacklist` | bool | `true` | - | Apply blacklist from shared/blacklist.txt |
+| `UseBlacklist` | bool | `true` | - | Apply blacklist filtering to exclude specific windows |
 
 ### WinEventHook
 
@@ -659,7 +659,7 @@ Periodic maintenance cycle for caches, logs, and stats
 
 ## Performance
 
-Memory management to maintain responsiveness after long idle periods.
+Performance tuning: memory management, HDR compensation, process priority, and animation control.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|

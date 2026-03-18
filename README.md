@@ -35,7 +35,7 @@ A fast, deeply customizable Alt-Tab replacement for Windows. Built with AutoHotk
 ### Visual Customization
 - **GPU-Accelerated Shaders** — up to 4 stackable D3D11 background shader layers with 157 built-in effects (raymarching, fractals, fluid dynamics, domain warping, and more)
 - **Mouse-Reactive Effects** — 15 GPU compute shader effects that respond to cursor movement (ember trails, fireflies, fluid simulation, gravity wells, water surfaces, and more)
-- **Selection Highlights** — 10 animated shader-based selection effects (aurora, glass, neon, plasma, lightning) or simple color fill
+- **Selection Highlights** — 10 animated shader-based selection effects (aurora, circuit, fire border, glass, gradient orbit, lava, lightning, plasma, rain, smoke) or simple color fill
 - **Background Images** — load any image with fit modes, blur, desaturation, opacity, and drop shadow
 - **Backdrop Materials** — Acrylic blur, Mica, MicaAlt, Aero Glass, or solid color backgrounds
 - **Inner Shadow** — recessed glass effect along overlay edges

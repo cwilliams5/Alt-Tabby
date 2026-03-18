@@ -41,7 +41,7 @@ What that means concretely:
 - **Draw and Dispatch calls** for pixel and compute shaders
 - **Resource lifecycle** — every COM object reference-counted and released through vtable index 2
 
-The pipeline touches **26 unique COM vtable indices** across device creation, buffer management, shader binding, and draw dispatch. All marshaled through AHK's type system with `"ptr"`, `"uint"`, and `"int"` parameter annotations.
+The pipeline touches **26 unique COM vtable indices** across device creation, buffer management, shader binding, and draw dispatch. All marshaled through AHK's type system with `"ptr"`, `"uint"`, and `"int"` parameter annotations. A dedicated device abstraction ([`d2d_device.ahk`](../src/gui/d2d_device.ahk)) and type marshaling layer ([`d2d_types.ahk`](../src/gui/d2d_types.ahk)) handle COM interface initialization, device loss recovery, and the raw vtable pointer arithmetic that lets AHK call into DirectX and DXGI without any helper DLLs.
 
 ### Bytecode Caching
 
@@ -66,6 +66,8 @@ The compute shader updates particle state (physics, spawning, death) while the p
 
 Buffer initialization uses an exponential doubling pattern (`RtlCopyMemory` doubling the filled region each pass) to initialize thousands of dead particles in O(log N) DllCalls instead of per-element `NumPut` loops.
 
+Each compute shader is driven by a JSON metadata file declaring `maxParticles`, `particleStride`, and `baseParticles`. The bundler reads these to configure buffer allocation at load time — grid dimensions scale with a quality preset (512×256 to 2048×1024), and particle counts scale with a density multiplier. This means adding a new compute shader effect requires zero AHK code changes: write the HLSL, write the JSON, and the pipeline discovers and configures it automatically.
+
 **Effects built on this pipeline:** particle systems (ember trails, campfire embers, smoke, fireflies, scatter, neon trails, long-range embers), fluid simulation (aquarium, calm fluid, emitters), and surface physics (gravity wells, water surfaces, ripples). Two additional mouse effects (caustics, spotlight) are pixel-only — no compute shader needed.
 
 ---
@@ -83,7 +85,9 @@ Every frame composites up to 9 layers, bottom to top: ([`gui_effects.ahk`](../sr
 7. **Text Rendering** — window titles, subtitles, column data, with optional soft drop shadows via separate blur effect
 8. **Action Buttons** — close/kill/blacklist buttons rendered on hover
 
-All of this runs at the monitor's native refresh rate. The shader pipeline supports time accumulation (animation state persists across overlay show/hide), per-shader time tracking (no cross-shader pollution), and entrance animations synchronized across layers.
+All of this runs at the monitor's native refresh rate. The shader pipeline supports time accumulation (animation state persists across overlay show/hide), per-shader time tracking (no cross-shader pollution), and entrance animations synchronized across layers. An animation framework ([`gui_animation.ahk`](../src/gui/gui_animation.ahk)) coordinates synchronized entrance transitions across all compositor layers — fading, scaling, and sliding in concert so the overlay appears as a single cohesive surface rather than independent layers popping in.
+
+Behind the compositor sits a live data layer ([`gui_data.ahk`](../src/gui/gui_data.ahk)) that manages display list refresh, pre-caching during Alt key press, and safe eviction of destroyed windows during the ACTIVE state — all performance-critical paths that ensure the compositor always has fresh, consistent data to render.
 
 ### 183 Shaders
 
@@ -298,6 +302,8 @@ Activating a window on a different komorebi workspace adds several layers of com
 5. `SetCloak(1, 0)` + `SwitchTo()` for uncloak and activation
 
 This is the same COM path that Windows' own Alt+Tab uses internally, accessed entirely through AHK's `DllCall` and manual vtable navigation.
+
+**Per-workspace focus caching** — komorebi workspace switch events are state-inconsistent (the snapshot is taken mid-operation). Rather than trusting the event's `ring.focused` field, the engine maintains a per-workspace cache of the last reliably focused hwnd, populated only from trustworthy events (`FocusChange`, `Show`). During rapid workspace switching, stale `EVENT_SYSTEM_FOREGROUND` events from Windows are suppressed with a 2-second cooldown that auto-expires — never cleared early, because premature clearing during rapid switches caused MRU flip-flop and visible selection jiggle.
 
 **Event buffering with lost-Tab synthesis** — during a workspace switch, `komorebic`'s internal `SendInput` temporarily uninstalls all keyboard hooks (a Windows limitation). If the user presses Tab during this window, the keystroke is lost. The engine detects this pattern — `ALT_DOWN` + `ALT_UP` buffered without any `TAB_STEP` in between — and synthesizes the missing Tab event at the correct position before replaying the buffer.
 
@@ -530,7 +536,7 @@ This tooling was built as part of an [AI-assisted development workflow](llm-deve
 | Static analysis checks | 86 |
 | Query tools | 17 |
 | Tooling code | ~42,000 lines |
-| Config settings | 350+ |
+| Config settings | 355 |
 | Alt+Tab detection | <5ms |
 | Pre-gate time | ~8 seconds |
 | Flight recorder cost | ~1 microsecond/event |

@@ -51,7 +51,7 @@ The checks catch classes of bugs that survive AHK's compiler, survive the test s
 | **Rendering** | COM calls inside Critical sections (STA pump reentrancy) |
 | **Tests** | Test globals shadowing production, WMI usage (breaks CI) |
 
-Related checks are bundled into 8 batch scripts that share PowerShell startup costs, plus 2 standalone scripts. Total check code: **12,700 lines**.
+Related checks are bundled into 8 batch scripts that share PowerShell startup costs, plus 2 standalone scripts. Total check code: **12,900 lines**.
 
 **Pre-gate output:**
 ```
@@ -79,6 +79,10 @@ This turns "did this refactoring accidentally introduce cross-module coupling?" 
 ### Function Visibility
 
 Functions prefixed with `_` are private to their declaring file. Any file may call unprefixed functions. This convention is enforced by static analysis — the AI can't call `_SomeInternalHelper()` from another file, even if it seems convenient.
+
+### Domain Rule Files
+
+Eight rule files in [`.claude/rules/`](../.claude/rules/) encode domain-specific knowledge that complements static analysis: AHK v2 syntax pitfalls, COM STA reentrancy hazards, keyboard hook defense patterns, komorebi state consistency rules, and test architecture constraints. These load into every session's context — they're the "tattoo rules" that inform judgment where static checks enforce correctness. Rules explain *why*; checks enforce *what*.
 
 ---
 
@@ -131,7 +135,7 @@ gGUI_LiveItems
 
 Same information the AI would get by reading 4 source files. 40 tokens instead of 4,800. Correct every time because it scans the entire codebase, not a guess about which files to check.
 
-Total query tool code: **6,100 lines** plus a shared helper library.
+Total query tool code: **6,300 lines** plus a shared helper library.
 
 ---
 
@@ -272,7 +276,7 @@ ownership.manifest             # Cross-file mutation contracts
 | Query tool code | 6,300 lines |
 | Test code (AHK) | 12,700 lines across 25 files |
 | Skills | 58 (2 auto-discoverable, 56 manual-invoke) |
-| Ownership manifest entries | 12 cross-file globals |
+| Ownership manifest entries | 13 cross-file globals |
 
 ---
 
