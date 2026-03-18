@@ -224,7 +224,12 @@ _CL_SupplementIni(path) {
     global gConfigRegistry
 
     ; Read entire file
-    content := FileRead(path, "UTF-8")
+    try content := FileRead(path, "UTF-8")
+    catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "config_error SupplementIni read failed: " e.Message " path=" path)
+        return
+    }
     lines := StrSplit(content, "`n", "`r")
     modified := false
 
@@ -367,7 +372,12 @@ _CL_CleanupOrphanedKeys(path) {
         }
     }
 
-    content := FileRead(path, "UTF-8")
+    try content := FileRead(path, "UTF-8")
+    catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "config_error CleanupOrphanedKeys read failed: " e.Message " path=" path)
+        return
+    }
     lines := StrSplit(content, "`n", "`r")
 
     newLines := []
@@ -550,7 +560,11 @@ _CL_EnsureArraySections(path, changes) {
     if (!FileExist(path))
         return
 
-    content := FileRead(path, "UTF-8")
+    try content := FileRead(path, "UTF-8")
+    catch as e {
+        try LogAppend(LOG_PATH_STORE, "config_error EnsureArraySections read failed: " e.Message " path=" path)
+        return
+    }
 
     ; Find which array section instances need creation
     needed := Map()  ; "Shader.2" => true
@@ -617,7 +631,12 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
     if (!FileExist(path))
         return false
 
-    content := FileRead(path, "UTF-8")
+    try content := FileRead(path, "UTF-8")
+    catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "config_error WriteIniPreserveFormat read failed: " e.Message " path=" path)
+        return false
+    }
     lines := StrSplit(content, "`n", "`r")
 
     ; Determine if value equals default (should be commented out)
@@ -775,7 +794,12 @@ _CL_PruneExcessArraySections(arraySections) {
     if (!FileExist(gConfigIniPath))
         return
 
-    content := FileRead(gConfigIniPath, "UTF-8")
+    try content := FileRead(gConfigIniPath, "UTF-8")
+    catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "config_error PruneExcessArraySections read failed: " e.Message)
+        return
+    }
 
     ; Scan the file for any [BaseName.N] headers where N > max
     toRemove := []
@@ -870,7 +894,12 @@ _CL_NormalizeArraySections(arraySections) {
             CL_DeleteSections(deleteList)
 
         ; Write shifted sections with full commented template (matching _CL_EnsureArraySections format)
-        content := FileRead(gConfigIniPath, "UTF-8")
+        try content := FileRead(gConfigIniPath, "UTF-8")
+        catch as e {
+            global LOG_PATH_STORE
+            try LogAppend(LOG_PATH_STORE, "config_error NormalizeArraySections read failed: " e.Message)
+            continue
+        }
         for newIdx, oldIdx in occupied {
             if (newIdx = oldIdx)
                 continue
@@ -908,7 +937,11 @@ CL_DeleteSections(sectionNames) {
     for _, name in sectionNames
         toRemove[name] := true
 
-    content := FileRead(gConfigIniPath, "UTF-8")
+    try content := FileRead(gConfigIniPath, "UTF-8")
+    catch as e {
+        try LogAppend(LOG_PATH_STORE, "config_error DeleteSections read failed: " e.Message)
+        return
+    }
     lines := StrSplit(content, "`n", "`r")
     newLines := []
     skipping := false

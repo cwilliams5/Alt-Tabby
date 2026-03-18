@@ -132,7 +132,11 @@ _WizardApply(*) {
         ))
         choicesFile := TEMP_WIZARD_STATE
         try FileDelete(choicesFile)
-        FileAppend(choices, choicesFile, "UTF-8")
+        try FileAppend(choices, choicesFile, "UTF-8")
+        catch as e {
+            ThemeMsgBox("Could not save wizard state: " e.Message, "Error", "OK Iconx")
+            return
+        }
 
         ; Self-elevate and continue wizard
         ; User may cancel UAC - handle gracefully
