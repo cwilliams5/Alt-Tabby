@@ -2,9 +2,29 @@
 
 People dismiss AutoHotkey as a macro language — good for remapping keys and automating clicks, not for building real software. Alt-Tabby exists partly to challenge that assumption.
 
-This page documents what we built in pure AHK v2: a full D3D11 rendering pipeline with compute shaders, a multi-process architecture with named pipe IPC, embedded Chromium, low-level keyboard hooks with sub-5ms latency, and a DWM compositor integration with acrylic blur and Mica materials. No C++ shims, no native DLLs (beyond what Windows ships). Just AHK v2, `DllCall`, and `ComCall`.
+This page documents what we built in pure AHK v2 — no C++ shims, no native DLLs beyond what Windows ships. Just `DllCall`, `ComCall`, and a scripting language doing things it wasn't designed for: a D3D11 rendering pipeline with 183 HLSL shaders and GPU compute, a multi-process architecture with named pipe IPC, sub-5ms keyboard hooks with foreground lock bypass via undocumented COM interfaces, embedded Chromium, native dark mode through undocumented uxtheme ordinals, an 86-check static analysis pre-gate, and a build-time profiler that exports industry-standard flamecharts.
 
 > The rendering stack grew organically: GDI+ → Direct2D → D3D11 with HLSL pixel shaders → dedicated swap chain → compute shaders with GPU-side particle state. Each time we expected to hit AHK's ceiling. We haven't yet.
+
+## Contents
+
+- [A Full D3D11 Pipeline](#a-full-d3d11-pipeline) — device creation, shader compilation, bytecode caching, zero-copy DXGI sharing
+- [Compute Shaders and GPU-Side Particle State](#compute-shaders-and-gpu-side-particle-state) — physics simulation on the GPU
+- [The Compositor Stack](#the-compositor-stack) — 8-layer compositing, 183 shaders, DWM integration
+- [Multi-Process Architecture](#multi-process-architecture-from-a-single-executable) — 12 runtime modes from one exe, named pipe IPC, WM_COPYDATA signals
+- [355 Configurable Settings](#355-configurable-settings) — registry-driven config with live file monitoring
+- [Embedding Chromium](#embedding-chromium-webview2) — WebView2 integration with anti-flash and callback stability
+- [Native Windows Theming](#native-windows-theming) — 5-layer dark mode API stack via undocumented ordinals
+- [Low-Level Keyboard Hooks](#low-level-keyboard-hooks) — sub-5ms detection, defense in depth, activation engine, cross-workspace COM uncloaking
+- [Escaping the 16ms Timer](#escaping-the-16ms-timer) — QPC spin-waits, NtYieldExecution, graduated cooldowns
+- [Portable Executable with Auto-Update](#portable-executable-with-auto-update) — self-replacing exe, state-preserving elevation
+- [The Build Pipeline](#the-build-pipeline) — 7-stage smart-skip compilation with shader bundling
+- [Test Infrastructure](#test-infrastructure) — 86-check pre-gate, worktree-isolated test suite, dual-gate parallelization
+- [Build-Time Profiler](#build-time-profiler-with-flamechart-export) — zero-cost instrumentation with speedscope export
+- [Performance Engineering](#performance-engineering) — event pipeline, caching, rendering, frame pacing, MCode
+- [The Flight Recorder](#the-flight-recorder) — zero-cost ring buffer diagnostics
+- [42,000 Lines of Tooling](#42000-lines-of-tooling) — static analysis, query tools, ownership manifest
+- [By the Numbers](#by-the-numbers)
 
 ---
 
