@@ -12,7 +12,8 @@ This page documents what we built in pure AHK v2 — no C++ shims, no native DLL
 - [Compute Shaders and GPU-Side Particle State](#compute-shaders-and-gpu-side-particle-state) — physics simulation on the GPU
 - [The Compositor Stack](#the-compositor-stack) — 8-layer compositing, 183 shaders, iChannel textures, DirectWrite text, DWM integration
 - [Multi-Process Architecture](#multi-process-architecture-from-a-single-executable) — 12 runtime modes from one exe, named pipe IPC, WM_COPYDATA signals
-- [355 Configurable Settings](#355-configurable-settings) — registry-driven config with live file monitoring
+- [The Window Store](#the-window-store) — concurrent data structure with two-phase mutation, channel queues, atomic hot-reload
+- [355 Configurable Settings](#355-configurable-settings) — registry-driven config with live file monitoring, format-preserving writes
 - [Embedding Chromium](#embedding-chromium-webview2) — WebView2 integration with anti-flash and callback stability
 - [Native Windows Theming](#native-windows-theming) — 5-layer dark mode API stack, window procedure subclassing, undocumented ordinals
 - [Low-Level Keyboard Hooks](#low-level-keyboard-hooks) — sub-5ms detection, STA reentrancy, timer corruption, activation engine, cross-workspace COM uncloaking
@@ -212,6 +213,8 @@ The MainProcess runs 8 independent data producers in `src/core/`, each responsib
 
 Producers are fault-isolated — if one fails at startup, the others continue. All write to a shared store through `WL_UpsertWindow()` and `WL_UpdateFields()`, with dirty tracking that classifies changes by impact (MRU-only, structural, cosmetic) to minimize downstream work. Because producers are eventually-consistent, the refresh path includes a foreground guard: at Alt press, `GetForegroundWindow()` is checked directly — if that hwnd isn't in the display list yet (race between `EVENT_SYSTEM_FOREGROUND` and WinEnum discovery), it's probed, upserted with current MRU data, and placed at position 1. This guarantees the currently-focused window always appears at the top.
 
+UWP and Store apps present a platform-specific challenge: they take 2–3 seconds after window creation before their titles populate. The WinEventHook producer detects untitled new windows and schedules deferred retry timers at escalating intervals (300ms → 700ms → 1500ms) with a 10-second expiry. Each retry re-probes the title and upserts if populated — without blocking the GUI thread or wasting cycles on windows that will never have titles. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
+
 ### Named Pipe IPC
 
 The EnrichmentPump runs in a separate process to keep blocking Win32 calls (icon extraction, process name resolution) off the GUI thread. Communication happens over named pipes, built entirely from Win32 API calls: ([`ipc_pipe.ahk`](../src/shared/ipc_pipe.ahk))
@@ -234,11 +237,31 @@ Icon resolution is expensive (50–100ms per window, blocking). The EnrichmentPu
 
 ---
 
+## The Window Store
+
+The window store ([`window_list.ahk`](../src/shared/window_list.ahk)) is the shared mutable data structure at the center of everything — 8 producers write to it, the compositor reads from it, and the keyboard hook thread can't afford to wait. It's a concurrent data structure built from AHK Maps and Critical sections.
+
+### Two-Phase Store Mutation
+
+Store operations that touch external state (like `WinGetTitle`, which sends `WM_GETTEXT` and can block 10–50ms on hung apps) use a two-phase pattern: Phase 1 classifies changes *outside* a Critical section — calling DllCalls, probing windows, building local change lists. Phase 2 applies all mutations inside a single Critical block. A `WS_SnapshotMapKeys()` helper takes a frozen key snapshot before iteration, preventing the "modification during iteration" crash that AHK Maps are vulnerable to. Used by `WL_EndScan`, `WL_ValidateExistence`, and `WL_PurgeBlacklisted`.
+
+### Channel-Based Work Queues with Dedup
+
+Enrichment work is split into separate queues — `gWS_IconQueue`, `gWS_PidQueue`, `gWS_ZQueue` — each with a parallel dedup Map. The icon pump can drain its queue independently while the PID pump waits on blocking WMI/registry calls. Dedup maps prevent the same hwnd from being enqueued twice during rapid event bursts. Selective pump draining with O(1) dedup — a concurrent work queue architecture in a scripting language.
+
+### Atomic Blacklist Hot-Reload
+
+When `blacklist.txt` changes on disk, the reload path ([`blacklist.ahk`](../src/shared/blacklist.ahk)) builds new pre-compiled regex arrays entirely in local variables, then atomically swaps the globals under a single Critical block. Producers calling `Blacklist_IsMatch()` mid-reload see either the complete old rule set or the complete new one — never an empty or half-populated array. Callers snapshot the global refs to locals before iterating, so even if another reload lands mid-loop, the local snapshot remains valid. Classic concurrent hot-reload, in a scripting language.
+
+---
+
 ## 355 Configurable Settings
 
 The entire application is driven by a centralized config registry (`config_registry.ahk`) with 355 settings across 15 sections. Each entry declares its type, default, min/max bounds, and description. Validation, documentation generation, and editor UI are all registry-driven — adding a setting to one file propagates everywhere automatically.
 
 Both `config.ini` and `blacklist.txt` are live-monitored via `ReadDirectoryChangesW` with 300ms debounce. Edit either file in Notepad, save, and the app picks up the change — config changes trigger a full restart through the launcher, blacklist changes hot-reload the eligibility rules in-process. This also means `git checkout` of a different config branch just works.
+
+Config writes use a format-preserving INI writer ([`config_loader.ahk`](../src/shared/config_loader.ahk)) that scans the existing file, matches keys in-place (even commented-out ones like `; KeyName=value`), uncomments and updates while preserving surrounding comments, and only appends truly new keys at the end. Users can comment out settings in their INI and have them resurrect with formatting intact when re-enabled through the editor.
 
 ---
 
@@ -302,6 +325,10 @@ For controls where `SetWindowTheme("DarkMode_Explorer")` isn't enough, the theme
 The native configuration editor includes ARGB color pickers with live alpha-channel preview — rendered through custom GDI compositing in AHK. ([`config_editor_native.ahk`](../src/editors/config_editor_native.ahk))
 
 Each color swatch control is subclassed via `SetWindowSubclass()` with a custom `WM_PAINT` callback. The callback draws a checkerboard background pattern (the universal transparency indicator), then overlays the user's selected color using `AlphaBlend()` with premultiplied ARGB pixel handling. When the config value's max exceeds `0xFFFFFF`, the editor automatically separates the alpha channel into a dedicated percentage slider with a live-updating text label. Hex input, swatch preview, and alpha slider are synchronized through a re-entrancy guard (`hexSyncGuard`) that prevents infinite update loops.
+
+### Owner-Draw Buttons with Hover Animation
+
+Standard Windows buttons ignore dark mode theming entirely. The theme system converts buttons to `BS_OWNERDRAW` style and handles `WM_DRAWITEM` with custom GDI painting — rounded corners, theme-aware colors, and smooth state transitions. A 30ms hover-tracking timer polls cursor position to detect mouse enter/leave (AHK has no native hover events for buttons). Button state tracks hover, pressed, and default; the pressed color is derived from the hover color via a 20% darkening curve. Custom button rendering with state animation, from a scripting language. ([`theme.ahk`](../src/shared/theme.ahk))
 
 ---
 
@@ -373,6 +400,8 @@ This is the same COM path that Windows' own Alt+Tab uses internally, accessed en
 **Per-workspace focus caching** — komorebi workspace switch events are state-inconsistent (the snapshot is taken mid-operation). Rather than trusting the event's `ring.focused` field, the engine maintains a per-workspace cache of the last reliably focused hwnd, populated only from trustworthy events (`FocusChange`, `Show`). During rapid workspace switching, stale `EVENT_SYSTEM_FOREGROUND` events from Windows are suppressed with a 2-second cooldown that auto-expires — never cleared early, because premature clearing during rapid switches caused MRU flip-flop and visible selection jiggle.
 
 **Event buffering with lost-Tab synthesis** — during a workspace switch, `komorebic`'s internal `SendInput` temporarily uninstalls all keyboard hooks (a Windows limitation). If the user presses Tab during this window, the keystroke is lost. The engine detects this pattern — `ALT_DOWN` + `ALT_UP` buffered without any `TAB_STEP` in between — and synthesizes the missing Tab event at the correct position before replaying the buffer.
+
+**Workspace mismatch auto-correction** — during focus processing, the system detects if a focused window's workspace assignment differs from the current workspace in metadata. This means a komorebi event was missed (pipe overflow, reconnection, etc.). Rather than showing stale data until the next full state poll, the system silently corrects the current workspace — implicit self-healing via consistency checking, without user intervention. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk))
 
 ---
 
@@ -532,6 +561,9 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Arithmetic buffer length tracking** — the komorebi subscription engine maintains buffer length as an arithmetic counter (incremented on append, decremented on extraction) instead of calling O(n) `StrLen()` after every read. A safety clamp resyncs via `StrLen` only when the buffer is fully consumed or an error is detected — an edge-case guard, not normal-path overhead.
 - **Cloak event batching** — during komorebi workspace switches, 10+ cloak/uncloak events fire in rapid succession. Instead of N individual store mutations, events are buffered into a Map (`hwnd → isCloaked`) and flushed as a single batch update — one revision bump, one display list rebuild instead of N.
 - **Exponential backoff with live timers** — when a producer timer hits repeated errors, backoff escalates from 5s → 10s → 20s → ... → 300s cap. Timers are *not* canceled — they continue firing but early-return during cooldown. This avoids one-shot timer dispatch corruption and means recovery is automatic when the underlying issue resolves.
+- **Hung window guard** — `WinGetTitle` sends `WM_GETTEXT`, which blocks 5–10 seconds on frozen applications. Every window probe calls `IsHungAppWindow` first — a fast kernel check that doesn't send messages. Hung windows are skipped or deferred to a retry pass. Without this, a single frozen Electron app blocks the entire event pipeline. ([`winevent_hook.ahk`](../src/core/winevent_hook.ahk), [`win_utils.ahk`](../src/shared/win_utils.ahk))
+- **Lazy Z-order vs. cosmetic classification** — `NAMECHANGE` and `LOCATIONCHANGE` events fire thousands of times per second but don't affect Z-order. Separate Maps (`_WEH_PendingZNeeded`, `_WEH_PendingLocChange`) flag which windows actually need structural enrichment. Monitor label probes run only on `LOCATIONCHANGE` (cross-monitor moves); Z-order updates only on visibility/focus changes. Microsecond-level event classification in the hot path.
+- **Fast-path one-shot timer wrapper** — AHK quirk: `SetTimer(fn, -1)` (one-shot) replaces any existing periodic timer for the same function reference. To fire an immediate batch without killing the 100ms periodic heartbeat, a separate `_WEH_FastPathBatch` wrapper function isolates the one-shot from the periodic timer. High-priority events (focus, show) get instant processing without disrupting the background heartbeat.
 
 ### Display List & Caching
 
@@ -539,10 +571,13 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Dirty tracking with field classification** — global revision counter with fields classified as internal/mruSort/sort/content. Internal changes (icon cooldown, cache metadata) don't bump the revision. MRU-only changes take the fast path. Only structural changes trigger full reprocessing.
 - **Incremental MRU sort** — when only one window's MRU timestamp changed, a move-to-front O(N) operation replaces a full quicksort. The quicksort itself uses median-of-3 pivot selection with insertion sort cutoff at partition size 20.
 - **Pre-compiled regex** — blacklist wildcard patterns compiled to regex at load time, not per-match
+- **UWP logo path cache** — resolved UWP app logo file paths cached by package path, bounded to 50 entries with FIFO eviction. Multiple windows from the same UWP app reuse a single resolved path instead of re-parsing the package manifest each time. ([`icon_pump.ahk`](../src/core/icon_pump.ahk))
+- **Monitor handle-to-label lazy cache** — monitor handles mapped to labels ("Mon 1", "Mon 2") with lazy fill: the first request enumerates all monitors once, subsequent requests are O(1) Map lookups. `WM_DISPLAYCHANGE` invalidates the cache when monitors are connected or disconnected. Uses a `static Buffer` for the RECT structure in `MonitorFromRect` to avoid per-call allocation. ([`win_utils.ahk`](../src/shared/win_utils.ahk))
 
 ### Rendering Pipeline
 
 - **D2D effect object caching** — COM `GetOutput()` results and D2D1 effect references cached at initialization, eliminating per-frame ComCall overhead. Without caching: ~480 string-keyed Map lookups and ~20 COM method calls per second. With caching: direct pointer access, zero Map lookups in the paint path.
+- **D2D solid color brush FIFO cache** — ARGB color values cached to `ID2D1SolidColorBrush` COM objects, bounded to 100 entries with FIFO eviction. Working set is ~5–10 UI colors. COM wrappers auto-release via `__Delete` when evicted. Hot-path code reuses brushes for common colors instead of create+destroy per frame. ([`gui_gdip.ahk`](../src/gui/gui_gdip.ahk))
 - **Batch cbuffer writes** — D3D11 constant buffer updates consolidated from 35 individual NumPut+ComCall sequences to 3 per shader layer per frame (Map → batch NumPut → Unmap).
 - **D3D11 state dirty flag** — shader pipeline tracks whether constant buffer and sampler bindings need re-issuing after D2D's `BeginDraw` (which shares the device context and invalidates D3D11 state). Batch mode defers render target and SRV unbinding between sequential shader passes.
 - **Viewport-based repaint skipping** — cosmetic changes to off-screen items (title updates, icon resolution) don't trigger a paint cycle
@@ -556,6 +591,7 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 - **Adaptive mouse shader frame skipping** — when a mouse effect exceeds its frame budget, the compositor skips rendering it on the next frame, reusing the cached texture. The rest of the overlay continues at full FPS. This decouples expensive particle/fluid effects from the UI framerate without visible stutter.
 - **D2D brush generation counter** — every static brush cache tracks a generation counter. When the D3D11 device is lost (GPU reset, driver update, monitor disconnect), `gD2D_BrushGeneration` increments. On the next paint, stale caches detect the mismatch and recreate their resources. Zero bookkeeping beyond one integer comparison per cache site.
 - **Bidirectional resize ordering** — overlay resize has a race between HWND `SetWindowPos` and DirectComposition `Commit`/`Present`. The fix uses direction-dependent ordering: **shrink** calls `SetWindowPos` first (old HWND clips old content cleanly during STA pump), **grow** calls `SetWindowPos` last (old HWND clips new content cleanly). DComp `SetClip + Commit + Present` stay adjacent with no STA pump between, guaranteeing they land on the same compositor frame. Prevents visible background flash artifacts on resize.
+- **Debounced cosmetic repaint** — title updates and icon resolution for off-screen items trigger a leading-edge repaint immediately, then debounce subsequent changes on a trailing-edge timer. Prevents paint spam during rapid cosmetic update bursts (e.g., 10 icons resolving in quick succession). ([`gui_main.ahk`](../src/gui/gui_main.ahk))
 
 ### Frame Pacing
 
@@ -566,12 +602,16 @@ Beyond the architecture, specific patterns push AHK's performance across every l
 
 - **Adaptive Critical section scoping** — expensive work (icon pre-caching, GDI bitmap operations) runs outside Critical sections using local snapshots of shared state. The snapshot is taken under Critical (~microseconds), then heavy processing runs without blocking the keyboard hook thread. If a reentrant call replaces the global data during processing, the local snapshot remains valid.
 - **Display list eviction during ACTIVE** — the frozen display list never grows or reorders during Alt-Tab, but window destroys are allowed through (they're signal, not noise). Selection tracking adjusts automatically when a destroyed window is removed.
+- **Pre-allocated 64KB IPC write buffer** — a global 65KB `Buffer` is allocated once at startup and reused for all pipe messages under 64KB. Only messages exceeding the buffer fall back to heap allocation. Eliminates per-send allocation in the common case — the vast majority of IPC messages. ([`ipc_pipe.ahk`](../src/shared/ipc_pipe.ahk))
+- **Critical section double-buffer for pipe writes** — `RtlMoveMemory` copies the message into the pre-allocated buffer under `Critical` (~6 microseconds), then Critical is released *before* `WriteFile`. Blocked I/O on the pipe never freezes the keyboard hook thread. The copy is cheap; the potential I/O block is not.
 
 ### Jumping to Machine Code
 
 When AHK's interpreter isn't fast enough, we drop to native machine code.
 
 The AHK ecosystem has libraries that embed compiled C as base64 MCode blobs — loaded into executable memory via `VirtualProtect(PAGE_EXECUTE_READ)` and called with `DllCall`. Alt-Tabby uses two: [cJson](https://github.com/G33kDude/cJson.ahk) by G33kDude for native-speed JSON parsing, and [OVERLAPPED](https://github.com/thqby/ahk2_lib) by thqby for async I/O with hand-written x86/x64 assembly trampolines that marshal Windows thread pool completions into AHK's message pump. These third-party libraries demonstrate what the AHK community has built — kernel-to-userspace callback bridging and production JSON parsing, all from a scripting language.
+
+The MCode loading chain itself is a tour of Windows internals: `CryptStringToBinary` (crypt32) decodes base64 to raw bytes, `RtlDecompressBuffer` (ntdll, undocumented) handles optional LZ decompression, and `VirtualProtect` with `PAGE_EXECUTE_READ` marks the buffer executable while maintaining W^X security. Three Windows subsystems — crypto, NT runtime, memory management — orchestrated from AHK to turn a base64 string into callable native code. ([`MCodeLoader.ahk`](../src/lib/MCodeLoader.ahk))
 
 For icon processing, we wrote our own ([`icon_alpha.ahk`](../src/gui/icon_alpha.ahk), [`icon_alpha.c`](../tools/native_benchmark/native_src/icon_alpha.c)). Icons without alpha channels (common in older Win32 apps) require scanning every pixel's alpha byte and optionally applying a mask — an O(N) operation that scales with pixel count. At 128×128, a scan costs **1.5ms** in AHK's interpreter; the full scan-and-mask pipeline on a 256×256 icon costs **20ms**. We wrote the C source, compiled it with MSVC (`/O2 /GS- /Zl` — optimize for speed, no CRT, no stack checks), parsed the COFF `.obj` with a custom AHK-based COFF reader, extracted the machine code as base64 blobs, and embedded them in the AHK source. The result: the 128×128 scan drops to **~6 microseconds** (252x faster), and the 256×256 scan to **10 microseconds** — a **572x speedup**. [Benchmarked and verified](../tools/native_benchmark/BENCH_RESULTS.md).
 
