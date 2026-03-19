@@ -1165,12 +1165,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     pData := NumGet(mapped1, 0, "ptr")
     if (pData) {
         ; Core params + mouse (offset 0-44, 12 values)
-        NumPut("float", timeSec, "float", Float(w), "float", Float(h), "float", timeDelta,
+        NumPut("float", timeSec, "float", w, "float", h, "float", timeDelta,
                "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity,
-               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY,
+               "float", mouseX, "float", mouseY, "float", mouseVelX, "float", mouseVelY,
                pData, 0)
         ; Selection rect + colors (offset 48-92, 12 values)
-        NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
+        NumPut("float", selX, "float", selY, "float", selW, "float", selH,
                "float", selColorR, "float", selColorG, "float", selColorB, "float", selColorA,
                "float", borderR, "float", borderG, "float", borderB, "float", borderA,
                pData, 48)
@@ -1241,7 +1241,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     vpChanged := (vpW != w || vpH != h)
     if (vpChanged) {
         vpW := w, vpH := h
-        NumPut("float", Float(w), "float", Float(h), vp, 8)  ; PERF: combined NumPut
+        NumPut("float", w, "float", h, vp, 8)  ; PERF: combined NumPut
     }
     if (gShader_StateDirty || vpChanged)
         ComCall(44, ctx, "uint", 1, "ptr", vp, "int")

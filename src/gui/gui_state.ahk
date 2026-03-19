@@ -48,9 +48,10 @@ global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculati
 ; Used by flight recorder dump to cleanly exit frozen state.
 ; Does NOT hide overlay — caller controls ordering between reset and hide.
 GUI_ForceReset() {
-    global gGUI_State, gGUI_DisplayItems
+    global gGUI_State, gGUI_DisplayItems, gGUI_RectCacheDirty
     gGUI_DisplayItems := []
     gGUI_State := "IDLE"
+    gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
     _GUI_StopActiveWatchdog()  ; #303
 }
 
@@ -130,6 +131,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
     global gGUI_WSContextSwitch, gStats_AltTabs, gStats_TabSteps, gStats_QuickSwitches, gStats_Cancellations
+    global gGUI_RectCacheDirty
 
     Profiler.Enter("GUI_OnInterceptorEvent") ; @profile
 
@@ -368,6 +370,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
+            gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
             Stats_AccumulateSession()
 
             ; #178: Probe for pump connection — retries may have been starved during ACTIVE.
@@ -514,7 +517,7 @@ GUI_OnWorkspaceFlips() {
 ; Hides overlay, restores focus if StealFocus, clears display items, flushes stats.
 ; Caller may hold Critical (RefreshLiveItems manages its own).
 GUI_DismissOverlay() {
-    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems
+    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_RectCacheDirty
     global gGUI_StealFocus, gGUI_FocusBeforeShow
     global gFR_Enabled, FR_EV_STATE, FR_ST_IDLE
 
@@ -531,6 +534,7 @@ GUI_DismissOverlay() {
         FR_Record(FR_EV_STATE, FR_ST_IDLE)
     gGUI_State := "IDLE"
     gGUI_DisplayItems := []
+    gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
     Stats_AccumulateSession()
     GUIPump_ProbeConnect()
     GUI_RefreshLiveItems()  ; lint-ignore: critical-leak

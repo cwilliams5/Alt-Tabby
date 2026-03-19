@@ -49,6 +49,7 @@ g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 
 ; --- GUI state globals (gui_state.ahk not included in test chain) ---
 global gGUI_State := "IDLE"
+global gGUI_RectCacheDirty := true
 
 ; --- WinEventHook globals (winevent_hook.ahk not included in test chain) ---
 global gWEH_LastFocusHwnd := 0
