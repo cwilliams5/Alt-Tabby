@@ -302,13 +302,15 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
         cachedBot := Round(alpha * 0.9)
         cachedAlpha := alpha
     }
+    ; PERF: hoist shared blur std-dev (identical for top + bottom)
+    blurDev := Float(depth * 0.8)
     ; Top: dark band blurred downward
     topARGB := (cachedEdge << 24) | 0x000000
-    _FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, Float(depth * 0.8))
+    _FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, blurDev)
 
     ; Bottom
     botARGB := (cachedBot << 24) | 0x000000
-    _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
+    _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, blurDev)
     Profiler.Leave() ; @profile
 }
 
@@ -316,19 +318,30 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; GPU-enhanced hover with soft glow behind the row.
 FX_GPU_DrawHover(x, y, w, h, rad) {
-    global cfg
+    global cfg, gD2D_BrushGeneration
     Profiler.Enter("FX_GPU_DrawHover") ; @profile
     baseARGB := cfg.GUI_HoverARGB
-    if ((baseARGB >> 24) = 0 && cfg.GUI_HovBorderWidthPx <= 0) {
+    bdrARGB := cfg.GUI_HovBorderARGB
+    bw := cfg.GUI_HovBorderWidthPx
+    if ((baseARGB >> 24) = 0 && bw <= 0) {
         Profiler.Leave() ; @profile
         return  ; fully transparent fill + no border — nothing to draw
     }
+    ; PERF: static-cached brushes with generation tracking (same pattern as _GUI_DrawFooter)
+    static _hovFillARGB := -1, _hovFillBr := 0
+    static _hovBdrARGB := -1, _hovBdrBr := 0, _hovGen := -1
+    if (_hovGen != gD2D_BrushGeneration || baseARGB != _hovFillARGB || bdrARGB != _hovBdrARGB) {
+        _hovFillBr := D2D_GetCachedBrush(baseARGB)
+        _hovBdrBr := D2D_GetCachedBrush(bdrARGB)
+        _hovFillARGB := baseARGB
+        _hovBdrARGB := bdrARGB
+        _hovGen := gD2D_BrushGeneration
+    }
     if ((baseARGB >> 24) > 0)
-        D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
-    bw := cfg.GUI_HovBorderWidthPx
+        D2D_FillRoundRect(x, y, w, h, rad, _hovFillBr)
     if (bw > 0) {
         half := bw / 2
-        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, _hovBdrBr, bw)
     }
     Profiler.Leave() ; @profile
 }
@@ -498,13 +511,12 @@ FX_PreRenderMouseEffect(w, h) {
     static mouseSkipNext := false
     static mouseLastRenderMs := 0.0
 
-    if (cfg.PerfAdaptiveMouseFPS && mouseSkipNext) {
+    adaptiveFPS := cfg.PerfAdaptiveMouseFPS  ; PERF: cache config read (used in skip check + timing)
+    if (adaptiveFPS && mouseSkipNext) {
         mouseSkipNext := false  ; always render the frame after a skip
         Profiler.Leave() ; @profile
         return
     }
-
-    adaptiveFPS := cfg.PerfAdaptiveMouseFPS  ; PERF: cache config read (used twice)
     if (adaptiveFPS)
         tBefore := QPC()
     try {
@@ -607,8 +619,12 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     bdrR := _bdrR, bdrG := _bdrG, bdrB := _bdrB, bdrA := _bdrA
 
     ; BG-as-selection Resize mode: render at selection rect size so the shader fills the rect
+    ; PERF: cache Resize mode check (config-stable — process restarts on config change)
+    static _selResizeMode := -1
+    if (_selResizeMode = -1)
+        _selResizeMode := (cfg.GUI_BGShaderAsSelectionSize = "Resize")
     renderW := w, renderH := h
-    if (se.isBGShader && cfg.GUI_BGShaderAsSelectionSize = "Resize") {
+    if (se.isBGShader && _selResizeMode) {
         renderW := Max(Round(selW), 1)
         renderH := Max(Round(selH), 1)
     }
