@@ -1,12 +1,5 @@
 // Aurora Selection — Prismatic: color-shifting border glow cycling through hues, subtle rainbow reflections
 
-float3 hue2rgb(float h) {
-    float r = abs(h * 6.0 - 3.0) - 1.0;
-    float g = 2.0 - abs(h * 6.0 - 2.0);
-    float b = 2.0 - abs(h * 6.0 - 4.0);
-    return saturate(float3(r, g, b));
-}
-
 float4 PSMain(PSInput input) : SV_Target {
     float2 pixelPos = input.uv * resolution;
 

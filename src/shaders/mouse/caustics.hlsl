@@ -36,11 +36,14 @@ float4 PSMain(PSInput input) : SV_Target {
         return float4(0.0, 0.0, 0.0, 0.0);
 
     float2 delta = pixelPos - iMouse;
-    float dist = length(delta);
+    float distSq = dot(delta, delta);
 
     // Influence radius — grows when moving
     float radius = 200.0 + smoothstep(0.0, 500.0, iMouseSpeed * reactivity) * 120.0;
-    if (dist > radius * 1.3) return float4(0.0, 0.0, 0.0, 0.0);
+    float earlyExitR = radius * 1.3;
+    if (distSq > earlyExitR * earlyExitR) return float4(0.0, 0.0, 0.0, 0.0);
+
+    float dist = sqrt(distSq);
 
     // Radial mask
     float mask = smoothstep(radius, radius * 0.15, dist);

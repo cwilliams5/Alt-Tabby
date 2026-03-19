@@ -69,6 +69,15 @@ float4 AT_PostProcess(float3 col, float a) {
     return float4(col * a, a);
 }
 
+// Hue to RGB: converts hue [0,1] to RGB color.
+// Used by selection shaders for animated color effects.
+float3 hue2rgb(float h) {
+    float r = abs(h * 6.0 - 3.0) - 1.0;
+    float g = 2.0 - abs(h * 6.0 - 2.0);
+    float b = 2.0 - abs(h * 6.0 - 4.0);
+    return saturate(float3(r, g, b));
+}
+
 // Rounded rect SDF: returns signed distance (negative = inside).
 // Used by selection shaders for border/fill masking.
 float roundedRectSDF(float2 p, float2 center, float2 halfSize, float radius) {

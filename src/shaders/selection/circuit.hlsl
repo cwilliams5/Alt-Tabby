@@ -1,12 +1,5 @@
 // Circuit Selection — Pulse of light orbiting the border like a live circuit trace
 
-float3 hue2rgb(float h) {
-    float r = abs(h * 6.0 - 3.0) - 1.0;
-    float g = 2.0 - abs(h * 6.0 - 2.0);
-    float b = 2.0 - abs(h * 6.0 - 4.0);
-    return saturate(float3(r, g, b));
-}
-
 // Map pixel to perimeter parameter (0-1 around the rect)
 float getPerimeter(float2 px, float4 rect) {
     float2 center = rect.xy + rect.zw * 0.5;
