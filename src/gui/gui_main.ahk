@@ -369,12 +369,9 @@ _GUI_FullScan() {
             try {
                 recs := ""
                 try recs := WinEnumLite_ScanAll()
-                if (IsObject(recs)) {
-                    foundCount := recs.Length
+                foundCount := IsObject(recs) ? recs.Length : 0
+                if (IsObject(recs))
                     WL_UpsertWindow(recs, "winenum_lite")
-                } else {
-                    foundCount := 0
-                }
             } finally {
                 WL_EndScan()
             }
@@ -396,23 +393,13 @@ _GUI_FullScan() {
 
 ; ========================= PERIODIC TIMERS =========================
 
-global _ZPump_IdleTicks := 0
-global _ZPump_IdleThreshold := 5
-global _ZPump_TimerOn := false
-
 _GUI_StartZPump() {
-    global cfg, _ZPump_TimerOn
-    _ZPump_TimerOn := true
+    global cfg
     SetTimer(_GUI_ZPumpTick, cfg.ZPumpIntervalMs)
 }
 
-ZPump_EnsureRunning() {
-    global _ZPump_TimerOn, _ZPump_IdleTicks, cfg
-    Pump_EnsureRunning(&_ZPump_TimerOn, &_ZPump_IdleTicks, cfg.ZPumpIntervalMs, _GUI_ZPumpTick)
-}
-
 _GUI_ZPumpTick() {
-    global gGUI_State, _ZPump_IdleTicks, _ZPump_IdleThreshold, _ZPump_TimerOn
+    global gGUI_State
     ; PERF: Skip during overlay session - FullScan costs 5-20ms of main thread.
     ; Display list is frozen during ACTIVE anyway; Z updates can wait.
     if (gGUI_State = "ACTIVE" || gGUI_State = "ALT_PENDING")
@@ -422,11 +409,8 @@ _GUI_ZPumpTick() {
     if (A_TickCount < _backoffUntil)
         return
     try {
-        if (!WL_HasPendingZ()) {
-            Pump_HandleIdle(&_ZPump_IdleTicks, _ZPump_IdleThreshold, &_ZPump_TimerOn, _GUI_ZPumpTick)
+        if (!WL_HasPendingZ())
             return
-        }
-        _ZPump_IdleTicks := 0
         _GUI_FullScan()
         WL_ClearZQueue()
         _errCount := 0

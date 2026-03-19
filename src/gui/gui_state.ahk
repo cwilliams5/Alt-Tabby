@@ -48,10 +48,9 @@ global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculati
 ; Used by flight recorder dump to cleanly exit frozen state.
 ; Does NOT hide overlay — caller controls ordering between reset and hide.
 GUI_ForceReset() {
-    global gGUI_State, gGUI_DisplayItems, gGUI_RectCacheDirty
+    global gGUI_State, gGUI_DisplayItems
     gGUI_DisplayItems := []
     gGUI_State := "IDLE"
-    gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
     _GUI_StopActiveWatchdog()  ; #303
 }
 
@@ -131,7 +130,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
     global gGUI_WSContextSwitch, gStats_AltTabs, gStats_TabSteps, gStats_QuickSwitches, gStats_Cancellations
-    global gGUI_RectCacheDirty
 
     Profiler.Enter("GUI_OnInterceptorEvent") ; @profile
 
@@ -370,7 +368,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
-            gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
             Stats_AccumulateSession()
 
             ; #178: Probe for pump connection — retries may have been starved during ACTIVE.
@@ -517,7 +514,7 @@ GUI_OnWorkspaceFlips() {
 ; Hides overlay, restores focus if StealFocus, clears display items, flushes stats.
 ; Caller may hold Critical (RefreshLiveItems manages its own).
 GUI_DismissOverlay() {
-    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_RectCacheDirty
+    global gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems
     global gGUI_StealFocus, gGUI_FocusBeforeShow
     global gFR_Enabled, FR_EV_STATE, FR_ST_IDLE
 
@@ -534,7 +531,6 @@ GUI_DismissOverlay() {
         FR_Record(FR_EV_STATE, FR_ST_IDLE)
     gGUI_State := "IDLE"
     gGUI_DisplayItems := []
-    gGUI_RectCacheDirty := true  ; PERF: next session recalculates monitor rect
     Stats_AccumulateSession()
     GUIPump_ProbeConnect()
     GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
@@ -733,12 +729,10 @@ _GUI_ShowOverlayWithFrozen() {
     diagTiming := cfg.DiagPaintTimingLog  ; PERF: cache config read (5+ uses)
 
     ; ===== TIMING: Show sequence start =====
-    ; PERF: Guard QPC calls behind diagTiming — 6 DllCalls (~600ns) saved when diagnostics disabled
-    if (diagTiming) {
-        tShow_Start := QPC()
-        idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+    tShow_Start := QPC()
+    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+    if (diagTiming)
         Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
-    }
 
     ; Set visible flag FIRST to prevent re-entrancy issues
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
@@ -774,14 +768,12 @@ _GUI_ShowOverlayWithFrozen() {
     Anim_PrepareShowFade(hasAnim)
 
     ; ===== TIMING: Resize =====
-    if (diagTiming)
-        t1 := QPC()
+    t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired, true)  ; skipFlush — we flush after paint
     global gGUI_LastRowsDesired
     gGUI_LastRowsDesired := rowsDesired  ; Sync so first paint skips unnecessary pre-render
-    if (diagTiming)
-        tShow_Resize := QPC() - t1
+    tShow_Resize := QPC() - t1
 
     ; ===== Show window BEFORE painting =====
     ; With SwapChain + DComp, Present() works for hidden windows (commits to the
@@ -849,11 +841,9 @@ _GUI_ShowOverlayWithFrozen() {
     ; By painting before starting the tween, the window stays invisible until
     ; content is rendered.
     ; ===== TIMING: Paint on visible window (Present works) =====
-    if (diagTiming)
-        t1 := QPC()
+    t1 := QPC()
     GUI_Repaint()
-    if (diagTiming)
-        tShow_Repaint := QPC() - t1
+    tShow_Repaint := QPC() - t1
 
     ; NOW start the show-fade tween — first paint is done, content is rendered.
     ; Animation timer can safely call GUI_Repaint from here on.
@@ -887,10 +877,9 @@ _GUI_ShowOverlayWithFrozen() {
     GUI_StartHoverPolling()
 
     ; ===== TIMING: Log show sequence =====
-    if (diagTiming) {
-        tShow_Total := QPC() - tShow_Start
+    tShow_Total := QPC() - tShow_Start
+    if (diagTiming)
         Paint_Log("ShowOverlay END: total=" Round(tShow_Total, 2) "ms | resize=" Round(tShow_Resize, 2) " repaint=" Round(tShow_Repaint, 2))
-    }
     Profiler.Leave() ; @profile
 }
 
@@ -899,11 +888,12 @@ _GUI_MoveSelectionFrozen(delta) {
     global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
     global gFX_GPUReady
 
-    count := gGUI_DisplayItems.Length
-    if (count = 0) {
+    if (gGUI_DisplayItems.Length = 0) {
         Profiler.Leave() ; @profile
         return
     }
+
+    count := gGUI_DisplayItems.Length
     prevSel := gGUI_Sel  ; Capture BEFORE changing selection (for animation)
 
     newSel := gGUI_Sel + delta

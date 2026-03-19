@@ -4,13 +4,13 @@
 ; Returns: ms since system boot as float, e.g. 12345678.123
 
 QPC() {
-    static f := 0, buf := Buffer(8)
+    static f := 0
     if (f = 0) {
         DllCall("QueryPerformanceFrequency", "int64*", &freq := 0)
         f := freq / 1000  ; Convert to ms divisor once
     }
-    DllCall("QueryPerformanceCounter", "ptr", buf)
-    return NumGet(buf, "int64") / f
+    DllCall("QueryPerformanceCounter", "int64*", &c := 0)
+    return c / f
 }
 
 ; HiSleep(ms) — high-precision sleep via QPC spin-loop.

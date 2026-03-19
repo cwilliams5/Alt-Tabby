@@ -302,15 +302,13 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
         cachedBot := Round(alpha * 0.9)
         cachedAlpha := alpha
     }
-    ; PERF: hoist shared blur std-dev (identical for top + bottom)
-    blurDev := Float(depth * 0.8)
     ; Top: dark band blurred downward
     topARGB := (cachedEdge << 24) | 0x000000
-    _FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, blurDev)
+    _FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, Float(depth * 0.8))
 
     ; Bottom
     botARGB := (cachedBot << 24) | 0x000000
-    _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, blurDev)
+    _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
     Profiler.Leave() ; @profile
 }
 
@@ -318,30 +316,19 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; GPU-enhanced hover with soft glow behind the row.
 FX_GPU_DrawHover(x, y, w, h, rad) {
-    global cfg, gD2D_BrushGeneration
+    global cfg
     Profiler.Enter("FX_GPU_DrawHover") ; @profile
     baseARGB := cfg.GUI_HoverARGB
-    bdrARGB := cfg.GUI_HovBorderARGB
-    bw := cfg.GUI_HovBorderWidthPx
-    if ((baseARGB >> 24) = 0 && bw <= 0) {
+    if ((baseARGB >> 24) = 0 && cfg.GUI_HovBorderWidthPx <= 0) {
         Profiler.Leave() ; @profile
         return  ; fully transparent fill + no border — nothing to draw
     }
-    ; PERF: static-cached brushes with generation tracking (same pattern as _GUI_DrawFooter)
-    static _hovFillARGB := -1, _hovFillBr := 0
-    static _hovBdrARGB := -1, _hovBdrBr := 0, _hovGen := -1
-    if (_hovGen != gD2D_BrushGeneration || baseARGB != _hovFillARGB || bdrARGB != _hovBdrARGB) {
-        _hovFillBr := D2D_GetCachedBrush(baseARGB)
-        _hovBdrBr := D2D_GetCachedBrush(bdrARGB)
-        _hovFillARGB := baseARGB
-        _hovBdrARGB := bdrARGB
-        _hovGen := gD2D_BrushGeneration
-    }
     if ((baseARGB >> 24) > 0)
-        D2D_FillRoundRect(x, y, w, h, rad, _hovFillBr)
+        D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
+    bw := cfg.GUI_HovBorderWidthPx
     if (bw > 0) {
         half := bw / 2
-        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, _hovBdrBr, bw)
+        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
     }
     Profiler.Leave() ; @profile
 }
@@ -511,14 +498,13 @@ FX_PreRenderMouseEffect(w, h) {
     static mouseSkipNext := false
     static mouseLastRenderMs := 0.0
 
-    adaptiveFPS := cfg.PerfAdaptiveMouseFPS  ; PERF: cache config read (used in skip check + timing)
-    if (adaptiveFPS && mouseSkipNext) {
+    if (cfg.PerfAdaptiveMouseFPS && mouseSkipNext) {
         mouseSkipNext := false  ; always render the frame after a skip
         Profiler.Leave() ; @profile
         return
     }
-    if (adaptiveFPS)
-        tBefore := QPC()
+
+    tBefore := QPC()
     try {
         ; PERF: Shader_PreRender returns entry.bitmap directly — avoids redundant Shader_GetBitmap Map.Get
         me._bitmap := Shader_PreRender(me.key, w, h, baseTime,
@@ -535,13 +521,11 @@ FX_PreRenderMouseEffect(w, h) {
             LogAppend(LOG_PATH_SHADER, errDetail)
         }
     }
+    mouseLastRenderMs := QPC() - tBefore
 
     ; If the mouse shader alone took more than half the frame budget, skip next frame
-    if (adaptiveFPS) {
-        mouseLastRenderMs := QPC() - tBefore
-        if (mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
-            mouseSkipNext := true
-    }
+    if (cfg.PerfAdaptiveMouseFPS && mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
+        mouseSkipNext := true
     Profiler.Leave() ; @profile
 }
 
@@ -619,12 +603,8 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     bdrR := _bdrR, bdrG := _bdrG, bdrB := _bdrB, bdrA := _bdrA
 
     ; BG-as-selection Resize mode: render at selection rect size so the shader fills the rect
-    ; PERF: cache Resize mode check (config-stable — process restarts on config change)
-    static _selResizeMode := -1
-    if (_selResizeMode = -1)
-        _selResizeMode := (cfg.GUI_BGShaderAsSelectionSize = "Resize")
     renderW := w, renderH := h
-    if (se.isBGShader && _selResizeMode) {
+    if (se.isBGShader && cfg.GUI_BGShaderAsSelectionSize = "Resize") {
         renderW := Max(Round(selW), 1)
         renderH := Max(Round(selH), 1)
     }
@@ -686,17 +666,17 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
             _selResizeMode := (cfg.GUI_BGShaderAsSelectionSize = "Resize")
         if (_selResizeMode) {
             ; Resize mode: shader rendered at selW×selH — draw full texture into selection rect
-            NumPut("float", selX, "float", selY,
-                   "float", selX + selW, "float", selY + selH, dstRect)
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
             NumPut("float", 0.0, "float", 0.0,
-                   "float", selW, "float", selH, srcRect)
+                   "float", Float(selW), "float", Float(selH), srcRect)
             selBmpWrap.ptr := pBitmap
             gD2D_RT.DrawBitmap(selBmpWrap, dstRect, 1.0, 1, srcRect)
         } else {
             ; Clip mode: shader rendered at full size — crop to selection rect
-            NumPut("float", selX, "float", selY,
-                   "float", selX + selW, "float", selY + selH, srcRect)
-            NumPut("float", selX, "float", selY, tgtPt)
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), srcRect)
+            NumPut("float", Float(selX), "float", Float(selY), tgtPt)
             gD2D_RT.DrawImage(pBitmap, tgtPt, srcRect)
         }
         if (clipped)
@@ -1314,16 +1294,16 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
         if (_hovResizeMode = -1)
             _hovResizeMode := (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize")
         if (_hovResizeMode) {
-            NumPut("float", selX, "float", selY,
-                   "float", selX + selW, "float", selY + selH, hov_dstRect)
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
             NumPut("float", 0.0, "float", 0.0,
-                   "float", selW, "float", selH, hov_srcRect)
+                   "float", Float(selW), "float", Float(selH), hov_srcRect)
             hovBmpWrap.ptr := pBitmap
             gD2D_RT.DrawBitmap(hovBmpWrap, hov_dstRect, 1.0, 1, hov_srcRect)
         } else {
-            NumPut("float", selX, "float", selY,
-                   "float", selX + selW, "float", selY + selH, hov_srcRect)
-            NumPut("float", selX, "float", selY, hov_tgtPt)
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), hov_srcRect)
+            NumPut("float", Float(selX), "float", Float(selY), hov_tgtPt)
             gD2D_RT.DrawImage(pBitmap, hov_tgtPt, hov_srcRect)
         }
         if (clipped)

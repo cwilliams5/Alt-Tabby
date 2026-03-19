@@ -194,7 +194,7 @@ WL_EndScan(graceMs := "") {
             continue  ; May have been removed by another producer
         if (rec.lastSeenScanId != gWS_ScanId) {
             ; Komorebi-managed windows are "present" even if winenum doesn't see them
-            if (rec.workspaceName != "") {
+            if (rec.HasOwnProp("workspaceName") && rec.workspaceName != "") {
                 komorebiKeep.Push(hwnd)
                 continue
             }
@@ -333,7 +333,7 @@ WL_UpsertWindow(records, source := "") {
                     ; Only update if value differs
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
-                        if (diagChurn)
+                        if (!isNew && diagChurn)
                             gWS_DiagChurn[k] := gWS_DiagChurn.Get(k, 0) + 1
                         row.%k% := v
                         rowChanged := true
@@ -370,10 +370,7 @@ WL_UpsertWindow(records, source := "") {
             updated += 1
 
         ; Collect for enrichment (enqueued after Critical ends)
-        ; PERF: Skip unchanged rows — _WS_EnqueueIfNeeded checks internally but
-        ; skipping the Push + iteration + call saves time inside Critical
-        if (isNew || rowChanged)
-            rowsToEnqueue.Push(row)
+        rowsToEnqueue.Push(row)
     }
     if (added || sortDirty) {
         _WS_MarkDirty()  ; Structural change (new windows or sort-affecting fields via upsert)
@@ -389,11 +386,6 @@ WL_UpsertWindow(records, source := "") {
     ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
     for _, row in rowsToEnqueue
         _WS_EnqueueIfNeeded(row)
-
-    ; PERF: Hoisted from _WS_EnqueueIfNeeded — call once per batch instead of per-row.
-    ; These are idempotent flag checks; calling once after the loop is sufficient.
-    try MRU_Lite_EnsureRunning()
-    try KomorebiLite_EnsureRunning()
 
     Profiler.Leave() ; @profile
     return { added: added, updated: updated, rev: gWS_Rev }
@@ -1115,8 +1107,6 @@ WL_EnqueueForZ(hwnd) {
     gWS_ZQueue.Push(hwnd)
     gWS_ZQueueDedup[hwnd] := true
     Critical "Off"
-    ; Wake Z-pump outside Critical — EnsureRunning has its own Critical
-    try ZPump_EnsureRunning()
 }
 
 ; Check if any windows need Z-order enrichment
@@ -1483,7 +1473,6 @@ WL_GetDisplayList(opts := 0) {
 
     ; Build filtered subset Map for O(1) membership checks
     itemsMap := Map()
-    itemsMap.Capacity := items.Length  ; PERF: pre-size to avoid rehash during population
     for _, rec in items
         itemsMap[rec.hwnd] := rec
 

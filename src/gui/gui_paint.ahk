@@ -20,7 +20,6 @@ global PAINT_IDLE_LOG_THRESHOLD_MS := 60000  ; Log verbose context for paints af
 ;
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
-global gGUI_RectCacheDirty := true  ; Invalidated on IDLE transition + WM_DISPLAYCHANGE
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gAnim_FrameTimeDisplay := 0.0  ; Displayed frame time ms
@@ -113,7 +112,7 @@ GUI_Repaint() {
     Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
-    global gGUI_State, cfg, gGUI_RectCacheDirty
+    global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount, _gPaint_SubCache
     global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
 
@@ -163,30 +162,17 @@ GUI_Repaint() {
     ; ===== TIMING: ComputeRect =====
     if (diagTiming)
         t1 := QPC()
-    ; PERF: Cache GUI_GetWindowRect results — monitor info (DPI, work area) is stable
-    ; during ACTIVE state. Saves 4 DllCalls per frame (MonitorFromWindow + GetMonitorInfoW
-    ; + MonitorFromRect + GetDpiForMonitor). Cache misses on: row count change (window
-    ; destroyed during ACTIVE), session start (gGUI_RectCacheDirty), display change.
-    static _rcXDip := 0, _rcYDip := 0, _rcWDip := 0, _rcHDip := 0
-    static _rcScale := 0, _rcWaL := 0, _rcWaT := 0, _rcWaR := 0, _rcWaB := 0
-    if (rowsChanged || gGUI_RectCacheDirty) {
-        xDip := 0
-        yDip := 0
-        wDip := 0
-        hDip := 0
-        scale := 0
-        waL := 0
-        waT := 0
-        waR := 0
-        waB := 0
-        GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &scale, &waL, &waT, &waR, &waB)
-        _rcXDip := xDip, _rcYDip := yDip, _rcWDip := wDip, _rcHDip := hDip
-        _rcScale := scale, _rcWaL := waL, _rcWaT := waT, _rcWaR := waR, _rcWaB := waB
-        gGUI_RectCacheDirty := false
-    } else {
-        xDip := _rcXDip, yDip := _rcYDip, wDip := _rcWDip, hDip := _rcHDip
-        scale := _rcScale, waL := _rcWaL, waT := _rcWaT, waR := _rcWaR, waB := _rcWaB
-    }
+    xDip := 0
+    yDip := 0
+    wDip := 0
+    hDip := 0
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    scale := Win_GetMonitorScale(waL, waT, waR, waB)
     phX := Round(xDip * scale)
     phY := Round(yDip * scale)
     phW := Round(wDip * scale)
@@ -244,10 +230,7 @@ GUI_Repaint() {
         t1 := QPC()
 
     if (gD2D_RT) {
-        ; PERF: gate frame-time QPC pair on FPS overlay toggle (~200ns/frame when off)
-        global gAnim_FPSEnabled
-        if (gAnim_FPSEnabled)
-            tPaintWork := QPC()  ; Work time: AcquireBackBuffer through EndDraw (excludes Present)
+        tPaintWork := QPC()  ; Work time: AcquireBackBuffer through EndDraw (excludes Present)
         if (!D2D_AcquireBackBuffer()) {
             ; FR: back buffer acquire failed
             if (gFR_Enabled)
@@ -292,14 +275,11 @@ GUI_Repaint() {
                 ; Capture render work time before Present — Present may block on
                 ; VBlank with waitable swap chain, inflating the measurement.
                 global gAnim_FrameTimeDisplay
-                if (gAnim_FPSEnabled)
-                    gAnim_FrameTimeDisplay := QPC() - tPaintWork
+                gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
 
-                ; DComp clip + Commit + Present: kept adjacent so they land on
-                ; the same compositor frame.  Commit and Present ARE STA pump
-                ; points, but gPaint_RepaintInProgress blocks reentrant callbacks
-                ; from modifying DComp/DXGI state between them.
+                ; DComp clip + Commit + Present: no STA pump between them,
+                ; guaranteed to land on the same compositor frame.
                 if (needsResize && phW > 0 && phH > 0) {
                     D2D_SetClipRect(phW, phH)
                     D2D_Commit()
@@ -418,12 +398,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
     global gFX_GPUReady, gD2D_BrushGeneration, gFX_HoverEffect, gFX_SelectionEffect
-    global gAnim_SelPrevIndex, gAnim_SelNewIndex, gAnim_Tweens
+    global gAnim_SelPrevIndex, gAnim_SelNewIndex
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
         tPO_Start := QPC()
-        t1 := tPO_Start
+        t1 := QPC()
     }
     GUI_EnsureResources(scale)
     if (diagTiming)
@@ -523,9 +503,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brHdr := gD2D_Res["brHdr"]
         tfHdr := gD2D_Res["tfHdr"]
         if (shadowEnabled) {
-            D2D_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             for _, col in cols {
-                D2D_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
+                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, sOffX, sOffY)
             }
         } else {
             D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
@@ -577,7 +557,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
         if (shadowEnabled) {
-            D2D_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, sOffX, sOffY)
+            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, sOffX, sOffY)
         } else {
             D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
         }
@@ -586,9 +566,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         if (diagTiming) {
             tPO_RowsStart := QPC()
             tPO_IconsTotal := 0
-            iconCacheHits := 0
-            iconCacheMisses := 0
         }
+        iconCacheHits := 0
+        iconCacheMisses := 0
 
         start0 := Win_Wrap0(scrollTop, count)
         i := 0
@@ -640,15 +620,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         selH := RowH
         selX := Mx - selExpandX
 
-        ; PERF: inline Anim_GetValue — saves function call overhead (~0.3us per call)
-        entranceT := (tw := gAnim_Tweens.Get("fx_sel_entrance", 0)) ? tw.current : 1.0
+        ; Hoist entrance animation value (used by both selection and hover shader paths)
+        entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
 
         if (selIndex > 0 && selIndex <= count) {
             ; Compute the "snap" Y (where the selection IS in the current layout)
             baseSelY := Anim_CalcSelY(selIndex, scrollTop, contentTopY, RowH, count, selExpandY)
 
             ; Animated slide: lerp from prevSel's Y to current sel's Y
-            animT := (tw := gAnim_Tweens.Get("selSlide", 0)) ? tw.current : 1.0
+            animT := Anim_GetValue("selSlide", 1.0)
             if (animT < 1.0 && gAnim_SelPrevIndex > 0) {
                 prevSelY := Anim_CalcSelY(gAnim_SelPrevIndex, scrollTop, contentTopY, RowH, count, selExpandY)
                 selY := prevSelY + (baseSelY - prevSelY) * animT
@@ -727,7 +707,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; destruction.  Try the bitmap cache regardless so frozen display items
             ; keep their last-known icon.
             iconDrawn := D2D_DrawCachedIcon(curHwnd, curIcon, ix, iy, ISize, &iconWasCacheHit)
-            if (iconDrawn && diagTiming) {
+            if (iconDrawn) {
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else
@@ -759,11 +739,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             }
 
             if (shadowEnabled) {
-                D2D_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
-                D2D_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
+                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, sOffX, sOffY)
+                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, sOffX, sOffY)
                 for _, col in cols {
                     val := col._exists ? cur.%col.key% : ""
-                    D2D_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
+                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, sOffX, sOffY)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
@@ -790,7 +770,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, start0, count, cachedLayout)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, cachedLayout)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -877,16 +857,13 @@ _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, bc, gap, tfAction) {
 }
 
 _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
-    global gGUI_HoverBtn, cfg, gD2D_Res, gD2D_BrushGeneration
+    global gGUI_HoverBtn, cfg, gD2D_Res
 
     ; Pre-build button configs once (config-stable — process restarts on config change)
     ; Eliminates per-frame dynamic property concat + lookup (3 buttons × ~5 dynamic accesses)
-    ; FIX: re-read tfAction on D2D resource recreation (DPI change, device loss) — the COM
-    ; text format pointer is released and recreated by GUI_EnsureResources. (#review-blocking)
-    static btnCfg := 0, tfAction := 0, _abGen := -1
-    if (!btnCfg || _abGen != gD2D_BrushGeneration) {
+    static btnCfg := 0, tfAction := 0
+    if (!btnCfg) {
         tfAction := gD2D_Res["tfAction"]
-        _abGen := gD2D_BrushGeneration
         btnCfg := [
             {name: "close", show: cfg.GUI_ShowCloseButton,
              bg: cfg.GUI_CloseButtonBGARGB, bgHov: cfg.GUI_CloseButtonBGHoverARGB,
@@ -918,9 +895,7 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
 
 ; ========================= SCROLLBAR =========================
 
-; PERF: start0 passed from caller (already computed in _GUI_PaintOverlay) to avoid
-; redundant Win_Wrap0 call
-_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, start0, count, cachedLayout) {
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, cachedLayout) {
     global cfg, gD2D_BrushGeneration
     Profiler.Enter("_GUI_DrawScrollbar") ; @profile
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
@@ -948,6 +923,7 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, start0, count, cache
         thumbH := 3
     }
 
+    start0 := Win_Wrap0(scrollTop, count)
     startRatio := start0 / count
     y1 := y + Floor(startRatio * trackH)
     y2 := y1 + thumbH
@@ -1055,7 +1031,7 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
 
     ; Draw left arrow
     if (hasShadow) {
-        D2D_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, sOffX, sOffY)
+        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
     }
@@ -1074,7 +1050,7 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
 
     ; Draw right arrow
     if (hasShadow) {
-        D2D_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, sOffX, sOffY)
+        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
     }
@@ -1087,16 +1063,26 @@ _GUI_DrawFooter(wPhys, hPhys, shadowP, shadowBr, cachedLayout) {
     }
 
     if (hasShadow) {
-        D2D_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, sOffX, sOffY)
+        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, sOffX, sOffY)
     } else {
         D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
     }
     Profiler.Leave() ; @profile
 }
 
-; Shadow text wrappers moved to gui_gdip.ahk as inlined D2D_DrawTextLeftShadow /
-; D2D_DrawTextCenteredShadow (single function call with one null check + one
-; alignment guard for both shadow and main text draws).
+; ---- Text Shadow ----
+
+; Draw text with a drop shadow behind it. Shadow is drawn first (offset, darker),
+; then crisp text on top. Two DrawText calls per shadowed text element.
+_FX_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextLeft(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextLeft(text, x, y, w, h, brush, tf)
+}
+
+_FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextCentered(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextCentered(text, x, y, w, h, brush, tf)
+}
 
 ; Get shadow parameters for current effect style.
 ; Returns {enabled, offX, offY, argb} or {enabled: false}.

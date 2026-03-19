@@ -71,8 +71,7 @@ _GUI_BackdropNudge() {
     if (!gGUI_BaseH || !gGUI_Revealed || !gGUI_OverlayVisible)
         return
 
-    static rect := Buffer(16)
-    static flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE ; lint-ignore: static-in-timer
+    rect := Buffer(16, 0)
     if (!DllCall("user32\GetWindowRect", "ptr", gGUI_BaseH, "ptr", rect.Ptr))
         return
     x := NumGet(rect, 0, "int")
@@ -80,6 +79,7 @@ _GUI_BackdropNudge() {
     w := NumGet(rect, 8, "int") - x
     h := NumGet(rect, 12, "int") - y
 
+    flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE
     DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,
         "int", x, "int", y, "int", w, "int", h + 1, "uint", flags, "int")
     DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,
@@ -176,13 +176,11 @@ GUI_GetTargetMonitorHwnd() {
 
 GUI_ComputeRowsToShow(count) {
     global cfg
-    maxR := cfg.GUI_RowsVisibleMax
-    if (count >= maxR)
-        return maxR
-    minR := cfg.GUI_RowsVisibleMin
-    if (count > minR)
+    if (count >= cfg.GUI_RowsVisibleMax)
+        return cfg.GUI_RowsVisibleMax
+    if (count > cfg.GUI_RowsVisibleMin)
         return count
-    return minR
+    return cfg.GUI_RowsVisibleMin
 }
 
 GUI_HeaderBlockDip() {
@@ -237,9 +235,15 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     yDip := 0
     wDip := 0
     hDip := 0
-    monScale := 0
-    ; PERF: Get scale from GUI_GetWindowRect — avoids duplicate monitor DllCalls
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, &monScale)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow)
+
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    targetHwnd := GUI_GetTargetMonitorHwnd()
+    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
+    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
     xPhys := Round(xDip * monScale)
     yPhys := Round(yDip * monScale)
@@ -259,10 +263,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Profiler.Leave() ; @profile
 }
 
-; PERF: Optional output params (&outScale, &outWaL..&outWaB) return monitor info
-; computed internally, eliminating duplicate MonitorFromWindow + GetMonitorInfoW +
-; MonitorFromRect + GetDpiForMonitor DllCalls in callers that also need this data.
-GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, &outScale := "", &outWaL := "", &outWaT := "", &outWaR := "", &outWaB := "") {
+GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
     global cfg
     waL := 0
     waT := 0
@@ -289,13 +290,6 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, &outScale := "", &outWaL := "", &o
 
     x := Round(left_dip + (waW_dip - w) / 2)
     y := Round(top_dip + (waH_dip - h) / 2)
-
-    ; Pass back monitor info to avoid duplicate DllCalls in caller
-    outScale := monScale
-    outWaL := waL
-    outWaT := waT
-    outWaR := waR
-    outWaB := waB
 }
 
 ; ========================= WINDOW CREATION =========================
@@ -327,13 +321,15 @@ GUI_CreateWindow() {
     yDip := 0
     wDip := 0
     hDip := 0
-    monScale := 0
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
+
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    ; PERF: Get scale + workarea from GUI_GetWindowRect — avoids duplicate monitor DllCalls
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &monScale, &waL, &waT, &waR, &waB)
+    targetHwnd := GUI_GetTargetMonitorHwnd()
+    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
+    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
     xPhys := Round(xDip * monScale)
     yPhys := Round(yDip * monScale)

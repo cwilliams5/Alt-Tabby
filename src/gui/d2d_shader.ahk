@@ -34,9 +34,8 @@ Shader_InvalidateState() {
 
 ; Begin a pre-BeginDraw batch: defer RT/SRV unbind between sequential PreRender calls.
 Shader_BeginBatch() {
-    global gShader_BatchMode, gShader_FrameCount
+    global gShader_BatchMode
     gShader_BatchMode := true
-    gShader_FrameCount += 1
 }
 
 ; End batch: unbind RT and SRV slots 0-4 once (instead of per-layer).
@@ -1152,6 +1151,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (entry.lastTime > 0)
         timeDelta := timeSec - entry.lastTime
     entry.lastTime := timeSec
+    gShader_FrameCount += 1
 
     ; Map cbuffer → write all 144 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
@@ -1165,14 +1165,14 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     pData := NumGet(mapped1, 0, "ptr")
     if (pData) {
         ; Core params + mouse (offset 0-44, 12 values)
-        NumPut("float", timeSec, "float", w, "float", h, "float", timeDelta,
+        NumPut("float", timeSec, "float", Float(w), "float", Float(h), "float", timeDelta,
                "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity,
-               "float", mouseX, "float", mouseY, "float", mouseVelX, "float", mouseVelY,
+               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY,
                pData, 0)
         ; Selection rect + colors (offset 48-92, 12 values)
-        NumPut("float", selX, "float", selY, "float", selW, "float", selH,
-               "float", selColorR, "float", selColorG, "float", selColorB, "float", selColorA,
-               "float", borderR, "float", borderG, "float", borderB, "float", borderA,
+        NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
+               "float", Float(selColorR), "float", Float(selColorG), "float", Float(selColorB), "float", Float(selColorA),
+               "float", Float(borderR), "float", Float(borderG), "float", Float(borderB), "float", Float(borderA),
                pData, 48)
         ; Selection params + compute config + tuning (offset 96-136, 11 values)
         NumPut("float", borderWidth, "float", isHovered, "float", entranceT, "float", mouseSpeed,
@@ -1241,7 +1241,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     vpChanged := (vpW != w || vpH != h)
     if (vpChanged) {
         vpW := w, vpH := h
-        NumPut("float", w, "float", h, vp, 8)  ; PERF: combined NumPut
+        NumPut("float", Float(w), "float", Float(h), vp, 8)  ; PERF: combined NumPut
     }
     if (gShader_StateDirty || vpChanged)
         ComCall(44, ctx, "uint", 1, "ptr", vp, "int")
