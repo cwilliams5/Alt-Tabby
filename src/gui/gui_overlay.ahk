@@ -176,11 +176,13 @@ GUI_GetTargetMonitorHwnd() {
 
 GUI_ComputeRowsToShow(count) {
     global cfg
-    if (count >= cfg.GUI_RowsVisibleMax)
-        return cfg.GUI_RowsVisibleMax
-    if (count > cfg.GUI_RowsVisibleMin)
+    maxR := cfg.GUI_RowsVisibleMax
+    if (count >= maxR)
+        return maxR
+    minR := cfg.GUI_RowsVisibleMin
+    if (count > minR)
         return count
-    return cfg.GUI_RowsVisibleMin
+    return minR
 }
 
 GUI_HeaderBlockDip() {

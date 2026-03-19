@@ -231,7 +231,10 @@ GUI_Repaint() {
         t1 := QPC()
 
     if (gD2D_RT) {
-        tPaintWork := QPC()  ; Work time: AcquireBackBuffer through EndDraw (excludes Present)
+        ; PERF: gate frame-time QPC pair on FPS overlay toggle (~200ns/frame when off)
+        global gAnim_FPSEnabled
+        if (gAnim_FPSEnabled)
+            tPaintWork := QPC()  ; Work time: AcquireBackBuffer through EndDraw (excludes Present)
         if (!D2D_AcquireBackBuffer()) {
             ; FR: back buffer acquire failed
             if (gFR_Enabled)
@@ -276,7 +279,8 @@ GUI_Repaint() {
                 ; Capture render work time before Present — Present may block on
                 ; VBlank with waitable swap chain, inflating the measurement.
                 global gAnim_FrameTimeDisplay
-                gAnim_FrameTimeDisplay := QPC() - tPaintWork
+                if (gAnim_FPSEnabled)
+                    gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
 
                 ; DComp clip + Commit + Present: kept adjacent so they land on
@@ -401,7 +405,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
     global gFX_GPUReady, gD2D_BrushGeneration, gFX_HoverEffect, gFX_SelectionEffect
-    global gAnim_SelPrevIndex, gAnim_SelNewIndex
+    global gAnim_SelPrevIndex, gAnim_SelNewIndex, gAnim_Tweens
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -623,15 +627,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         selH := RowH
         selX := Mx - selExpandX
 
-        ; Hoist entrance animation value (used by both selection and hover shader paths)
-        entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
+        ; PERF: inline Anim_GetValue — saves function call overhead (~0.3us per call)
+        entranceT := (tw := gAnim_Tweens.Get("fx_sel_entrance", 0)) ? tw.current : 1.0
 
         if (selIndex > 0 && selIndex <= count) {
             ; Compute the "snap" Y (where the selection IS in the current layout)
             baseSelY := Anim_CalcSelY(selIndex, scrollTop, contentTopY, RowH, count, selExpandY)
 
             ; Animated slide: lerp from prevSel's Y to current sel's Y
-            animT := Anim_GetValue("selSlide", 1.0)
+            animT := (tw := gAnim_Tweens.Get("selSlide", 0)) ? tw.current : 1.0
             if (animT < 1.0 && gAnim_SelPrevIndex > 0) {
                 prevSelY := Anim_CalcSelY(gAnim_SelPrevIndex, scrollTop, contentTopY, RowH, count, selExpandY)
                 selY := prevSelY + (baseSelY - prevSelY) * animT
@@ -860,13 +864,16 @@ _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, bc, gap, tfAction) {
 }
 
 _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
-    global gGUI_HoverBtn, cfg, gD2D_Res
+    global gGUI_HoverBtn, cfg, gD2D_Res, gD2D_BrushGeneration
 
     ; Pre-build button configs once (config-stable — process restarts on config change)
     ; Eliminates per-frame dynamic property concat + lookup (3 buttons × ~5 dynamic accesses)
-    static btnCfg := 0, tfAction := 0
-    if (!btnCfg) {
+    ; FIX: re-read tfAction on D2D resource recreation (DPI change, device loss) — the COM
+    ; text format pointer is released and recreated by GUI_EnsureResources. (#review-blocking)
+    static btnCfg := 0, tfAction := 0, _abGen := -1
+    if (!btnCfg || _abGen != gD2D_BrushGeneration) {
         tfAction := gD2D_Res["tfAction"]
+        _abGen := gD2D_BrushGeneration
         btnCfg := [
             {name: "close", show: cfg.GUI_ShowCloseButton,
              bg: cfg.GUI_CloseButtonBGARGB, bgHov: cfg.GUI_CloseButtonBGHoverARGB,
