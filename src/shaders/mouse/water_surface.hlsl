@@ -4,6 +4,7 @@
 // Nearly invisible when calm — waves visible through specular highlights and Fresnel.
 
 static const float3 lightDir = float3(0.2591958, -0.4319929, 0.8639858);  // normalize(0.3,-0.5,1.0)
+static const float3 halfVec  = float3(0.13420, -0.22375, 0.96523);       // normalize(lightDir + float3(0,0,1))
 
 
 struct Cell {
@@ -114,15 +115,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float dhy = ddy(height);
     float3 normal = normalize(float3(-dhx * 60.0, -dhy * 60.0, 1.0));
 
-    // Lighting
-    float3 viewDir = float3(0.0, 0.0, 1.0);
-    float3 halfVec = normalize(lightDir + viewDir);
-
     // Specular — bright highlights where waves catch the light
     float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
 
     // Fresnel — wave edges are more visible (glancing angle reflection)
-    float f = 1.0 - max(dot(normal, viewDir), 0.0);
+    float f = 1.0 - max(normal.z, 0.0);  // dot(normal, float3(0,0,1)) = normal.z
     float fresnel = f * f * f;
 
     // Disturbance — how much the surface deviates from flat

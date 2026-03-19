@@ -40,6 +40,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float fill = smoothstep(1.0, -1.0, dist);
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 
+    // Early exit: outside all effect regions (fill + border + outer lava heat)
+    if (dist > max(borderWidth + 2.0, 5.0 * selGlow + 1.0))
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     float t = smoothstep(0.0, 1.0, entranceT);
     float intensity = isHovered;
     float tI = t * intensity;

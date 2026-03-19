@@ -1,12 +1,5 @@
 // Gradient Orbit Selection — Moving gradient that smoothly rotates around the border
 
-float3 hue2rgb(float h) {
-    float r = abs(h * 6.0 - 3.0) - 1.0;
-    float g = 2.0 - abs(h * 6.0 - 2.0);
-    float b = 2.0 - abs(h * 6.0 - 4.0);
-    return saturate(float3(r, g, b));
-}
-
 float4 PSMain(PSInput input) : SV_Target {
     float2 px = input.uv * resolution;
     float2 hs = selRect.zw * 0.5;

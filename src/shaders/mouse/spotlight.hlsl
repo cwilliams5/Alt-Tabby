@@ -60,17 +60,21 @@ float4 PSMain(PSInput input) : SV_Target {
     float paraComp = dot(delta, elongDir);
     float perpComp = dot(delta, perpDir);
 
-    // Elliptical distance
+    // Elliptical distance (squared — defer sqrt past early exit)
     float rcpElongSq = 1.0 / (elongation * elongation);
-    float ellipseDist = sqrt(
-        paraComp * paraComp * rcpElongSq +
-        perpComp * perpComp
-    );
+    float ellipseDistSq = paraComp * paraComp * rcpElongSq + perpComp * perpComp;
 
     // Base radius: grows with speed (shaky hand), grows slightly at edges (spread)
     float baseRadius = 140.0
         + smoothstep(0.0, 1500.0, iMouseSpeed * reactivity) * 80.0
         + obliqueness * 30.0;
+
+    // Early exit: beyond maximum possible effect radius (penumbra reaches baseRadius * 1.54 max)
+    float maxEffectRadius = baseRadius * 1.6;
+    if (ellipseDistSq > maxEffectRadius * maxEffectRadius)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    float ellipseDist = sqrt(ellipseDistSq);
 
     // Noise-distorted edge for organic feel
     float angle = atan2(delta.y, delta.x);
