@@ -307,7 +307,8 @@ _GUIPump_CollectTick() {
 
         ; Flag hwnds that have no icon — pump must skip nochange cache for these
         ; (stale cache from removed-then-readded HWND would return "unchanged")
-        needsIcon := []
+        static needsIcon := [] ; lint-ignore: static-in-timer
+        needsIcon.Length := 0
         for _, h in hwnds {
             row := WL_GetByHwnd(h)
             if (row && !row.iconHicon)
