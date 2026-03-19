@@ -61,7 +61,7 @@ float volumetricFog(float3 v, float noiseMod, float3 timeOffset) {
 
     noise = (0.5 - abs(edge * (1.0 + noiseMod * 0.05) - noise)) * 2.0;
     return (smoothstep(1.0 - SHARPNESS * 2.0, 1.0 - SHARPNESS, noise * noise)
-          + (1.0 - smoothstep(1.3, 0.6, noise))) * 0.2;
+          + smoothstep(0.6, 1.3, noise)) * 0.2;
 }
 
 float3 nearPlanePoint(float2 v, float t) {

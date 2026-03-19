@@ -125,7 +125,7 @@ float3 stars(float3 p) {
         float3 q = frac(p * (0.15 * res)) - 0.5;
         float3 id = floor(p * (0.15 * res));
         float rn = hash33(id).z;
-        float c2 = 1.0 - smoothstep(-0.2, 0.4, length(q));
+        float c2 = smoothstep(0.4, -0.2, length(q));
         c2 *= step(rn, 0.005 + i * 0.014);
         c += c2 * (lerp(float3(1.0, 0.75, 0.5), float3(0.85, 0.9, 1.0), rn * 30.0) * 0.5 + 0.5);
         p *= 1.15;

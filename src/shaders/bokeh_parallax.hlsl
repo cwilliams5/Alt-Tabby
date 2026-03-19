@@ -40,7 +40,7 @@ void BokehLayer(inout float3 color, float2 p, float3 c)
     p2.y *= lerp(0.9, 1.1, frac(cellR * 17.17 + 17.17));
 
     float sdf = Circle(p2, radius);
-    float circle = 1.0 - smoothstep(0.0, 1.0, sdf * 0.04);
+    float circle = smoothstep(1.0, 0.0, sdf * 0.04);
     float glow = exp(-sdf * 0.025) * 0.3 * (1.0 - circle);
     color += c * (circle + glow);
 }

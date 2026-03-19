@@ -26,7 +26,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float3 col = lerp( float3(col_r, 0.2, 0.3 * pha), float3(col_g, 0.2 * pha, 0.4), 0.5 + 0.5 * sin(float(i)));
         float f = dis / rad;
         f = sqrt(saturate(1.0 + (sin(time * siz) * 0.5) * f));
-        color += col.zyx * (1.0 - smoothstep( rad * 0.15, rad, dis ));
+        color += col.zyx * smoothstep( rad, rad * 0.15, dis );
     }
     color *= sqrt(1.5 - 0.5 * length(uv));
 

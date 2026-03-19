@@ -91,14 +91,14 @@ float4 PSMain(PSInput input) : SV_Target {
             // of course everything based on voronoi
             v2 = voronoi(uv * f * 0.5 + 50.0 + time);
 
-            float va = 1.0 - smoothstep(0.0, 0.1, v1);
-            float vb = 1.0 - smoothstep(0.0, 0.08, v2);
+            float va = smoothstep(0.1, 0.0, v1);
+            float vb = smoothstep(0.08, 0.0, v2);
             float vab = va * (0.5 + vb);
             v += a * vab * vab;
         }
 
         // make sharp edges
-        v1 = 1.0 - smoothstep(0.0, 0.3, v1);
+        v1 = smoothstep(0.3, 0.0, v1);
 
         // noise is used as intensity map
         v2 = a * (noise1(v1 * 5.5 + 0.1));

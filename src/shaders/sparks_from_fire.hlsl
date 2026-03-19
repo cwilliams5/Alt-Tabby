@@ -153,15 +153,15 @@ float3 fireParticles(in float2 uv, in float2 originalUV)
     distBloom = length(rotatedDelta * randomAround2_2(PARTICLE_BLOOM_SCALE, PARTICLE_BLOOM_SCALE_VAR, rootUV));
 
     // Add sparks
-    particles += (1.0 - smoothstep(PARTICLE_SIZE * 0.6, PARTICLE_SIZE * 3.0, dist)) * SPARK_COLOR;
+    particles += smoothstep(PARTICLE_SIZE * 3.0, PARTICLE_SIZE * 0.6, dist) * SPARK_COLOR;
 
     // Add bloom
-    float bloomFade = 1.0 - smoothstep(0.0, PARTICLE_SIZE * 6.0, distBloom);
+    float bloomFade = smoothstep(PARTICLE_SIZE * 6.0, 0.0, distBloom);
     particles += (bloomFade * bloomFade * bloomFade) * BLOOM_COLOR;
 
     // Upper disappear curve randomization
     float border = (hash1_2(rootUV) - 0.5) * 2.0;
-    float disappear = 1.0 - smoothstep(border, border + 0.5, originalUV.y);
+    float disappear = smoothstep(border + 0.5, border, originalUV.y);
 
     // Lower appear curve randomization
     border = (hash1_2(rootUV + 0.214) - 1.8) * 0.7;
@@ -206,12 +206,12 @@ float4 PSMain(PSInput input) : SV_Target
     float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
     float2 uv = (2.0 * fragCoord - resolution.xy) / resolution.x;
 
-    float vignette = 1.0 - smoothstep(0.4, 1.4, length(uv + float2(0.0, 0.3)));
+    float vignette = smoothstep(1.4, 0.4, length(uv + float2(0.0, 0.3)));
 
     uv *= 1.8;
 
     float smokeIntensity = layeredNoise1_2(uv * 10.0 + time * 4.0 * MOVEMENT_DIRECTION * MOVEMENT_SPEED, 1.7, 0.7, 6, 0.2);
-    float _ssFade = 1.0 - smoothstep(-1.0, 1.6, uv.y);
+    float _ssFade = smoothstep(1.6, -1.0, uv.y);
     smokeIntensity *= _ssFade * _ssFade;
     float3 smoke = smokeIntensity * SMOKE_COLOR * 0.8 * vignette;
 
