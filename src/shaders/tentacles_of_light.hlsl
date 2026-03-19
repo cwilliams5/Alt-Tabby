@@ -5,34 +5,6 @@ float Hash11(float x) {
     return frac(sin(x * 1254.5763) * 57465.57);
 }
 
-float3 hue2rgb(float hue) {
-    hue *= 6.0;
-    float x = 1.0 - abs(fmod(hue, 2.0) - 1.0);
-
-    float3 rgb = float3(1.0, x, 0.0);
-    if (hue < 2.0 && hue >= 1.0) {
-        rgb = float3(x, 1.0, 0.0);
-    }
-
-    if (hue < 3.0 && hue >= 2.0) {
-        rgb = float3(0.0, 1.0, x);
-    }
-
-    if (hue < 4.0 && hue >= 3.0) {
-        rgb = float3(0.0, x, 1.0);
-    }
-
-    if (hue < 5.0 && hue >= 4.0) {
-        rgb = float3(x, 0.0, 1.0);
-    }
-
-    if (hue < 6.0 && hue >= 5.0) {
-        rgb = float3(1.0, 0.0, x);
-    }
-
-    return rgb;
-}
-
 float lineDist(float2 p, float2 a, float2 b) {
     float2 pa = p - a, ba = b - a;
     return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
