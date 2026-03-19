@@ -37,15 +37,15 @@ D2D_FillRoundRect(x, y, w, h, r, brush) {
         return
     if (r <= 0) {
         static rectBuf := Buffer(16)
-        NumPut("float", Float(x), "float", Float(y),
-               "float", Float(x + w), "float", Float(y + h), rectBuf)
+        NumPut("float", x, "float", y,
+               "float", x + w, "float", y + h, rectBuf)
         gD2D_RT.FillRectangle(rectBuf, brush)
         return
     }
     static rrBuf := Buffer(24)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h),
-           "float", Float(r), "float", Float(r), rrBuf)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h,
+           "float", r, "float", r, rrBuf)
     gD2D_RT.FillRoundedRectangle(rrBuf, brush)
 }
 
@@ -55,9 +55,9 @@ D2D_StrokeRoundRect(x, y, w, h, r, brush, strokeWidth) {
     if (w <= 0 || h <= 0 || !gD2D_RT)
         return
     static rrBuf := Buffer(24)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h),
-           "float", Float(r), "float", Float(r), rrBuf)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h,
+           "float", r, "float", r, rrBuf)
     gD2D_RT.DrawRoundedRectangle(rrBuf, brush, strokeWidth, 0)
 }
 
@@ -136,8 +136,8 @@ D2D_DrawTextLeft(text, x, y, w, h, brush, tf) {
         tf._a := 0
     }
     static rect := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h, rect)
     gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
@@ -155,8 +155,8 @@ D2D_DrawTextCentered(text, x, y, w, h, brush, tf) {
         tf._a := 1
     }
     static rect := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h, rect)
     gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
@@ -175,12 +175,12 @@ D2D_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
     }
     static rect := Buffer(16)
     ; Shadow
-    NumPut("float", Float(x + offX), "float", Float(y + offY),
-           "float", Float(x + offX + w), "float", Float(y + offY + h), rect)
+    NumPut("float", x + offX, "float", y + offY,
+           "float", x + offX + w, "float", y + offY + h, rect)
     gD2D_RT.DrawText(text, tf, rect, shadowBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
     ; Main text
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h, rect)
     gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
@@ -196,12 +196,12 @@ D2D_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY)
     }
     static rect := Buffer(16)
     ; Shadow
-    NumPut("float", Float(x + offX), "float", Float(y + offY),
-           "float", Float(x + offX + w), "float", Float(y + offY + h), rect)
+    NumPut("float", x + offX, "float", y + offY,
+           "float", x + offX + w, "float", y + offY + h, rect)
     gD2D_RT.DrawText(text, tf, rect, shadowBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
     ; Main text
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
+    NumPut("float", x, "float", y,
+           "float", x + w, "float", y + h, rect)
     gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
@@ -215,8 +215,8 @@ D2D_FillEllipse(x, y, w, h, brush) {
     rx := w / 2.0
     ry := h / 2.0
     static eBuf := Buffer(16)
-    NumPut("float", Float(cx), "float", Float(cy),
-           "float", Float(rx), "float", Float(ry), eBuf)
+    NumPut("float", cx, "float", cy,
+           "float", rx, "float", ry, eBuf)
     gD2D_RT.FillEllipse(eBuf, brush)
 }
 
@@ -526,8 +526,8 @@ D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
         ; Frozen display items keep their icon until the overlay is dismissed.
         if (cached.bitmap && (cached.hicon = hIcon || !hIcon)) {
             static destRect := Buffer(16)
-            NumPut("float", Float(x), "float", Float(y),
-                   "float", Float(x + size), "float", Float(y + size), destRect)
+            NumPut("float", x, "float", y,
+                   "float", x + size, "float", y + size, destRect)
             gD2D_RT.DrawBitmap(cached.bitmap, destRect, 1.0, 1, 0)
             wasCacheHit := true
             return true
@@ -555,8 +555,8 @@ D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     gGdip_IconCache[hwnd] := {hicon: hIcon, bitmap: bitmap}
 
     static destRect2 := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + size), "float", Float(y + size), destRect2)
+    NumPut("float", x, "float", y,
+           "float", x + size, "float", y + size, destRect2)
     gD2D_RT.DrawBitmap(bitmap, destRect2, 1.0, 1, 0)
     return true
 }

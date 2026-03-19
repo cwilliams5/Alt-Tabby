@@ -20,6 +20,7 @@ global PAINT_IDLE_LOG_THRESHOLD_MS := 60000  ; Log verbose context for paints af
 ;
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
+global gGUI_RectCacheDirty := true  ; Invalidated on IDLE transition + WM_DISPLAYCHANGE
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gAnim_FrameTimeDisplay := 0.0  ; Displayed frame time ms
@@ -112,7 +113,7 @@ GUI_Repaint() {
     Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
-    global gGUI_State, cfg
+    global gGUI_State, cfg, gGUI_RectCacheDirty
     global gPaint_LastPaintTick, gPaint_SessionPaintCount, _gPaint_SubCache
     global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
 
@@ -162,18 +163,30 @@ GUI_Repaint() {
     ; ===== TIMING: ComputeRect =====
     if (diagTiming)
         t1 := QPC()
-    xDip := 0
-    yDip := 0
-    wDip := 0
-    hDip := 0
-    scale := 0
-    waL := 0
-    waT := 0
-    waR := 0
-    waB := 0
-    ; PERF: Get scale + workarea from GUI_GetWindowRect — avoids 4 duplicate monitor DllCalls per frame
-    ; (MonitorFromWindow + GetMonitorInfoW + MonitorFromRect + GetDpiForMonitor)
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &scale, &waL, &waT, &waR, &waB)
+    ; PERF: Cache GUI_GetWindowRect results — monitor info (DPI, work area) is stable
+    ; during ACTIVE state. Saves 4 DllCalls per frame (MonitorFromWindow + GetMonitorInfoW
+    ; + MonitorFromRect + GetDpiForMonitor). Cache misses on: row count change (window
+    ; destroyed during ACTIVE), session start (gGUI_RectCacheDirty), display change.
+    static _rcXDip := 0, _rcYDip := 0, _rcWDip := 0, _rcHDip := 0
+    static _rcScale := 0, _rcWaL := 0, _rcWaT := 0, _rcWaR := 0, _rcWaB := 0
+    if (rowsChanged || gGUI_RectCacheDirty) {
+        xDip := 0
+        yDip := 0
+        wDip := 0
+        hDip := 0
+        scale := 0
+        waL := 0
+        waT := 0
+        waR := 0
+        waB := 0
+        GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &scale, &waL, &waT, &waR, &waB)
+        _rcXDip := xDip, _rcYDip := yDip, _rcWDip := wDip, _rcHDip := hDip
+        _rcScale := scale, _rcWaL := waL, _rcWaT := waT, _rcWaR := waR, _rcWaB := waB
+        gGUI_RectCacheDirty := false
+    } else {
+        xDip := _rcXDip, yDip := _rcYDip, wDip := _rcWDip, hDip := _rcHDip
+        scale := _rcScale, waL := _rcWaL, waT := _rcWaT, waR := _rcWaR, waB := _rcWaB
+    }
     phX := Round(xDip * scale)
     phY := Round(yDip * scale)
     phW := Round(wDip * scale)

@@ -259,6 +259,7 @@ GUI_GetVisibleRows() {
 
 ; Paint timing log mocks (gui_paint.ahk not included in tests)
 global gGUI_LastRowsDesired := -1
+global gGUI_RectCacheDirty := true
 global gPaint_LastPaintTick := 0
 global gPaint_SessionPaintCount := 0
 Paint_Log(msg) {

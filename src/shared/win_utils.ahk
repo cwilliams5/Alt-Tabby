@@ -153,7 +153,8 @@ _Win_RebuildMonitorCache() {
 
 ; WM_DISPLAYCHANGE handler — clear cache so next lookup triggers rebuild
 _Win_OnDisplayChange(wParam, lParam, msg, hwnd) {
-    global gWin_MonitorLabelCache
+    global gWin_MonitorLabelCache, gGUI_RectCacheDirty
     gWin_MonitorLabelCache := Map()
+    gGUI_RectCacheDirty := true  ; PERF: force monitor rect recalculation on next paint
 }
 
