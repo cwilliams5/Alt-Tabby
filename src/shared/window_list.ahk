@@ -1477,6 +1477,7 @@ WL_GetDisplayList(opts := 0) {
 
     ; Build filtered subset Map for O(1) membership checks
     itemsMap := Map()
+    itemsMap.Capacity := items.Length  ; PERF: pre-size to avoid rehash during population
     for _, rec in items
         itemsMap[rec.hwnd] := rec
 

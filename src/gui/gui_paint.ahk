@@ -773,7 +773,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, cachedLayout)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, start0, count, cachedLayout)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -898,7 +898,9 @@ _GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
 
 ; ========================= SCROLLBAR =========================
 
-_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, cachedLayout) {
+; PERF: start0 passed from caller (already computed in _GUI_PaintOverlay) to avoid
+; redundant Win_Wrap0 call
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, start0, count, cachedLayout) {
     global cfg, gD2D_BrushGeneration
     Profiler.Enter("_GUI_DrawScrollbar") ; @profile
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
@@ -926,7 +928,6 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, ca
         thumbH := 3
     }
 
-    start0 := Win_Wrap0(scrollTop, count)
     startRatio := start0 / count
     y1 := y + Floor(startRatio * trackH)
     y2 := y1 + thumbH
