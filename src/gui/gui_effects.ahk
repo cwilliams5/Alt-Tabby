@@ -686,17 +686,17 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
             _selResizeMode := (cfg.GUI_BGShaderAsSelectionSize = "Resize")
         if (_selResizeMode) {
             ; Resize mode: shader rendered at selW×selH — draw full texture into selection rect
-            NumPut("float", Float(selX), "float", Float(selY),
-                   "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
+            NumPut("float", selX, "float", selY,
+                   "float", selX + selW, "float", selY + selH, dstRect)
             NumPut("float", 0.0, "float", 0.0,
-                   "float", Float(selW), "float", Float(selH), srcRect)
+                   "float", selW, "float", selH, srcRect)
             selBmpWrap.ptr := pBitmap
             gD2D_RT.DrawBitmap(selBmpWrap, dstRect, 1.0, 1, srcRect)
         } else {
             ; Clip mode: shader rendered at full size — crop to selection rect
-            NumPut("float", Float(selX), "float", Float(selY),
-                   "float", Float(selX + selW), "float", Float(selY + selH), srcRect)
-            NumPut("float", Float(selX), "float", Float(selY), tgtPt)
+            NumPut("float", selX, "float", selY,
+                   "float", selX + selW, "float", selY + selH, srcRect)
+            NumPut("float", selX, "float", selY, tgtPt)
             gD2D_RT.DrawImage(pBitmap, tgtPt, srcRect)
         }
         if (clipped)

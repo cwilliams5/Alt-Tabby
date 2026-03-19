@@ -189,7 +189,8 @@ _IP_PruneAttempts() {
     ; RACE FIX: Wrap in Critical — _IP_Tick writes to _IP_Attempts under Critical,
     ; and AHK v2 timers can interrupt each other during map iteration.
     Critical "On"
-    toRemove := []
+    static toRemove := [] ; lint-ignore: static-in-timer
+    toRemove.Length := 0
 
     for hwnd, _ in _IP_Attempts {
         ; Collect windows that no longer exist
@@ -427,7 +428,7 @@ _IP_Tick() {
                 iconLastRefreshTick: now,
                 iconGaveUp: false
             }, "icons")
-            _IP_Attempts[hwnd] := 0
+            _IP_Attempts.Delete(hwnd)  ; PERF: Remove entry entirely — .Get(hwnd, 0) defaults to 0 anyway  ; lint-ignore: map-delete (key set by _IP_Attempts[hwnd]:= on prior attempts)
             if (logEnabled)
                 _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
             Critical "Off"

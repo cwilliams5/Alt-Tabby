@@ -369,9 +369,12 @@ _GUI_FullScan() {
             try {
                 recs := ""
                 try recs := WinEnumLite_ScanAll()
-                foundCount := IsObject(recs) ? recs.Length : 0
-                if (IsObject(recs))
+                if (IsObject(recs)) {
+                    foundCount := recs.Length
                     WL_UpsertWindow(recs, "winenum_lite")
+                } else {
+                    foundCount := 0
+                }
             } finally {
                 WL_EndScan()
             }

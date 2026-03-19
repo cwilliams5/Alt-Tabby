@@ -388,7 +388,8 @@ KomorebiSub_PruneStaleCache() {
 
     Critical "On"
     now := A_TickCount
-    toDelete := []
+    static toDelete := [] ; lint-ignore: static-in-timer
+    toDelete.Length := 0
     for hwnd, cached in _KSub_WorkspaceCache {
         if ((now - cached.tick) > _KSub_CacheMaxAgeMs)
             toDelete.Push(hwnd)

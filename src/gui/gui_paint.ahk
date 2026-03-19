@@ -423,7 +423,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
         tPO_Start := QPC()
-        t1 := QPC()
+        t1 := tPO_Start
     }
     GUI_EnsureResources(scale)
     if (diagTiming)

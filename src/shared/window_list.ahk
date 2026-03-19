@@ -370,7 +370,10 @@ WL_UpsertWindow(records, source := "") {
             updated += 1
 
         ; Collect for enrichment (enqueued after Critical ends)
-        rowsToEnqueue.Push(row)
+        ; PERF: Skip unchanged rows — _WS_EnqueueIfNeeded checks internally but
+        ; skipping the Push + iteration + call saves time inside Critical
+        if (isNew || rowChanged)
+            rowsToEnqueue.Push(row)
     }
     if (added || sortDirty) {
         _WS_MarkDirty()  ; Structural change (new windows or sort-affecting fields via upsert)
