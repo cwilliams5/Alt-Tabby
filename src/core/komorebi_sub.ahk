@@ -1497,7 +1497,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     static batchPatches := Map()
     batchPatches.Clear()
 
-    addedCount := 0
+    ; PERF: Collect new-window records for batched upsert (one Critical enter/exit
+    ; + one rev bump instead of N). Pattern matches _WEH_ProcessBatch line 691.
+    static newRecs := []
+    newRecs.Length := 0
+
     updatedCount := 0
     skippedIneligible := 0
     for hwnd, _data in wsMap {
@@ -1533,8 +1537,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             rec["workspaceName"] := _wsn
             rec["isOnCurrentWorkspace"] := _isCur
 
-            try WL_UpsertWindow([rec])
-            addedCount++
+            newRecs.Push(rec)
         } else {
             ; Window exists - only patch if workspace data actually changed
             if (row.workspaceName != _wsn
@@ -1549,6 +1552,10 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             }
         }
     }
+    ; Batch-upsert all new windows (one Critical + one rev bump instead of N)
+    addedCount := newRecs.Length
+    if (addedCount > 0)
+        try WL_UpsertWindow(newRecs, "komorebi_fullstate_add")
     if (logEnabled)
         KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
 
