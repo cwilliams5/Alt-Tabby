@@ -32,7 +32,7 @@ MyHotFunc() {
     DllCall(..., "Ptr", buf, ...)
 }
 
-; CORRECT — static buffer, repopulated
+; CORRECT — static buffer, repopulated (ONLY if not reachable during STA pump)
 MyHotFunc() {
     static buf := Buffer(72)
     NumPut("float", x, buf, 0)
@@ -42,7 +42,9 @@ MyHotFunc() {
 
 Scan for: `Buffer(`, `Array(`, literal `[`, literal `{` inside any function reachable from the paint path.
 
-**Exception**: Buffers whose size varies per call cannot be made static. Flag them but note the constraint.
+**Exceptions**:
+- Buffers whose size varies per call cannot be made static. Flag them but note the constraint.
+- Buffers in functions reachable during STA pump reentrancy MUST NOT be static — COM calls (DrawText, DrawBitmap, FillRoundedRectangle, EndDraw, DwmFlush) pump the STA message loop and can re-enter the same function through timer/callback dispatch, corrupting the shared buffer. `Critical "On"` does NOT prevent this. See `ahk-patterns.md` Hot Path Resource Rules.
 
 ### 2. Redundant D2D API Calls
 
@@ -137,8 +139,9 @@ After explore agents report back, **validate every finding yourself**:
 1. **Trace the call path**: Confirm the function is actually called per-frame by tracing from `_GUI_PaintOverlay` → ... → the function. Don't flag init-time code as per-frame.
 2. **Check for existing optimization**: This codebase has been through optimization passes. Some functions already use `static` buffers, cached brushes, or early-exits. Verify the waste still exists.
 3. **Verify mutability**: Before suggesting `static`, confirm the buffer content actually changes between calls (otherwise it could be a one-time init). If content is frame-invariant, the fix might be "compute once, cache" rather than "static buffer."
-4. **Check AHK semantics**: `static` in AHK v2 persists across calls to the same function. Verify this is safe — no reentrancy issues, no size changes between calls.
-5. **Distinguish from shader path**: If a finding is in `d2d_shader.ahk` and relates to D3D11 operations (texture creation, SRV binding, shader dispatch), it's out of scope. Only flag the D2D-side draw call.
+4. **Check AHK semantics**: `static` in AHK v2 persists across calls to the same function. `Critical "On"` prevents timer/hotkey interruption but does NOT prevent STA pump reentrancy — any D2D/COM draw call can dispatch callbacks that re-enter the same function, corrupting the static buffer. Only use `static` when the buffer is fully consumed before any COM/D2D call, or when the function is provably unreachable from STA pump paths.
+5. **Preserve Float() on GPU buffers**: Never remove `Float()` wrappers from `NumPut("float", ...)` calls that feed D2D/D3D geometry buffers (rects, points, ellipses, viewports). These ensure IEEE 754 bit patterns — AHK v2 integer-to-float coercion in NumPut is not guaranteed safe. Removing them is not an optimization.
+6. **Distinguish from shader path**: If a finding is in `d2d_shader.ahk` and relates to D3D11 operations (texture creation, SRV binding, shader dispatch), it's out of scope. Only flag the D2D-side draw call.
 
 ## Plan Format
 

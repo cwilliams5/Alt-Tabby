@@ -1151,7 +1151,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (entry.lastTime > 0)
         timeDelta := timeSec - entry.lastTime
     entry.lastTime := timeSec
-    gShader_FrameCount += 1
+    gShader_FrameCount += 1  ; Must stay per-PreRender, not per-batch — each shader layer needs a unique frame counter
 
     ; Map cbuffer → write all 144 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
@@ -1165,9 +1165,9 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     pData := NumGet(mapped1, 0, "ptr")
     if (pData) {
         ; Core params + mouse (offset 0-44, 12 values)
-        NumPut("float", timeSec, "float", Float(w), "float", Float(h), "float", timeDelta,
-               "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity,
-               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY,
+        NumPut("float", timeSec, "float", Float(w), "float", Float(h), "float", timeDelta, ; lint-ignore: numput-float-safety (shader params from float math)
+               "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity, ; lint-ignore: numput-float-safety
+               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY, ; lint-ignore: numput-float-safety
                pData, 0)
         ; Selection rect + colors (offset 48-92, 12 values)
         NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
@@ -1175,9 +1175,9 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
                "float", Float(borderR), "float", Float(borderG), "float", Float(borderB), "float", Float(borderA),
                pData, 48)
         ; Selection params + compute config + tuning (offset 96-136, 11 values)
-        NumPut("float", borderWidth, "float", isHovered, "float", entranceT, "float", mouseSpeed,
-               "uint", entry.gridW, "uint", entry.gridH, "uint", entry.effectiveParticles, "float", entry.reactivity,
-               "float", entry.selGlow, "float", entry.selIntensity, "float", rowRadius,
+        NumPut("float", borderWidth, "float", isHovered, "float", entranceT, "float", mouseSpeed, ; lint-ignore: numput-float-safety (shader params from float math)
+               "uint", entry.gridW, "uint", entry.gridH, "uint", entry.effectiveParticles, "float", entry.reactivity, ; lint-ignore: numput-float-safety
+               "float", entry.selGlow, "float", entry.selIntensity, "float", rowRadius, ; lint-ignore: numput-float-safety
                pData, 96)
     }
     ; Unmap (vtable 15) — void; "int" return type suppresses false HRESULT throw from RAX garbage

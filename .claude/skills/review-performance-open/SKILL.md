@@ -30,6 +30,16 @@ For each candidate:
 4. **Observed vs inferred**: Did you measure or count the pattern directly, or infer it from a few examples?
 5. **Scope the fix**: Is this a "change 3 lines in 20 files" fix or a "redesign the subsystem" fix? Both can be valuable, but the plan should be honest about scope.
 
+## Safety Constraints
+
+This project has a COM STA message pump that makes certain "obvious" optimizations unsafe:
+
+- **Never make `Buffer()` static** in functions reachable from the paint/COM path. D2D/DXGI COM calls pump the STA message loop and can re-enter the same function, corrupting the shared buffer. `Critical "On"` does NOT prevent this. See `ahk-patterns.md` Hot Path Resource Rules.
+- **Never remove `Float()` wrappers** from `NumPut("float", ...)` calls feeding D2D/D3D buffers. These ensure IEEE 754 bit patterns — not redundancy.
+- **Never move per-invocation counters** (like frame counters) to batch/frame level without verifying all consumers expect the new semantics.
+
+These constraints exist because a previous optimization pass introduced shader corruption, FPS drops, and visual hitching that took extensive bisection to diagnose. When in doubt, leave it alone.
+
 ## Plan Format
 
 Group by class of issue, not by file:

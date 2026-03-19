@@ -108,6 +108,19 @@ try {
 
 **Failure mode if violated**: Stale animation state leaks into the next overlay appearance — wrong scale, wrong opacity, wrong position. Or the overlay stays visible when it should be hidden.
 
+### Invariant 6: No shared mutable buffers across STA pump points
+
+**What it protects**: Static buffers, static locals, and global state used by a function are not corrupted by a reentrant call to the same (or a related) function during an STA pump.
+
+**How to verify**: For any function reachable from the paint/frame loop path that uses `static` buffers or writes to globals, check: if a COM call within (or after) the buffer write pumps STA and re-enters this function, does the reentrant call overwrite the buffer before the outer call reads it? Key patterns:
+- `static buf := Buffer(N)` → `NumPut(...)` → `ComCall(...)` → `NumGet(buf, ...)` — UNSAFE if the ComCall can pump STA and re-enter
+- `static buf := Buffer(N)` → `NumPut(...)` → `NumGet(...)` into locals → `ComCall(...)` — SAFE (buffer consumed before pump point)
+- `QPC()` using a static buffer instead of a local `"int64*", &c := 0` — UNSAFE (called from everywhere)
+
+Also check `Float()` wrappers on `NumPut("float", ...)` for D2D/D3D buffers — these ensure IEEE 754 bit patterns and are not redundant.
+
+**Failure mode if violated**: GPU receives wrong geometry, timestamps, or viewport data. Symptoms are cyclic (corrupt on hitch frames, recover between hitches) because the reentrancy is intermittent. Extremely difficult to diagnose — presents as shader artifacts, not code bugs.
+
 ## Audit Procedure
 
 ### Step 1 — Enumerate all COM call sites in the paint and frame loop paths
@@ -147,6 +160,8 @@ For each COM call site from Step 1:
 
 5. **Is ForceCompleteHide aware of this state?** If this COM call sets visual state (transforms, opacity, DComp properties), verify `Anim_ForceCompleteHide` clears it.
 
+6. **Are any static buffers live across this COM call?** Check: does the enclosing function (or its callers) have `static` Buffer/variable state that was written before this COM call and read after it? If yes, a reentrant call during the STA pump corrupts that state. Also check functions this COM call reaches transitively — utility functions with `static` buffers (like QPC, monitor info helpers) are especially dangerous.
+
 ### Step 3 — Identify new/changed COM call sites since last audit
 
 Use `git log --all -p --diff-filter=AM -- src/gui/ src/gui/d2d_shader.ahk` and search for new `ComCall` additions. Any new COM call in the paint or frame loop path needs all 5 invariants verified. Pay special attention to:
@@ -179,10 +194,10 @@ Split by path (run in parallel):
 
 For each COM call site:
 
-| Call | File:Line | Inv.1 (try/finally) | Inv.2 (deferred timer) | Inv.3 (Critical) | Inv.4 (paint-before-tween) | Inv.5 (ForceComplete) | Status |
-|------|-----------|--------------------|-----------------------|------------------|---------------------------|----------------------|--------|
-| `BeginDraw` | `gui_paint.ahk:182` | Yes | N/A (not in show path) | Yes | N/A | N/A | Safe |
-| `SetOpacity` | `gui_animation.ahk:295` | No guard | N/A | Yes | Verify | Must clear | **AUDIT** |
+| Call | File:Line | Inv.1 (guard) | Inv.2 (timer) | Inv.3 (Crit) | Inv.4 (order) | Inv.5 (reset) | Inv.6 (buffers) | Status |
+|------|-----------|--------------|--------------|-------------|-------------|-------------|----------------|--------|
+| `BeginDraw` | `gui_paint.ahk:182` | Yes | N/A | Yes | N/A | N/A | Check | Safe |
+| `SetOpacity` | `gui_animation.ahk:295` | No guard | N/A | Yes | Verify | Must clear | N/A | **AUDIT** |
 
 **Status values:**
 - **Safe** — All applicable invariants verified

@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -2015,6 +2015,135 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_profiler_name_consistency"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check: numput_float_safety
+# NumPut("float", ...) in D2D/D3D rendering files must use Float() wrappers.
+# AHK v2 integer-to-float coercion in NumPut is not guaranteed to produce
+# correct IEEE 754 bit patterns for GPU-facing buffers.
+# Suppress: ; lint-ignore: numput-float-safety
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$npfIssues = [System.Collections.ArrayList]::new()
+
+# Only enforce in files that feed D2D/D3D geometry buffers
+$npfTargetFiles = @('gui\gui_gdip.ahk', 'gui\gui_effects.ahk', 'gui\d2d_shader.ahk')
+
+foreach ($file in $allFiles) {
+    $relFromSrc = $file.FullName
+    if ($relFromSrc.StartsWith($SourceDir)) {
+        $relFromSrc = $relFromSrc.Substring($SourceDir.Length).TrimStart('\', '/')
+    }
+    if ($npfTargetFiles -notcontains $relFromSrc) { continue }
+    if ($fileCacheText[$file.FullName].IndexOf('NumPut') -lt 0) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $rawLine = $lines[$i]
+        if ($rawLine -match '^\s*;') { continue }
+        if ($rawLine -match 'lint-ignore:\s*numput-float-safety') { continue }
+
+        # Find "float" type specifiers followed by a value that isn't Float() or a literal float
+        # Match: NumPut("float", <bareValue>, ...) where bareValue is not Float(...) and not a literal like 0.0, 1.0, 96.0, etc.
+        # Strategy: find each "float", <value> pair in the line
+        $matches = [regex]::Matches($rawLine, '"float"\s*,\s*([^,)]+)')
+        foreach ($m in $matches) {
+            $val = $m.Groups[1].Value.Trim()
+            # Skip if already wrapped in Float()
+            if ($val -match '^Float\s*\(') { continue }
+            # Skip literal floats (contain a dot: 0.0, 1.0, 96.0, -3.4e+38, etc.)
+            if ($val -match '^\-?[\d]+\.[\d]') { continue }
+            # Skip "float" used as the buffer/offset (not a value) — these are the type strings
+            if ($val -match '^"') { continue }
+
+            [void]$npfIssues.Add([PSCustomObject]@{
+                File = $relPath
+                Line = ($i + 1)
+                Value = $val
+            })
+        }
+    }
+}
+
+if ($npfIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($npfIssues.Count) NumPut('float', ...) without Float() wrapper in rendering files.")
+    [void]$failOutput.AppendLine("  GPU-facing buffers require Float() to ensure IEEE 754 bit patterns.")
+    [void]$failOutput.AppendLine("  Fix: NumPut('float', Float(value), ...) - wrap the value in Float().")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: numput-float-safety' on the line.")
+    $grouped = $npfIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): bare value: $($issue.Value)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_numput_float_safety"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check: shader_framecount_location
+# gShader_FrameCount must increment inside Shader_PreRender, not Shader_BeginBatch.
+# Moving it to batch level changes temporal semantics for compute shaders -
+# each shader layer needs a unique, monotonically increasing frame counter.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$sfcIssues = [System.Collections.ArrayList]::new()
+
+$shaderFile = $allFiles | Where-Object { $_.Name -eq 'd2d_shader.ahk' } | Select-Object -First 1
+if ($shaderFile) {
+    $text = $fileCacheText[$shaderFile.FullName]
+    $relPath = $shaderFile.FullName.Replace("$projectRoot\", '')
+
+    # Extract Shader_BeginBatch function body and check for FrameCount increment
+    $batchBody = BP_Extract-FunctionBody $text 'Shader_BeginBatch'
+    if ($batchBody -and $batchBody -match 'gShader_FrameCount\s*\+=' ) {
+        $lines = $fileCache[$shaderFile.FullName]
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match 'gShader_FrameCount\s*\+=') {
+                # Check if this line is inside Shader_BeginBatch (rough: between function start and next function)
+                $above = ($lines[0..$i] -join "`n")
+                if ($above -match 'Shader_BeginBatch\s*\(' -and $above -notmatch 'Shader_PreRender\s*\(.*\{[^}]*gShader_FrameCount') {
+                    [void]$sfcIssues.Add([PSCustomObject]@{
+                        File = $relPath
+                        Line = ($i + 1)
+                    })
+                }
+            }
+        }
+    }
+
+    # Verify it exists in Shader_PreRender
+    $preRenderBody = BP_Extract-FunctionBody $text 'Shader_PreRender'
+    if ($preRenderBody -and $preRenderBody -notmatch 'gShader_FrameCount\s*\+=') {
+        [void]$sfcIssues.Add([PSCustomObject]@{
+            File = $relPath
+            Line = 0
+            Message = "gShader_FrameCount increment missing from Shader_PreRender"
+        })
+    }
+}
+
+if ($sfcIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: gShader_FrameCount increment is in the wrong location.")
+    [void]$failOutput.AppendLine("  Must be inside Shader_PreRender (per-layer), NOT Shader_BeginBatch (per-frame).")
+    [void]$failOutput.AppendLine("  Each shader layer needs a unique frame counter for correct temporal behavior.")
+    foreach ($issue in $sfcIssues) {
+        if ($issue.PSObject.Properties['Message']) {
+            [void]$failOutput.AppendLine("    $($issue.File): $($issue.Message)")
+        } else {
+            [void]$failOutput.AppendLine("    $($issue.File): Line $($issue.Line) - FrameCount increment inside Shader_BeginBatch")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_shader_framecount_location"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2022,7 +2151,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

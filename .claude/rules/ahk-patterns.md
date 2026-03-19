@@ -75,7 +75,9 @@ MyTimer() {
 ## Hot Path Resource Rules
 
 In frequently-called functions (paint, input, per-window loops):
-- **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use
+- **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use.
+    Exception: NOT in functions reachable during STA pump (paint, COM callers, QPC) — reentrancy overwrites the buffer mid-use. Use local `Buffer()` there.
+- **GPU buffers**: Keep `Float()` on `NumPut("float", ...)` for D2D/D3D buffers — type safety, not redundancy
 - **D2D objects**: Cache brushes/fonts (see `D2D_GetCachedBrush`, `gD2D_Res`), never create+destroy per-call
 - **Regex**: Pre-compile patterns at load time, not per-match (see `_Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration

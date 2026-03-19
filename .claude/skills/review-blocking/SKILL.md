@@ -65,7 +65,7 @@ Use `query_state.ps1` to determine if a blocking function is only reachable from
 - Building a string or array that's immediately discarded or only partially used
 
 **Allocation waste:**
-- Creating arrays/maps that could be pre-allocated `static` buffers reused across calls
+- Creating arrays/maps that could be pre-allocated `static` buffers reused across calls — **EXCEPT** in functions reachable during STA pump (paint path, COM callers, QPC). Reentrancy overwrites the static buffer mid-use. See `ahk-patterns.md` Hot Path Resource Rules.
 - String concatenation in loops (each concat allocates a new string in AHK)
 - `.Push()` in a loop when the final size is known (pre-size with `Array(n)` if AHK supports it, or use a pre-allocated buffer)
 
@@ -116,7 +116,7 @@ For each candidate:
 
 1. **Cite evidence**: "I verified by reading `file.ahk` lines X–Y" with actual code quoted.
 2. **Confirm invisibility**: Verify the change doesn't alter the function's output or side effects. If there's any doubt, flag it.
-3. **Check for existing optimization**: This codebase has been through optimization passes. The "redundant" lookup might be intentional (value can change mid-function due to callbacks). The "unnecessary" allocation might be required (buffer reuse would be unsafe across Critical boundaries).
+3. **Check for existing optimization**: This codebase has been through optimization passes. The "redundant" lookup might be intentional (value can change mid-function due to callbacks). The "unnecessary" allocation might be required (buffer reuse would be unsafe due to STA pump reentrancy — COM calls dispatch arbitrary callbacks through `Critical "On"`, so static buffers in any function reachable from the paint/COM path can be overwritten mid-use).
 4. **Counter-argument**: "What would make this optimization counterproductive?" — Does caching a value risk staleness? Does hoisting out of a loop change behavior when the loop body has side effects?
 5. **Observed vs inferred**: Did you read the function body, or infer the issue from the function name?
 

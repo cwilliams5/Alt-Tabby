@@ -31,7 +31,7 @@ Win_GetWorkAreaFromHwnd(hWnd, &left, &top, &right, &bottom) {
     ; MONITORINFO (40 bytes): cbSize(4) + rcMonitor(16) + rcWork(16) + dwFlags(4)
     ; rcMonitor: left(4) top(8) right(12) bottom(16)
     ; rcWork:    left(20) top(24) right(28) bottom(32)
-    mi := Buffer(40, 0)
+    mi := Buffer(40, 0)  ; NOT static — STA pump reentrancy during paint can re-enter this function
     NumPut("UInt", 40, mi, 0)
     if (!DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr, "int")) {
         left := 0
@@ -58,7 +58,7 @@ Win_GetMonitorBoundsFromHwnd(hWnd, &left, &top, &right, &bottom) {
         return
     }
     ; MONITORINFO layout: see Win_GetWorkAreaFromHwnd above
-    mi := Buffer(40, 0)
+    mi := Buffer(40, 0)  ; NOT static — STA pump reentrancy (see above)
     NumPut("UInt", 40, mi, 0)
     if (!DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr, "int")) {
         left := 0

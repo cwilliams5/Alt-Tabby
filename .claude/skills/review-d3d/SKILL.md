@@ -43,7 +43,7 @@ Shader_PreRender(...) {
     ComCall(14, ctx, ..., "Ptr", mapped, ...)
 }
 
-; CORRECT — static buffer, repopulated
+; CORRECT — static buffer, repopulated (ONLY if function is not reachable during STA pump)
 Shader_PreRender(...) {
     static mapped := Buffer(16, 0)
     NumPut("Ptr", dataPtr, mapped, 0)
@@ -51,7 +51,7 @@ Shader_PreRender(...) {
 }
 ```
 
-Check: Are any buffers reusable as `static`? Verify no reentrancy issues and no size variance between calls.
+Check: Are any buffers reusable as `static`? Verify no STA pump reentrancy — `Critical "On"` does NOT prevent reentrancy from COM calls (BeginDraw, EndDraw, DrawBitmap, DwmFlush all pump the STA message loop). If the function is reachable during a COM call's STA pump, static buffers are unsafe. Also verify no size variance between calls.
 
 ### 2. Redundant D3D11 State Calls
 
@@ -158,8 +158,9 @@ For each finding:
 
 1. **Trace the actual call path**: Confirm each finding is in the per-frame path, not init-time. `Shader_Init` runs once; `Shader_PreRender` runs every frame.
 2. **Check D2D state dirtying**: Before claiming a D3D11 state call is redundant, verify D2D's `BeginDraw`/`EndDraw` doesn't reset it. If uncertain, note the uncertainty.
-3. **Verify static safety**: `static` buffers in AHK persist across calls. Ensure no reentrancy (PreRender shouldn't be reentrant given Critical sections in the paint path, but verify).
-4. **Check existing optimizations**: The code already has some optimization (lazy RT creation, shared cbuffer). Don't re-flag what's already handled.
+3. **Verify static safety**: `static` buffers in AHK persist across calls. `Critical "On"` prevents timer/hotkey interruption but does NOT prevent STA pump reentrancy — any COM call (ComCall) can dispatch callbacks that re-enter the same function. Only use `static` buffers when the buffer is fully consumed (NumGet'd into locals) before any COM call, or when the function is provably unreachable from STA pump paths.
+4. **Preserve Float() on GPU buffers**: Never remove `Float()` wrappers from `NumPut("float", ...)` calls that feed D3D11/D2D buffers (cbuffers, viewports, rects). These ensure IEEE 754 bit patterns — AHK v2 integer-to-float coercion in NumPut is not guaranteed safe. Removing them is not an optimization.
+5. **Check existing optimizations**: The code already has some optimization (lazy RT creation, shared cbuffer). Don't re-flag what's already handled.
 
 ## Plan Format
 
