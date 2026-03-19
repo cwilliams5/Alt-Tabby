@@ -545,10 +545,13 @@ A related timer hazard: `SetTimer(fn, 0)` on an *already-fired* one-shot timer a
 
 ### Window Activation Engine
 
-`SetForegroundWindow` is restricted by Windows security policy — you can't steal focus from another application unless the calling process meets specific criteria. The activation engine ([`gui_activation.ahk`](../src/gui/gui_activation.ahk)) bypasses this with a multi-technique approach borrowed from komorebi's `windows_api.rs`:
+`SetForegroundWindow` is restricted by Windows security policy — you can't steal focus from another application unless the calling process meets specific criteria. The activation engine ([`gui_activation.ahk`](../src/gui/gui_activation.ahk)) uses two core bypass techniques borrowed from komorebi's `windows_api.rs`:
 
 1. **Dummy `SendInput` trick** — sends an empty `INPUT_MOUSE` structure (40 bytes of zeros) via `SendInput`. This satisfies Windows' requirement that the calling process has received "recent input" before `SetForegroundWindow` is permitted. No actual mouse movement occurs — it's a zero-op that tricks the foreground lock policy.
 2. **TOPMOST/NOTOPMOST Z-order dance** — `SetWindowPos` briefly sets the target window as `HWND_TOPMOST`, then immediately clears it to `HWND_NOTOPMOST`. This forces the window to the top of the Z-order without permanently making it topmost. During overlay fade-out, a simpler `HWND_TOP` is used instead to avoid Z-order flicker.
+
+On top of that foundation, several additional techniques handle edge cases specific to Alt-Tabby's overlay, state machine, and AHK runtime:
+
 3. **Dead window retry** — if the selected window disappears between Tab and Alt-Up (`IsWindow()` returns false), the engine tries the next eligible window in the display list rather than failing silently. The flight recorder tracks the retry with original hwnd, retry hwnd, and success flag.
 4. **`SetForegroundWindow` with verification** — the actual focus call, followed by `GetForegroundWindow` to verify it worked (the return value alone isn't reliable).
 5. **`HWND_TOP` during overlay fade-out** — during fade-out animation, the activation engine uses `HWND_TOP` instead of the normal `TOPMOST/NOTOPMOST` dance. The dance briefly pushes the target above the TOPMOST overlay, and if the cross-process `SetWindowPos` blocks long enough for DWM to compose a frame (common with Firefox, heavy Electron apps), the overlay visibly disappears then reappears. `HWND_TOP` brings the target to the front of the non-topmost band (below the still-visible overlay) without Z-order flicker. The `SendInput` trick already bypasses the foreground lock, so TOPMOST isn't needed for permission.
