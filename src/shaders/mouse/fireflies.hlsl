@@ -68,10 +68,12 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float lifetime = 2.0 + hash1(fi * 17.3) * 2.0;
 
         float2 toCursor = iMouse - p.pos;
-        float cursorDist = length(toCursor);
-        if (cursorDist > 1.0) {
+        float cursorDistSq = dot(toCursor, toCursor);
+        if (cursorDistSq > 1.0) {
+            float invCursorDist = rsqrt(cursorDistSq);
+            float cursorDist = cursorDistSq * invCursorDist;
             float attraction = 20.0 * reactivity / max(cursorDist * 0.01, 1.0);
-            p.vel += toCursor / cursorDist * attraction * timeDelta;
+            p.vel += toCursor * invCursorDist * attraction * timeDelta;
         }
 
         float wanderTime = time * 0.5 + fi * 0.1;
@@ -87,16 +89,18 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             p.vel += float2(cd, sd) * 40.0 * timeDelta;
         }
 
-        float speed = length(p.vel);
-        if (speed > 80.0) p.vel *= 80.0 / speed;
+        float speedSq = dot(p.vel, p.vel);
+        if (speedSq > 6400.0) p.vel *= 80.0 * rsqrt(speedSq);
 
         p.vel *= (1.0 - timeDelta);
         p.pos += p.vel * timeDelta;
 
         float2 fromCursor = p.pos - iMouse;
-        float distFromCursor = length(fromCursor);
-        if (distFromCursor > 250.0) {
-            p.vel -= fromCursor / distFromCursor * (distFromCursor - 250.0) * 0.5 * timeDelta;
+        float fromCursorSq = dot(fromCursor, fromCursor);
+        if (fromCursorSq > 62500.0) {
+            float invFromCursorDist = rsqrt(fromCursorSq);
+            float distFromCursor = fromCursorSq * invFromCursorDist;
+            p.vel -= fromCursor * invFromCursorDist * (distFromCursor - 250.0) * 0.5 * timeDelta;
         }
 
         p.life += timeDelta / lifetime;

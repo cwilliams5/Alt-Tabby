@@ -6,6 +6,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 rc = selRect.xy + hs;
     float rad = rowRadius > 0.0 ? rowRadius : min(hs.x, hs.y) * 0.15;
     float dist = roundedRectSDF(px, rc, hs, rad);
+
+    // Early exit: outside all effect regions (border + outer glow near lead point)
+    if (dist > max(borderWidth + 2.0, 17.0 * selGlow + 1.0))
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     float fill = smoothstep(1.0, -1.0, dist);
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 
@@ -28,8 +33,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Border intensity varies — brightest at the "leading edge" of rotation
     float leadEdge = frac(rotation);
-    float dl = perim - leadEdge;
-    float dLead = min(abs(dl), min(abs(dl + 1.0), abs(dl - 1.0)));
+    float dLead = abs(perim - leadEdge);
+    dLead = min(dLead, 1.0 - dLead);
     float leadBright = smoothstep(0.3, 0.0, dLead);
 
     // Border glow — wider near the lead point
