@@ -28,7 +28,10 @@ float4 PSMain(PSInput input) : SV_Target {
             float3(0.25, 0.15, 0.3) + float3(0.0, k, k) * 0.25,
             a / 40.0);
         float3 colPow = baseCol * baseCol * baseCol;
-        float ring = pow(max(1.0 - abs(l - r + e * 0.2), 0.0), 25.0) * 0.2;
+        float _rp = max(1.0 - abs(l - r + e * 0.2), 0.0);
+        float _rp2 = _rp*_rp; float _rp4 = _rp2*_rp2; float _rp8 = _rp4*_rp4;
+        float _rp16 = _rp8*_rp8;
+        float ring = (_rp16 * _rp8 * _rp) * 0.2; // pow(x,25)
         float fill = smoothstep(r, r - e * 0.2, l);
         d += colPow * (ring + fill);
     }

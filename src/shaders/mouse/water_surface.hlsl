@@ -116,7 +116,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 normal = normalize(float3(-dhx * 60.0, -dhy * 60.0, 1.0));
 
     // Specular — bright highlights where waves catch the light
-    float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
+    float _nh = max(dot(normal, halfVec), 0.0);
+    float _nh2 = _nh*_nh; float _nh4 = _nh2*_nh2; float _nh8 = _nh4*_nh4;
+    float _nh16 = _nh8*_nh8; float _nh32 = _nh16*_nh16;
+    float spec = _nh32 * _nh32; // pow(x,64)
 
     // Fresnel — wave edges are more visible (glancing angle reflection)
     float f = 1.0 - max(normal.z, 0.0);  // dot(normal, float3(0,0,1)) = normal.z
