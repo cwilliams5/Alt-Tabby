@@ -21,7 +21,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Classic plasma — overlapping sine waves
     float v = 0.0;
-    v += sin(uv.x * 1.2 + time * 1.0);
+    v += sin(uv.x * 1.2 + time);
     v += sin(uv.y * 1.1 + time * 0.8);
     v += sin((uv.x + uv.y) * 0.7 + time * 0.6);
     v += sin(length(uv - float2(aspect * 2.0, 2.0)) * 1.5 + time * 1.2);

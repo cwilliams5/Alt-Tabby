@@ -74,7 +74,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // a bit of camera movement
     uv *= 0.6 + sin(time * 0.1) * 0.4;
-    uv = rotate(uv, sin(time * 0.3) * 1.0);
+    uv = rotate(uv, sin(time * 0.3));
     uv += time * 0.4;
 
     // add some noise octaves

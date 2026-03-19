@@ -28,13 +28,13 @@ float4 PSMain(PSInput input) : SV_Target {
         d += s;
         o.r += (length(d * 1.5 - 5.0) / s) * 0.25;
         o.b += sin(d * 0.09 + d * 0.1) * 2.0 / s;
-        o.g += sin(d * 0.2) * 1.0 / s;
+        o.g += sin(d * 0.2) / s;
 
-        p = float3(u * d, d + t * 1.0);
+        p = float3(u * d, d + t);
         s = min(p.z, 1.9);
 
         for (a = 1.0; a < 2.0; a += a) {
-            p += cos(t * 1.5 - p.yzx * 1.0 + t) * 0.5;
+            p += cos(t * 1.5 - p.yzx + t) * 0.5;
             p.xy += t * 0.011;
 
             p.xy = mul(rot, p.xy);

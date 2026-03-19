@@ -68,7 +68,7 @@ float4 PSMain(PSInput input) : SV_Target
     float3 up = normalize(cross(forward, right));
 
     float2 uv = (fragCoord.xy - resolution.xy * 0.5) / resolution.y;
-    float3 ray = forward * 1.0 + right * uv.x + up * uv.y;
+    float3 ray = forward + right * uv.x + up * uv.y;
     ray = normalize(ray);
 
     float3 c = (float3)0;

@@ -110,7 +110,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float height = sampleHeight(uv);
 
     // Normal from screen-space derivatives of height field
-    float3 normal = normalize(float3(-ddx(height) * 60.0, -ddy(height) * 60.0, 1.0));
+    float dhx = ddx(height);
+    float dhy = ddy(height);
+    float3 normal = normalize(float3(-dhx * 60.0, -dhy * 60.0, 1.0));
 
     // Lighting
     float3 viewDir = float3(0.0, 0.0, 1.0);
@@ -124,11 +126,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float fresnel = f * f * f;
 
     // Disturbance — how much the surface deviates from flat
-    float gradient = length(float2(ddx(height), ddy(height)));
+    float gradient = length(float2(dhx, dhy));
     float disturbance = abs(height) * 2.0 + gradient * 20.0;
 
     // Intensity from all contributions
-    float intensity = disturbance * 0.4 + spec * 1.0 + fresnel * 0.2;
+    float intensity = disturbance * 0.4 + spec + fresnel * 0.2;
 
     // Color ramp: subtle blue at low intensity → white at high (like light on crests)
     float3 col = lerp(

@@ -113,7 +113,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float inner = exp(-norm * 0.16667);
             float outer = exp(-norm * 0.05);
 
-            float glow = core * 1.0 + inner * 0.4 + outer * 0.15;
+            float glow = core + inner * 0.4 + outer * 0.15;
             glow *= fade;
 
             // Rainbow color based on recording time

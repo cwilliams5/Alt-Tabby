@@ -70,7 +70,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             return;
         }
 
-        float lifetime = 1.2 + hash1(fi * 17.3) * 1.0;
+        float lifetime = 1.2 + hash1(fi * 17.3);
         p.vel.y -= 8.0 * timeDelta;
         float2 noisePos = p.pos * 0.005 + float2(time * 0.4, time * 0.3);
         float nx = noise1(noisePos) - 0.5;

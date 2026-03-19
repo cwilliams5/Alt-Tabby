@@ -54,7 +54,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float _n1x_off = cos(time * 0.3 + 0.5 * cos(time * 0.3)) * 3.;
     float _n1z_off = 8. + cos(time * 0.5) * 5.;
     for (float i = 0.; ++i < 110.;
-         O.xyz += lerp((float3)1, H(g * 0.1), _sin08) * 1.0 / e / 8e3)
+         O.xyz += lerp((float3)1, H(g * 0.1), _sin08) / e / 8e3)
     {
         float c2 = noise(n1);
         n1 = g * d + c2;

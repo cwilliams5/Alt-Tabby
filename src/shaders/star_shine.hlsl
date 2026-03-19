@@ -56,7 +56,7 @@ float flare(in float angle, in float alpha, in float t_val) {
     float t = t_val;
     float n = noise_val(float2(t + 0.5 + abs(angle) + pow(alpha, 0.6), t - abs(angle) + pow(alpha + 0.1, 0.6)) * 7.0);
 
-    float split_val = (15.0 + sin(t * 2.0 + n * 4.0 + angle * 20.0 + alpha * 1.0 * n) * (0.3 + 0.5 + alpha * 0.6 * n));
+    float split_val = (15.0 + sin(t * 2.0 + n * 4.0 + angle * 20.0 + alpha * n) * (0.3 + 0.5 + alpha * 0.6 * n));
 
     float rotate = sin(angle * 20.0 + sin(angle * 15.0 + alpha * 4.0 + t * 30.0 + n * 5.0 + alpha * 4.0)) * (0.5 + alpha * 1.5);
 
@@ -170,8 +170,8 @@ float4 PSMain(PSInput input) : SV_Target {
         t *= 0.8;
         alpha = (1.0 - pow(((BORDER - l) / BORDER), 0.22) * 0.7);
         alpha = saturate(alpha - light_val(uv, 0.02, 0.0, 1.0 / 0.3, 1.0 / 0.7) * 0.55);
-        f = flare(angle * 1.0, alpha, -t * 0.5 + alpha);
-        f2 = flare(angle * 1.0, alpha * 1.2, ((-t + alpha * 0.5 + 0.38134)));
+        f = flare(angle, alpha, -t * 0.5 + alpha);
+        f2 = flare(angle, alpha * 1.2, ((-t + alpha * 0.5 + 0.38134)));
     }
     f = flare(angle, alpha, t) * 1.3;
 

@@ -9,13 +9,13 @@ static const float STRIP_CHARS_MIN =  7.0;
 static const float STRIP_CHARS_MAX = 40.0;
 static const float STRIP_CHAR_HEIGHT = 0.15;
 static const float STRIP_CHAR_WIDTH = 0.10;
-static const float ZCELL_SIZE = 1.0 * (STRIP_CHAR_HEIGHT * STRIP_CHARS_MAX);
+static const float ZCELL_SIZE = STRIP_CHAR_HEIGHT * STRIP_CHARS_MAX;
 static const float XYCELL_SIZE = 12.0 * STRIP_CHAR_WIDTH;
 
 static const int BLOCK_SIZE = 10;
 static const int BLOCK_GAP = 2;
 
-static const float WALK_SPEED = 1.0 * XYCELL_SIZE;
+static const float WALK_SPEED = XYCELL_SIZE;
 static const float BLOCKS_BEFORE_TURN = 3.0;
 
 static const float PI = 3.14159265359;
@@ -149,7 +149,7 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
         float pos_z = ro3.z + rd3.z * t3s;
         float xycell_hash = hash_v2(float2(cell));
         float _xh2 = xycell_hash*xycell_hash; float _xh4 = _xh2*_xh2; float _xh8 = _xh4*_xh4; float _xh16 = _xh8*_xh8;
-        float z_shift = xycell_hash * 11.0 - t_time * (0.5 + xycell_hash * 1.0 + _xh2 * 1.0 + _xh16 * 3.0);
+        float z_shift = xycell_hash * 11.0 - t_time * (0.5 + xycell_hash + _xh2 + _xh16 * 3.0);
         float char_z_shift = floor(z_shift / STRIP_CHAR_HEIGHT);
         z_shift = char_z_shift * STRIP_CHAR_HEIGHT;
         int zcell = int(floor((pos_z - z_shift) / ZCELL_SIZE));
@@ -178,7 +178,7 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
                         float2 char_hash = hash2(float2(c + char_z_shift, cell_hash2.x));
                         if (char_hash.x >= 0.1 || c == 0.0) {
                             float time_factor = floor(c == 0.0 ? t_time * 5.0 :
-                                    t_time * (1.0 * cell_hash2.z +
+                                    t_time * (cell_hash2.z +
                                             cell_hash2.w * cell_hash2.w * 4.0 * (char_hash.y * char_hash.y * char_hash.y * char_hash.y)));
                             float a = random_char(float2(char_hash.x, time_factor), float2(u, q), max(1.0, 3.0 - c * 0.5) * 0.2);
                             a *= saturate((chars_count - 0.5 - c) * 0.5);
@@ -378,7 +378,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 p;
     if (turn_sign == 0.0) {
-        p = prev + dir * (turn_rad + 1.0 * t1);
+        p = prev + dir * (turn_rad + t1);
     }
     else if (t1 > (1.0 - turn_time)) {
         float tr = (t1 - (1.0 - turn_time)) / turn_time;

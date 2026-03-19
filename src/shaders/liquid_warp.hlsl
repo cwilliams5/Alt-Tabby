@@ -67,7 +67,7 @@ float4 PSMain(PSInput input) : SV_Target
     float3 col = lerp(float3(0.1, 0.4, 0.4), float3(0.5, 0.7, 0.0), smoothstep(0.0, 1.0, n));
 
     // other lower-octave colors and mixes
-    col = lerp(col, float3(0.35, 0.0, 0.1), dot(q, q) * 1.0);
+    col = lerp(col, float3(0.35, 0.0, 0.1), dot(q, q));
     col = lerp(col, float3(0, 0.2, 1), 0.2 * g.y * g.y);
     col = lerp(col, float3(0.3, 0, 0), smoothstep(0.0, 0.6, 0.6 * r.y * r.y));
     col = lerp(col, float3(0, 0.5, 0), 0.1 * g.x);
