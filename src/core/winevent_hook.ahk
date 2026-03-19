@@ -588,21 +588,15 @@ _WEH_ProcessBatch() {
     }
     ; PERF: Sequential loops avoid ephemeral [destroyed, hidden, toProcess] Array allocation.
     ; PendingHwnds: h guaranteed (iterated from this Map's snapshot above).
-    ; ZNeeded/LocChange: h may not exist (only populated for specific event types).
-    for _, h in destroyed {
+    ;
+    ; PERF: Destroyed/hidden events return early in the callback (lines 243-267)
+    ; BEFORE the Z/loc flag writes (lines 312-320). They NEVER have entries in
+    ; PendingZNeeded or PendingLocChange — skip those Map ops entirely.
+    for _, h in destroyed
         _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
-        if (_WEH_PendingZNeeded.Has(h))
-            _WEH_PendingZNeeded.Delete(h)
-        if (_WEH_PendingLocChange.Has(h))
-            _WEH_PendingLocChange.Delete(h)
-    }
-    for _, h in hidden {
+    for _, h in hidden
         _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
-        if (_WEH_PendingZNeeded.Has(h))
-            _WEH_PendingZNeeded.Delete(h)
-        if (_WEH_PendingLocChange.Has(h))
-            _WEH_PendingLocChange.Delete(h)
-    }
+    ; toProcess items may have Z/loc flags (set by normal event path in callback)
     for _, h in toProcess {
         _WEH_PendingHwnds.Delete(h)  ; lint-ignore: map-delete (key guaranteed from snapshot)
         if (_WEH_PendingZNeeded.Has(h))

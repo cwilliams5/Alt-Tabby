@@ -235,15 +235,9 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow)
-
-    waL := 0
-    waT := 0
-    waR := 0
-    waB := 0
-    targetHwnd := GUI_GetTargetMonitorHwnd()
-    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
-    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
+    monScale := 0
+    ; PERF: Get scale from GUI_GetWindowRect — avoids duplicate monitor DllCalls
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, &monScale)
 
     xPhys := Round(xDip * monScale)
     yPhys := Round(yDip * monScale)
@@ -263,7 +257,10 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Profiler.Leave() ; @profile
 }
 
-GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
+; PERF: Optional output params (&outScale, &outWaL..&outWaB) return monitor info
+; computed internally, eliminating duplicate MonitorFromWindow + GetMonitorInfoW +
+; MonitorFromRect + GetDpiForMonitor DllCalls in callers that also need this data.
+GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, &outScale := "", &outWaL := "", &outWaT := "", &outWaR := "", &outWaB := "") {
     global cfg
     waL := 0
     waT := 0
@@ -290,6 +287,13 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
 
     x := Round(left_dip + (waW_dip - w) / 2)
     y := Round(top_dip + (waH_dip - h) / 2)
+
+    ; Pass back monitor info to avoid duplicate DllCalls in caller
+    outScale := monScale
+    outWaL := waL
+    outWaT := waT
+    outWaR := waR
+    outWaB := waB
 }
 
 ; ========================= WINDOW CREATION =========================
@@ -321,15 +325,13 @@ GUI_CreateWindow() {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
-
+    monScale := 0
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    targetHwnd := GUI_GetTargetMonitorHwnd()
-    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
-    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
+    ; PERF: Get scale + workarea from GUI_GetWindowRect — avoids duplicate monitor DllCalls
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, &monScale, &waL, &waT, &waR, &waB)
 
     xPhys := Round(xDip * monScale)
     yPhys := Round(yDip * monScale)
