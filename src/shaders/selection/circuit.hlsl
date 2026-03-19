@@ -14,6 +14,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 rc = selRect.xy + hs;
     float rad = rowRadius > 0.0 ? rowRadius : min(hs.x, hs.y) * 0.15;
     float dist = roundedRectSDF(px, rc, hs, rad);
+
+    // Early exit: outside all effect regions (border + pulse glow zone)
+    if (dist > max(borderWidth + 2.0, 9.0 * selGlow + 1.0))
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     float fill = smoothstep(1.0, -1.0, dist);
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 
@@ -30,11 +35,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float pulseA = frac(timePhase);
     float pulseB = frac(timePhase + 0.5); // opposite side
 
-    // Wrapped distance from each pulse
-    float dlA = perim - pulseA;
-    float dA = min(abs(dlA), min(abs(dlA + 1.0), abs(dlA - 1.0)));
-    float dlB = perim - pulseB;
-    float dB = min(abs(dlB), min(abs(dlB + 1.0), abs(dlB - 1.0)));
+    // Wrapped distance from each pulse (simplified: min(|d|, 1-|d|))
+    float dA = abs(perim - pulseA);
+    dA = min(dA, 1.0 - dA);
+    float dB = abs(perim - pulseB);
+    dB = min(dB, 1.0 - dB);
 
     // Pulse glow — bright leading point with fading trail
     float glowA = smoothstep(0.20, 0.0, dA);

@@ -10,6 +10,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 rc = selRect.xy + hs;
     float rad = rowRadius > 0.0 ? rowRadius : min(hs.x, hs.y) * 0.15;
     float dist = roundedRectSDF(px, rc, hs, rad);
+
+    // Early exit: outside all effect regions (fill + border only, no outer glow)
+    if (dist > borderWidth + 2.0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     float fill = smoothstep(1.0, -1.0, dist);
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 

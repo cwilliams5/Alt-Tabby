@@ -373,10 +373,11 @@ float4 PSMain(PSInput input) : SV_Target {
     RaindropNormal = RaindropHeight > 0.0 ? RaindropNormal * 0.15 : float2(0.0, 0.0);
 
     float2 UVWithNormal = GlobalUV + RaindropNormal;
-    float EdgeColorScale = smoothstep(0.2, 0.0, length(RaindropNormal));
+    float normLen = length(RaindropNormal);
+    float EdgeColorScale = smoothstep(0.2, 0.0, normLen);
     EdgeColorScale = RaindropHeight > 0.0 ? sqrt(EdgeColorScale) * 0.2 + 0.8 : 1.0;
 
-    float Blur = lerp(MinBlur, MaxBlur, smoothstep(0.0, 1.6, length(RaindropNormal)));
+    float Blur = lerp(MinBlur, MaxBlur, smoothstep(0.0, 1.6, normLen));
     Blur = RaindropHeight > 0.0 ? Blur : MaxBlur;
     Blur = ProportionalMapToRange(MinBlur, Blur, 1.0 - RaindropTrail);
     EdgeColorScale = pow(EdgeColorScale, 0.85);

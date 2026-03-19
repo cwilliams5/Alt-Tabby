@@ -10,6 +10,10 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float dist = roundedRectSDF(pixelPos, rectCenter, halfSize, radius);
 
+    // Early exit: outside all effect regions (fill + border + drop shadow)
+    if (dist > max(borderWidth + 2.0, 18.0))
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     // Drop shadow (soft, offset down slightly)
     float2 shadowCenter = rectCenter + float2(0.0, 2.0);
     float shadowDist = roundedRectSDF(pixelPos, shadowCenter, halfSize + 4.0, radius + 2.0);

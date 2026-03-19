@@ -66,22 +66,26 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float lifetime = 30.0;
 
         float2 fromCursor = p.pos - iMouse;
-        float cursorDist = length(fromCursor);
+        float cursorDistSq = dot(fromCursor, fromCursor);
         float repelRadius = 100.0 + iMouseSpeed * reactivity * 0.4;
 
-        if (cursorDist < repelRadius && cursorDist > 1.0) {
+        if (cursorDistSq < repelRadius * repelRadius && cursorDistSq > 1.0) {
+            float invCursorDist = rsqrt(cursorDistSq);
+            float cursorDist = cursorDistSq * invCursorDist;
             float repelForce = (1.0 - cursorDist / repelRadius);
             repelForce = repelForce * repelForce * repelForce;
             float pushStrength = (500.0 + iMouseSpeed * 2.5) * reactivity;
-            p.vel += fromCursor / cursorDist * repelForce * pushStrength * timeDelta;
+            p.vel += fromCursor * invCursorDist * repelForce * pushStrength * timeDelta;
         }
 
         float2 home = homePos(fi, resolution);
         float2 toHome = home - p.pos;
-        float homeDist = length(toHome);
-        if (homeDist > 1.0) {
+        float homeDistSq = dot(toHome, toHome);
+        if (homeDistSq > 1.0) {
+            float invHomeDist = rsqrt(homeDistSq);
+            float homeDist = homeDistSq * invHomeDist;
             float pullStrength = 15.0 + homeDist * 0.1;
-            p.vel += toHome / homeDist * pullStrength * timeDelta;
+            p.vel += toHome * invHomeDist * pullStrength * timeDelta;
         }
 
         float2 noisePos = p.pos * 0.002 + float2(time * 0.1, time * 0.08);

@@ -9,6 +9,10 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float dist = roundedRectSDF(pixelPos, rectCenter, halfSize, radius);
 
+    // Early exit: outside all effect regions (border + outer glow)
+    if (dist > max(borderWidth + 2.0, 11.0 * selGlow + 1.0))
+        return float4(0.0, 0.0, 0.0, 0.0);
+
     float fill = smoothstep(1.0, -1.0, dist);
 
     // Color cycling based on position along border + time
