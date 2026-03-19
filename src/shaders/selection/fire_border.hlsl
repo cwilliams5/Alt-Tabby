@@ -52,21 +52,21 @@ float4 PSMain(PSInput input) : SV_Target {
     // Bottom flames — largest, most dramatic
     float2 fireUV_B = float2(luv.x * aspect * 5.0, dBottom * 4.0 - time * 2.0);
     float fireB = fbm(fireUV_B);
-    float flameB = smoothstep(0.25, 0.0, dBottom - fireB * 0.35) * (1.0 - smoothstep(0.0, 0.4, dBottom));
+    float flameB = smoothstep(0.25, 0.0, dBottom - fireB * 0.35) * smoothstep(0.4, 0.0, dBottom);
 
     // Top flames — smaller, pointing down
     float2 fireUV_T = float2(luv.x * aspect * 5.0, dTop * 4.0 - time * 2.2 + 50.0);
     float fireT = fbm(fireUV_T);
-    float flameT = smoothstep(0.20, 0.0, dTop - fireT * 0.25) * (1.0 - smoothstep(0.0, 0.3, dTop));
+    float flameT = smoothstep(0.20, 0.0, dTop - fireT * 0.25) * smoothstep(0.3, 0.0, dTop);
 
     // Side flames — subtle
     float2 fireUV_L = float2(luv.y * 4.0, dLeft * 5.0 - time * 1.8 + 100.0);
     float fireL = fbm(fireUV_L);
-    float flameL = smoothstep(0.15, 0.0, dLeft - fireL * 0.15) * (1.0 - smoothstep(0.0, 0.2, dLeft));
+    float flameL = smoothstep(0.15, 0.0, dLeft - fireL * 0.15) * smoothstep(0.2, 0.0, dLeft);
 
     float2 fireUV_R = float2(luv.y * 4.0, dRight * 5.0 - time * 1.8 + 150.0);
     float fireR = fbm(fireUV_R);
-    float flameR = smoothstep(0.15, 0.0, dRight - fireR * 0.15) * (1.0 - smoothstep(0.0, 0.2, dRight));
+    float flameR = smoothstep(0.15, 0.0, dRight - fireR * 0.15) * smoothstep(0.2, 0.0, dRight);
 
     float rawFlame = max(max(flameB, flameT), max(flameL, flameR));
     float flame = rawFlame * fill;

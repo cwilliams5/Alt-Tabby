@@ -79,14 +79,40 @@ float4 snoise(float3 v)
     return 42.0 * float4(grad, dot(m4, px));
 }
 
+// Precomputed pow(i, const) for i=1..24 — eliminates 3 SFU ops per loop iteration.
+// fxc folds these to compile-time constants since both arguments are literals.
+static const float _powAnim[24] = {
+    pow(1.0,sepanim),  pow(2.0,sepanim),  pow(3.0,sepanim),  pow(4.0,sepanim),
+    pow(5.0,sepanim),  pow(6.0,sepanim),  pow(7.0,sepanim),  pow(8.0,sepanim),
+    pow(9.0,sepanim),  pow(10.0,sepanim), pow(11.0,sepanim), pow(12.0,sepanim),
+    pow(13.0,sepanim), pow(14.0,sepanim), pow(15.0,sepanim), pow(16.0,sepanim),
+    pow(17.0,sepanim), pow(18.0,sepanim), pow(19.0,sepanim), pow(20.0,sepanim),
+    pow(21.0,sepanim), pow(22.0,sepanim), pow(23.0,sepanim), pow(24.0,sepanim)
+};
+static const float _powSize[24] = {
+    pow(1.0,sepsize),  pow(2.0,sepsize),  pow(3.0,sepsize),  pow(4.0,sepsize),
+    pow(5.0,sepsize),  pow(6.0,sepsize),  pow(7.0,sepsize),  pow(8.0,sepsize),
+    pow(9.0,sepsize),  pow(10.0,sepsize), pow(11.0,sepsize), pow(12.0,sepsize),
+    pow(13.0,sepsize), pow(14.0,sepsize), pow(15.0,sepsize), pow(16.0,sepsize),
+    pow(17.0,sepsize), pow(18.0,sepsize), pow(19.0,sepsize), pow(20.0,sepsize),
+    pow(21.0,sepsize), pow(22.0,sepsize), pow(23.0,sepsize), pow(24.0,sepsize)
+};
+static const float _powLight[24] = {
+    pow(1.0,-seplight),  pow(2.0,-seplight),  pow(3.0,-seplight),  pow(4.0,-seplight),
+    pow(5.0,-seplight),  pow(6.0,-seplight),  pow(7.0,-seplight),  pow(8.0,-seplight),
+    pow(9.0,-seplight),  pow(10.0,-seplight), pow(11.0,-seplight), pow(12.0,-seplight),
+    pow(13.0,-seplight), pow(14.0,-seplight), pow(15.0,-seplight), pow(16.0,-seplight),
+    pow(17.0,-seplight), pow(18.0,-seplight), pow(19.0,-seplight), pow(20.0,-seplight),
+    pow(21.0,-seplight), pow(22.0,-seplight), pow(23.0,-seplight), pow(24.0,-seplight)
+};
+
 float4 cloud(float3 v, int oct)
 {
     float4 outp = (float4)0.0;
     for (int i = 1; i < 64; i++)
     {
         if(i >= oct+1) { break; }
-        float fi = (float)i;
-        outp += snoise(float3(-143*i,842*i,0)+v*float3(1.,1.,pow(fi,sepanim))*pow(fi,sepsize))*pow(fi,-seplight);
+        outp += snoise(float3(-143*i,842*i,0)+v*float3(1.,1.,_powAnim[i-1])*_powSize[i-1])*_powLight[i-1];
     }
     return outp;
 }

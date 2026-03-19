@@ -26,49 +26,49 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 pos1 = float2(0.3, 0.4) + float2(sin(t) * 0.08, cos(t * 1.2) * 0.06) * effectStrength;
     float radius1 = baseCircleSize * (1.2 + sin(t * 2.1) * sizeVariation) * effectStrength;
     float dist1 = distance(uv, pos1);
-    float circle1 = 1.0 - smoothstep(radius1 - softness, radius1 + softness, dist1);
+    float circle1 = smoothstep(radius1 + softness, radius1 - softness, dist1);
 
     // Circle 2
     float2 pos2 = float2(0.7, 0.6) + float2(cos(t + 1.0) * 0.07, sin(t * 0.8 + 2.0) * 0.09) * effectStrength;
     float radius2 = baseCircleSize * (0.9 + cos(t * 1.8 + 1.5) * sizeVariation) * effectStrength;
     float dist2 = distance(uv, pos2);
-    float circle2 = 1.0 - smoothstep(radius2 - softness, radius2 + softness, dist2);
+    float circle2 = smoothstep(radius2 + softness, radius2 - softness, dist2);
 
     // Circle 3
     float2 pos3 = float2(0.5, 0.3) + float2(sin(t * 1.3 + 3.0) * 0.06, cos(t + 4.0) * 0.08) * effectStrength;
     float radius3 = baseCircleSize * (1.1 + sin(t * 2.5 + 2.0) * sizeVariation) * effectStrength;
     float dist3 = distance(uv, pos3);
-    float circle3 = 1.0 - smoothstep(radius3 - softness, radius3 + softness, dist3);
+    float circle3 = smoothstep(radius3 + softness, radius3 - softness, dist3);
 
     // Circle 4
     float2 pos4 = float2(0.2, 0.7) + float2(cos(t * 0.9 + 5.0) * 0.09, sin(t * 1.1 + 1.0) * 0.05) * effectStrength;
     float radius4 = baseCircleSize * (1.0 + cos(t * 1.9 + 3.5) * sizeVariation) * effectStrength;
     float dist4 = distance(uv, pos4);
-    float circle4 = 1.0 - smoothstep(radius4 - softness, radius4 + softness, dist4);
+    float circle4 = smoothstep(radius4 + softness, radius4 - softness, dist4);
 
     // Circle 5
     float2 pos5 = float2(0.8, 0.2) + float2(sin(t * 1.4 + 2.5) * 0.07, cos(t * 0.7 + 3.5) * 0.06) * effectStrength;
     float radius5 = baseCircleSize * (0.8 + sin(t * 2.2 + 4.0) * sizeVariation) * effectStrength;
     float dist5 = distance(uv, pos5);
-    float circle5 = 1.0 - smoothstep(radius5 - softness, radius5 + softness, dist5);
+    float circle5 = smoothstep(radius5 + softness, radius5 - softness, dist5);
 
     // Circle 6
     float2 pos6 = float2(0.6, 0.8) + float2(cos(t * 1.6 + 4.5) * 0.08, sin(t * 0.6 + 2.5) * 0.07) * effectStrength;
     float radius6 = baseCircleSize * (1.3 + cos(t * 1.7 + 5.0) * sizeVariation) * effectStrength;
     float dist6 = distance(uv, pos6);
-    float circle6 = 1.0 - smoothstep(radius6 - softness, radius6 + softness, dist6);
+    float circle6 = smoothstep(radius6 + softness, radius6 - softness, dist6);
 
     // Circle 7
     float2 pos7 = float2(0.4, 0.6) + float2(sin(t * 0.8 + 6.0) * 0.05, cos(t * 1.5 + 1.5) * 0.09) * effectStrength;
     float radius7 = baseCircleSize * (1.1 + sin(t * 2.8 + 1.0) * sizeVariation) * effectStrength;
     float dist7 = distance(uv, pos7);
-    float circle7 = 1.0 - smoothstep(radius7 - softness, radius7 + softness, dist7);
+    float circle7 = smoothstep(radius7 + softness, radius7 - softness, dist7);
 
     // Circle 8
     float2 pos8 = float2(0.1, 0.5) + float2(cos(t * 1.2 + 3.5) * 0.06, sin(t * 0.9 + 4.5) * 0.08) * effectStrength;
     float radius8 = baseCircleSize * (0.9 + cos(t * 2.0 + 2.5) * sizeVariation) * effectStrength;
     float dist8 = distance(uv, pos8);
-    float circle8 = 1.0 - smoothstep(radius8 - softness, radius8 + softness, dist8);
+    float circle8 = smoothstep(radius8 + softness, radius8 - softness, dist8);
 
     // Color overlays per circle
     float3 overlay1 = primaryColor * circle1 * circleOpacity;
@@ -86,13 +86,13 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 bloomColor = (float3)0.0;
 
     float bloom1 = circle1 * 0.5;
-    bloomColor += primaryColor * bloom1 * (1.0 - smoothstep(0.0, radius1 + 0.05, dist1));
+    bloomColor += primaryColor * bloom1 * smoothstep(radius1 + 0.05, 0.0, dist1);
 
     float bloom3 = circle3 * 0.4;
-    bloomColor += accentColor * bloom3 * (1.0 - smoothstep(0.0, radius3 + 0.05, dist3));
+    bloomColor += accentColor * bloom3 * smoothstep(radius3 + 0.05, 0.0, dist3);
 
     float bloom5 = circle5 * 0.3;
-    bloomColor += secondaryColor * bloom5 * (1.0 - smoothstep(0.0, radius5 + 0.05, dist5));
+    bloomColor += secondaryColor * bloom5 * smoothstep(radius5 + 0.05, 0.0, dist5);
 
     bloomColor *= bloomIntensity * 0.3;
 

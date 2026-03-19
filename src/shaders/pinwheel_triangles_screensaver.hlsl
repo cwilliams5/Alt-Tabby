@@ -35,7 +35,7 @@ float3 mixColorLine(float2 uv, float3 currentCol, float3 colLine, float2 lineA, 
     return lerp(
         currentCol,
         colLine,
-        1.0 - smoothstep(0.0, 1.0, sqrt(segmentDist(uv, lineA, lineB).x * scale)));
+        smoothstep(1.0, 0.0, sqrt(segmentDist(uv, lineA, lineB).x * scale)));
 
 }
 
