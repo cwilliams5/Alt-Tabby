@@ -99,12 +99,6 @@ Anim_StartTween(name, from, to, durationMs, easingFunc) {
     Anim_EnsureTimer()
 }
 
-Anim_GetValue(name, defaultVal := 0) {
-    global gAnim_Tweens
-    tw := gAnim_Tweens.Get(name, 0)
-    return tw ? tw.current : defaultVal
-}
-
 _Anim_CancelTween(name) {
     global gAnim_Tweens
     if (gAnim_Tweens.Has(name))
