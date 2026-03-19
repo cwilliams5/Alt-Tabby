@@ -34,8 +34,9 @@ Shader_InvalidateState() {
 
 ; Begin a pre-BeginDraw batch: defer RT/SRV unbind between sequential PreRender calls.
 Shader_BeginBatch() {
-    global gShader_BatchMode
+    global gShader_BatchMode, gShader_FrameCount
     gShader_BatchMode := true
+    gShader_FrameCount += 1
 }
 
 ; End batch: unbind RT and SRV slots 0-4 once (instead of per-layer).
@@ -1151,7 +1152,6 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (entry.lastTime > 0)
         timeDelta := timeSec - entry.lastTime
     entry.lastTime := timeSec
-    gShader_FrameCount += 1
 
     ; Map cbuffer → write all 144 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)

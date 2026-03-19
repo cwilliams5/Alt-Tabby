@@ -71,7 +71,8 @@ _GUI_BackdropNudge() {
     if (!gGUI_BaseH || !gGUI_Revealed || !gGUI_OverlayVisible)
         return
 
-    rect := Buffer(16, 0)
+    static rect := Buffer(16)
+    static flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE ; lint-ignore: static-in-timer
     if (!DllCall("user32\GetWindowRect", "ptr", gGUI_BaseH, "ptr", rect.Ptr))
         return
     x := NumGet(rect, 0, "int")
@@ -79,7 +80,6 @@ _GUI_BackdropNudge() {
     w := NumGet(rect, 8, "int") - x
     h := NumGet(rect, 12, "int") - y
 
-    flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE
     DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,
         "int", x, "int", y, "int", w, "int", h + 1, "uint", flags, "int")
     DllCall("user32\SetWindowPos", "ptr", gGUI_BaseH, "ptr", 0,

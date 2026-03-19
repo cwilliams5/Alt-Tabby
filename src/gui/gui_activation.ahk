@@ -992,7 +992,7 @@ GUI_RobustActivate(hwnd) {
     ; Komorebi handles uncloaking when switching workspaces.
 
     try {
-        if (WinExist("ahk_id " hwnd)) {
+        if (DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             ; Restore if minimized
             if (DllCall("user32\IsIconic", "ptr", hwnd, "int"))
                 DllCall("user32\ShowWindow", "ptr", hwnd, "int", SW_RESTORE)

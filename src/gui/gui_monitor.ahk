@@ -23,10 +23,11 @@ GUI_ToggleMonitorMode() {
     ; RACE FIX: Protect counter increment and mode toggle atomically
     Critical "On"
     gStats_MonitorToggles += 1
-    gGUI_MonitorMode := (gGUI_MonitorMode = MON_MODE_ALL) ? MON_MODE_CURRENT : MON_MODE_ALL
+    isAll := (gGUI_MonitorMode = MON_MODE_ALL)
+    gGUI_MonitorMode := isAll ? MON_MODE_CURRENT : MON_MODE_ALL
     Critical "Off"
     if (gFR_Enabled)
-        FR_Record(FR_EV_MON_TOGGLE, (gGUI_MonitorMode = MON_MODE_ALL) ? 1 : 2, gGUI_DisplayItems.Length)
+        FR_Record(FR_EV_MON_TOGGLE, isAll ? 2 : 1, gGUI_DisplayItems.Length)
 
     GUI_UpdateFooterText()
 

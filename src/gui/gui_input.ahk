@@ -59,26 +59,45 @@ _GUI_MoveSelection(delta) {
 
     Critical "On"
     if (cfg.GUI_ScrollKeepHighlightOnTop) {
+        ; PERF: Win_Wrap1 inlined — avoids function call overhead inside Critical
+        r := Mod(gGUI_Sel, count)   ; Win_Wrap1(gGUI_Sel + delta, count): Mod((gGUI_Sel+delta)-1, count)
         if (delta > 0) {
-            gGUI_Sel := Win_Wrap1(gGUI_Sel + 1, count)
+            ; Win_Wrap1(gGUI_Sel + 1, count) = Mod(gGUI_Sel, count) + 1
+            if (r < 0)
+                r += count
+            gGUI_Sel := r + 1
         } else {
-            gGUI_Sel := Win_Wrap1(gGUI_Sel - 1, count)
+            ; Win_Wrap1(gGUI_Sel - 1, count) = Mod(gGUI_Sel - 2, count) + 1
+            r := Mod(gGUI_Sel - 2, count)
+            if (r < 0)
+                r += count
+            gGUI_Sel := r + 1
         }
         gGUI_ScrollTop := gGUI_Sel - 1
     } else {
         top0 := gGUI_ScrollTop
         if (delta > 0) {
-            gGUI_Sel := Win_Wrap1(gGUI_Sel + 1, count)
+            r := Mod(gGUI_Sel, count)
+            if (r < 0)
+                r += count
+            gGUI_Sel := r + 1
             sel0 := gGUI_Sel - 1
-            pos := Win_Wrap0(sel0 - top0, count)
-            if (pos >= vis || pos = vis - 1) {
+            r := Mod(sel0 - top0, count)
+            if (r < 0)
+                r += count
+            if (r >= vis || r = vis - 1) {
                 gGUI_ScrollTop := sel0 - (vis - 1)
             }
         } else {
-            gGUI_Sel := Win_Wrap1(gGUI_Sel - 1, count)
+            r := Mod(gGUI_Sel - 2, count)
+            if (r < 0)
+                r += count
+            gGUI_Sel := r + 1
             sel0 := gGUI_Sel - 1
-            pos := Win_Wrap0(sel0 - top0, count)
-            if (pos >= vis || pos = 0) {
+            r := Mod(sel0 - top0, count)
+            if (r < 0)
+                r += count
+            if (r >= vis || r = 0) {
                 gGUI_ScrollTop := sel0
             }
         }

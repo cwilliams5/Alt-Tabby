@@ -132,14 +132,15 @@ GUI_EvictDisplayItem(idx1) {
     }
 
     ; Remove from live items + map
-    for j, liveItem in gGUI_LiveItems {
-        if (liveItem.hwnd = hwnd) {
-            gGUI_LiveItems.RemoveAt(j)
-            break
+    if (gGUI_LiveItemsMap.Has(hwnd)) {
+        for j, liveItem in gGUI_LiveItems {
+            if (liveItem.hwnd = hwnd) {
+                gGUI_LiveItems.RemoveAt(j)
+                break
+            }
         }
-    }
-    if (gGUI_LiveItemsMap.Has(hwnd))
         gGUI_LiveItemsMap.Delete(hwnd)
+    }
 
     ; Adjust selection — track by hwnd
     remaining := gGUI_DisplayItems.Length
@@ -151,15 +152,12 @@ GUI_EvictDisplayItem(idx1) {
         gGUI_Sel := Min(idx1, remaining)
         gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
     } else {
-        ; Find selectedHwnd in updated array — it shifted position
-        newIdx := 0
-        for j, di in gGUI_DisplayItems {
-            if (di.hwnd = selectedHwnd) {
-                newIdx := j
-                break
-            }
-        }
-        gGUI_Sel := newIdx > 0 ? newIdx : Min(gGUI_Sel, remaining)
+        ; PERF: Arithmetic adjustment — no scan needed.
+        ; RemoveAt(idx1) shifts items at idx1+ down by 1.
+        ; If idx1 < gGUI_Sel, selected item shifted down.
+        ; If idx1 > gGUI_Sel, selected item unchanged.
+        if (idx1 < gGUI_Sel)
+            gGUI_Sel -= 1
         gGUI_ScrollTop := Max(0, gGUI_Sel - 1)
     }
 
