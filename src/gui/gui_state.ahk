@@ -899,12 +899,11 @@ _GUI_MoveSelectionFrozen(delta) {
     global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
     global gFX_GPUReady
 
-    if (gGUI_DisplayItems.Length = 0) {
+    count := gGUI_DisplayItems.Length
+    if (count = 0) {
         Profiler.Leave() ; @profile
         return
     }
-
-    count := gGUI_DisplayItems.Length
     prevSel := gGUI_Sel  ; Capture BEFORE changing selection (for animation)
 
     newSel := gGUI_Sel + delta

@@ -333,7 +333,7 @@ WL_UpsertWindow(records, source := "") {
                     ; Only update if value differs
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
-                        if (!isNew && diagChurn)
+                        if (diagChurn)
                             gWS_DiagChurn[k] := gWS_DiagChurn.Get(k, 0) + 1
                         row.%k% := v
                         rowChanged := true
