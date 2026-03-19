@@ -1314,16 +1314,16 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
         if (_hovResizeMode = -1)
             _hovResizeMode := (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize")
         if (_hovResizeMode) {
-            NumPut("float", Float(selX), "float", Float(selY),
-                   "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
+            NumPut("float", selX, "float", selY,
+                   "float", selX + selW, "float", selY + selH, hov_dstRect)
             NumPut("float", 0.0, "float", 0.0,
-                   "float", Float(selW), "float", Float(selH), hov_srcRect)
+                   "float", selW, "float", selH, hov_srcRect)
             hovBmpWrap.ptr := pBitmap
             gD2D_RT.DrawBitmap(hovBmpWrap, hov_dstRect, 1.0, 1, hov_srcRect)
         } else {
-            NumPut("float", Float(selX), "float", Float(selY),
-                   "float", Float(selX + selW), "float", Float(selY + selH), hov_srcRect)
-            NumPut("float", Float(selX), "float", Float(selY), hov_tgtPt)
+            NumPut("float", selX, "float", selY,
+                   "float", selX + selW, "float", selY + selH, hov_srcRect)
+            NumPut("float", selX, "float", selY, hov_tgtPt)
             gD2D_RT.DrawImage(pBitmap, hov_tgtPt, hov_srcRect)
         }
         if (clipped)

@@ -1083,7 +1083,6 @@ _KSub_OnNotification(jsonLine) {
         }
         if (wsName != "") {
             Critical "On"
-            global _KSub_LastWorkspaceName
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
             ; Track whether to fire WL_SetCurrentWorkspace after Critical release

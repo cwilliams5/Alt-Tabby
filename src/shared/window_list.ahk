@@ -194,7 +194,7 @@ WL_EndScan(graceMs := "") {
             continue  ; May have been removed by another producer
         if (rec.lastSeenScanId != gWS_ScanId) {
             ; Komorebi-managed windows are "present" even if winenum doesn't see them
-            if (rec.HasOwnProp("workspaceName") && rec.workspaceName != "") {
+            if (rec.workspaceName != "") {
                 komorebiKeep.Push(hwnd)
                 continue
             }
@@ -389,6 +389,11 @@ WL_UpsertWindow(records, source := "") {
     ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
     for _, row in rowsToEnqueue
         _WS_EnqueueIfNeeded(row)
+
+    ; PERF: Hoisted from _WS_EnqueueIfNeeded — call once per batch instead of per-row.
+    ; These are idempotent flag checks; calling once after the loop is sufficient.
+    try MRU_Lite_EnsureRunning()
+    try KomorebiLite_EnsureRunning()
 
     Profiler.Leave() ; @profile
     return { added: added, updated: updated, rev: gWS_Rev }
@@ -1001,8 +1006,6 @@ _WS_EnqueueIfNeeded(row) {
         if (!wakeIcon)
             try GUIPump_EnsureRunning()
     }
-    try MRU_Lite_EnsureRunning()
-    try KomorebiLite_EnsureRunning()
 }
 
 ; Enqueue hwnd for icon enrichment without row-level checks.
