@@ -50,7 +50,8 @@ float4 PSMain(PSInput input) : SV_Target
     float2 uv = fragCoord / resolution;
 
     float c1 = noise_turbulence(float3(uv, time / 10.0));
-    float3 col = float3(1.5 * c1, 1.5 * c1 * c1 * c1, c1 * c1 * c1 * c1 * c1 * c1);
+    float _c2 = c1 * c1; float _c3 = _c2 * c1; float _c6 = _c3 * _c3;
+    float3 col = float3(1.5 * c1, 1.5 * _c3, _c6);
 
     return AT_PostProcess(col);
 }
