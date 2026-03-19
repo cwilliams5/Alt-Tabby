@@ -82,8 +82,8 @@ D2D_PushRoundRectClipLayer(x, y, w, h, r) {
             _geomPtr := 0
         }
         NumPut("float", fx, "float", fy, ; lint-ignore: numput-float-safety (pre-wrapped line 76)
-               "float", fw, "float", fh, ; lint-ignore: numput-float-safety
-               "float", fr, "float", fr, rrBuf) ; lint-ignore: numput-float-safety
+               "float", fw, "float", fh, ; lint-ignore: numput-float-safety (see above)
+               "float", fr, "float", fr, rrBuf) ; lint-ignore: numput-float-safety (see above)
         pGeom := 0
         try {
             ComCall(6, gD2D_Factory, "ptr", rrBuf, "ptr*", &pGeom, "hresult")

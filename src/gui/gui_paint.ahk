@@ -220,7 +220,7 @@ GUI_Repaint() {
         ; Shrink: resize HWND before paint.  During STA pump, old content is
         ; shown clipped by the smaller HWND — no stale-pixel exposure.
         if (!isGrowing && phW > 0 && phH > 0)
-            Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)  ; lint-ignore: critical-heavy — paint function, STA pumping is inherent
+            Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)  ; lint-ignore: critical-heavy (paint path, STA pumping is inherent)
     }
     if (diagTiming)
         tResize := QPC() - t1
@@ -310,14 +310,14 @@ GUI_Repaint() {
     ; DwmFlush ensures the compositor has processed the new frame before
     ; SetWindowPos pumps STA, preventing stale-content flash.  (#234, #221)
     if (isGrowing && phW > 0 && phH > 0) {
-        Win_DwmFlush()  ; lint-ignore: critical-heavy — paint function, STA pumping is inherent
-        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)  ; lint-ignore: critical-heavy
+        Win_DwmFlush()  ; lint-ignore: critical-heavy (paint path, STA pumping is inherent)
+        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)  ; lint-ignore: critical-heavy (see above)
     }
 
     ; ===== TIMING: Reveal =====
     if (diagTiming)
         t1 := QPC()
-    _GUI_RevealBoth()  ; lint-ignore: critical-heavy — paint function, STA pumping is inherent
+    _GUI_RevealBoth()  ; lint-ignore: critical-heavy (paint path, STA pumping is inherent)
     if (diagTiming)
         tReveal := QPC() - t1
 

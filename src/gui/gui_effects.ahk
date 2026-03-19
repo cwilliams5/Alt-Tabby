@@ -53,7 +53,7 @@ FX_GPU_Init() {
     global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect, gShader_Registry
     global gFX_SoftRectFlood, gFX_SoftRectCrop, gFX_SoftRectBlur, gFX_SoftRectBlurOut
     global gFX_SoftRect2Flood, gFX_SoftRect2Crop, gFX_SoftRect2Blur, gFX_SoftRect2BlurOut
-    global SHADER_KEYS ; lint-ignore: phantom-global
+    global SHADER_KEYS ; lint-ignore: phantom-global (populated by shader_bundle.ahk at include time)
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite
@@ -422,7 +422,7 @@ FX_PreRenderShaderLayers(w, h) {
 
 ; Draw all active shader layers inside D2D BeginDraw.
 ; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
-FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
+FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param (compositor API signature match)
     Profiler.Enter("FX_DrawShaderLayers") ; @profile
     global gD2D_RT, gFX_ShaderLayers, gShader_Ready
 
@@ -530,7 +530,7 @@ FX_PreRenderMouseEffect(w, h) {
 }
 
 ; Draw the mouse effect inside D2D BeginDraw.
-FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
+FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param (compositor API signature match)
     Profiler.Enter("FX_DrawMouseEffect") ; @profile
     global gD2D_RT, gFX_MouseEffect, gShader_Ready
 
@@ -640,7 +640,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
 ; Draw the selection effect inside D2D BeginDraw.
 ; selX/selY/selW/selH/rad are only needed for BG-as-selection (clipping + border).
-FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0, rad := 0) { ; lint-ignore: dead-param
+FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0, rad := 0) { ; lint-ignore: dead-param (compositor API signature match)
     Profiler.Enter("FX_DrawSelectionEffect") ; @profile
     global gD2D_RT, gFX_SelectionEffect, gShader_Ready, cfg
 
@@ -1267,7 +1267,7 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
 }
 
 ; Draw the hover effect inside D2D BeginDraw.
-FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: dead-param
+FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: dead-param (compositor API signature match)
     Profiler.Enter("FX_DrawHoverEffect") ; @profile
     global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg
 

@@ -27,7 +27,7 @@ FileWatch_Start(filePath, callback, debounceMs := 300) {
     return w
 }
 
-_FileWatch_OnChange(w, dw, notify) { ; lint-ignore: dead-param
+_FileWatch_OnChange(w, dw, notify) { ; lint-ignore: dead-param (DirectoryWatcher callback signature)
     ; Filter: only care about our target file
     if (notify.name != w.fileName) {
         ; Also catch RENAMED where our file is the new name

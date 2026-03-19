@@ -206,12 +206,12 @@ _CEW_OnSize(guiObj, minMax, width, height) {
 }
 
 ; Raw 3-param handler wrapper - manually wraps args pointer
-_CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
+_CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param (WebView2 handler callback signature)
     args := WebView2.WebMessageReceivedEventArgs(argsPtr)
     _CEW_OnWebMessage(sender, args)
 }
 
-_CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
+_CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param (sender unused, args carries message data)
     global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges
     global cfg, LOG_PATH_WEBVIEW, LOG_PATH_STORE
 

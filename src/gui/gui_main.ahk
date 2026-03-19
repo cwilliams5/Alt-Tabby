@@ -696,7 +696,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     ; normal processing."  Returning 0 here previously ate WM_LBUTTONDOWN for
     ; every window in MainProcess, breaking buttons/edits in themed dialogs.
     OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : ""))
-    OnMessage(WM_MOUSEWHEEL, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? (GUI_OnWheel(wParam, lParam), 0) : ""))  ; lint-ignore: onmessage-collision
+    OnMessage(WM_MOUSEWHEEL, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? (GUI_OnWheel(wParam, lParam), 0) : ""))  ; lint-ignore: onmessage-collision (overlay-specific handler; theme has separate handler)
     OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : ""))
     OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_BaseH ? GUI_OnMouseLeave() : ""))
 
@@ -749,7 +749,7 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) {
 
 ; Blacklist file watcher callback — fires when blacklist.txt is modified on disk.
 ; Replaces the WM_COPYDATA RELOAD_BLACKLIST notification chain.
-_GUI_OnBlacklistFileChanged(path) { ; lint-ignore: dead-param
+_GUI_OnBlacklistFileChanged(path) { ; lint-ignore: dead-param (FileWatch callback signature)
     Critical "On"
     Blacklist_Init()
     result := WL_PurgeBlacklisted()

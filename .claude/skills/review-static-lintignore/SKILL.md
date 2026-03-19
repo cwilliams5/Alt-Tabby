@@ -35,10 +35,12 @@ For each lint-ignore tag, write **both sides**:
 
 ### Phase 3 — Audit every usage site
 
+Every lint-ignore is required to have a parenthetical reason: `; lint-ignore: tag (reason)`. This is enforced by the `lint_ignore_reason` sub-check in `check_batch_patterns.ps1`.
+
 For each `; lint-ignore:` comment in `.ahk` source files:
 
 1. **Read the surrounding code** — is this a genuine exception or a workaround?
-2. **Check the justification** — some suppressions include a reason in the comment (e.g., `; lint-ignore: timer-lifecycle (cancelled via bound ref)`). Is the stated reason valid?
+2. **Verify the stated reason** — is the parenthetical reason still accurate given the current code? Reasons can become stale after refactoring.
 3. **Classify**:
    - **Appropriate** — the code is genuinely an exception the checker can't handle
    - **Workaround** — the code should be fixed to not need suppression

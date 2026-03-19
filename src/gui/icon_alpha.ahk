@@ -57,7 +57,7 @@ class IconAlpha {
      * @param pixelCount Number of pixels (width * height)
      * @returns {Integer} 1 if original had alpha, 0 if not (mask applied)
      */
-    ; lint-ignore: dead-function
+    ; lint-ignore: dead-function (MCode utility, called by icon alpha pipeline)
     static ScanAndApplyMask(pixelsBuf, maskBuf, pixelCount) {
         return DllCall(this._mc['icon_scan_and_apply_mask']
             , "ptr", pixelsBuf, "ptr", maskBuf, "uint", pixelCount, "cdecl int")

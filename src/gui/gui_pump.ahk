@@ -108,7 +108,7 @@ GUIPump_Init(connectTimeoutMs := 2000) {
 
     ; Register PostMessage wake handler for immediate pipe reads
     global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _GUIPump_OnPipeWake)  ; lint-ignore: onmessage-collision
+    OnMessage(IPC_WM_PIPE_WAKE, _GUIPump_OnPipeWake)  ; lint-ignore: onmessage-collision (GUI-side handler; pump has separate handler)
 
     ; Stop default graduated-cooldown timer — we control it based on request state.
     ; IPC client timer runs at 8ms only when a request is in flight (safety net).
@@ -253,14 +253,14 @@ _GUIPump_CollectTick() {
         pids := WL_PopPidBatch(32)
         if (pids.Length > 0) {
             ; Find hwnds with these PIDs that aren't already in the batch
-            static pidSet := Map() ; lint-ignore: static-in-timer
+            static pidSet := Map() ; lint-ignore: static-in-timer (reused map, Clear() per-tick)
             pidSet.Clear()
             for _, pid in pids
                 pidSet[pid] := true
             ; Get hwnds from store by PID
             pidHwnds := WL_GetHwndsByPids(pidSet)
             ; Merge, deduplicating
-            static hwndSet := Map() ; lint-ignore: static-in-timer
+            static hwndSet := Map() ; lint-ignore: static-in-timer (reused map, Clear() per-tick)
             hwndSet.Clear()
             for _, h in hwnds
                 hwndSet[h] := true
@@ -307,7 +307,7 @@ _GUIPump_CollectTick() {
 
         ; Flag hwnds that have no icon — pump must skip nochange cache for these
         ; (stale cache from removed-then-readded HWND would return "unchanged")
-        static needsIcon := [] ; lint-ignore: static-in-timer
+        static needsIcon := [] ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
         needsIcon.Length := 0
         for _, h in hwnds {
             row := WL_GetByHwnd(h)

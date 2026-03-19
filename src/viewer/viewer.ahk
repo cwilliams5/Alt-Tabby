@@ -260,7 +260,7 @@ _Viewer_CreateGui() {
     gViewer_LV.OnEvent("ColClick", _Viewer_OnColClick)
     ; Row NM_CUSTOMDRAW + focus via global WM_NOTIFY handler
     ; (OnNotify approach crashes on right-click; OnMessage is proven in legacy mock)
-    OnMessage(0x004E, _Viewer_OnWMNotify) ; lint-ignore: onmessage-collision
+    OnMessage(0x004E, _Viewer_OnWMNotify) ; lint-ignore: onmessage-collision (viewer-specific WM_NOTIFY handler)
 
     gViewer_Gui.OnEvent("Close", _Viewer_OnClose)
     gViewer_Gui.OnEvent("Size", _Viewer_OnResize)
@@ -703,7 +703,7 @@ _Viewer_DrawHeader(lParam) {
 ; WM_NOTIFY handler for row NM_CUSTOMDRAW + focus events
 ; Routes notifications from the ListView to the appropriate handler.
 ; Only intercepts notifications from our ListView; everything else falls through.
-_Viewer_OnWMNotify(wParam, lParam, msg, hwnd) { ; lint-ignore: mixed-returns
+_Viewer_OnWMNotify(wParam, lParam, msg, hwnd) { ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gViewer_LV, gViewer_Gui, gViewer_ShuttingDown
     if (gViewer_ShuttingDown || !gViewer_LV || !gViewer_Gui)
         return
@@ -1077,7 +1077,7 @@ _Viewer_ShowContextMenu() {
 }
 
 ; Menu click callback — looks up action data from gViewer_MenuActions by item name
-_Viewer_OnMenuClick(itemName, itemPos, menuObj) { ; lint-ignore: dead-param
+_Viewer_OnMenuClick(itemName, itemPos, menuObj) { ; lint-ignore: dead-param (Menu callback signature)
     global gViewer_MenuActions
     if (!gViewer_MenuActions.Has(itemName))
         return

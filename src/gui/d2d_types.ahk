@@ -7,7 +7,7 @@
 ; ========================= D2D1_COLOR_F (16 bytes) =========================
 ; Layout: { float r, g, b, a }
 
-D2D_ColorF(argb) { ; lint-ignore: dead-function
+D2D_ColorF(argb) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     buf := Buffer(16)
     NumPut("float", ((argb >> 16) & 0xFF) / 255.0,
            "float", ((argb >> 8) & 0xFF) / 255.0,
@@ -20,7 +20,7 @@ D2D_ColorF(argb) { ; lint-ignore: dead-function
 ; ========================= D2D1_RECT_F (16 bytes) =========================
 ; Layout: { float left, top, right, bottom }
 
-D2D_RectF(left, top, right, bottom) { ; lint-ignore: dead-function
+D2D_RectF(left, top, right, bottom) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     buf := Buffer(16)
     NumPut("float", Float(left), "float", Float(top),
            "float", Float(right), "float", Float(bottom), buf)
@@ -30,7 +30,7 @@ D2D_RectF(left, top, right, bottom) { ; lint-ignore: dead-function
 ; ========================= D2D1_ROUNDED_RECT (24 bytes) =========================
 ; Layout: { D2D1_RECT_F rect (16), float radiusX, float radiusY }
 
-_D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: dead-function
+_D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     if !IsSet(radiusY)
         radiusY := radiusX
     buf := Buffer(24)
@@ -43,7 +43,7 @@ _D2D_RoundedRect(left, top, right, bottom, radiusX, radiusY?) { ; lint-ignore: d
 ; ========================= D2D1_ELLIPSE (16 bytes) =========================
 ; Layout: { D2D1_POINT_2F center (8), float radiusX, float radiusY }
 
-_D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function
+_D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     buf := Buffer(16)
     NumPut("float", Float(cx), "float", Float(cy),
            "float", Float(rx), "float", Float(ry), buf)
@@ -53,7 +53,7 @@ _D2D_Ellipse(cx, cy, rx, ry) { ; lint-ignore: dead-function
 ; ========================= D2D1_POINT_2F as int64 (8 bytes) =========================
 ; Pack two floats for by-value passing in x64 ComCall/DllCall
 
-_D2D_Point2F(x, y) { ; lint-ignore: dead-function
+_D2D_Point2F(x, y) { ; lint-ignore: dead-function (D2D struct helper for by-value x64 passing)
     static buf := Buffer(8)
     NumPut("float", Float(x), "float", Float(y), buf)
     return NumGet(buf, "int64")
@@ -62,7 +62,7 @@ _D2D_Point2F(x, y) { ; lint-ignore: dead-function
 ; ========================= D2D1_SIZE_U (8 bytes) =========================
 ; Layout: { uint32 width, uint32 height }
 
-D2D_SizeU(w, h) { ; lint-ignore: dead-function
+D2D_SizeU(w, h) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     buf := Buffer(8)
     NumPut("uint", w, "uint", h, buf)
     return buf
@@ -71,7 +71,7 @@ D2D_SizeU(w, h) { ; lint-ignore: dead-function
 ; ========================= D2D1_SIZE_F (8 bytes) =========================
 ; Layout: { float width, float height }
 
-_D2D_SizeF(w, h) { ; lint-ignore: dead-function
+_D2D_SizeF(w, h) { ; lint-ignore: dead-function (D2D struct helper for COM interop)
     buf := Buffer(8)
     NumPut("float", Float(w), "float", Float(h), buf)
     return buf
@@ -83,7 +83,7 @@ _D2D_SizeF(w, h) { ; lint-ignore: dead-function
 ; ========================= D2D1_BITMAP_PROPERTIES (20 bytes) =========================
 ; Layout: { D2D1_PIXEL_FORMAT pixelFormat (8), float dpiX, float dpiY }
 
-D2D_BitmapProps(dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) { ; lint-ignore: dead-function
+D2D_BitmapProps(dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) { ; lint-ignore: dead-function (D2D struct helper for bitmap creation)
     ; format 87 = DXGI_FORMAT_B8G8R8A8_UNORM
     ; alphaMode 1 = D2D1_ALPHA_MODE_PREMULTIPLIED
     buf := Buffer(20, 0)
@@ -97,7 +97,7 @@ D2D_BitmapProps(dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) { ; li
 ; ========================= D2D1_MATRIX_3X2_F (24 bytes) =========================
 ; Layout: { float _11, _12, _21, _22, _31, _32 }
 
-D2D_Matrix3x2_Identity() { ; lint-ignore: dead-function
+D2D_Matrix3x2_Identity() { ; lint-ignore: dead-function (D2D struct helper for transform reset)
     buf := Buffer(24, 0)
     NumPut("float", 1.0, buf, 0)   ; _11
     NumPut("float", 1.0, buf, 12)  ; _22

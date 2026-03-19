@@ -419,7 +419,7 @@ Launcher_RelayToGui(cmd) {
     NumPut("uptr", 0, cds, A_PtrSize * 2)
     guiResult := 0
     try {
-        guiResult := SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd) ; lint-ignore: postmessage-unsafe
+        guiResult := SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd) ; lint-ignore: postmessage-unsafe (intentional cross-process IPC to GUI subprocess)
     }
     if (cfg.DiagLauncherLog)
         Launcher_Log("RelayToGui: cmd=" cmd " hwnd=" guiHwnd " result=" guiResult)
@@ -444,7 +444,7 @@ _Launcher_ApplyConfigChanges() {
     _Launcher_RestartSubprocesses()
 }
 
-_Launcher_OnConfigFileChanged(path) { ; lint-ignore: dead-param
+_Launcher_OnConfigFileChanged(path) { ; lint-ignore: dead-param (FileWatch callback signature)
     global cfg, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
     if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
         if (cfg.DiagLauncherLog)

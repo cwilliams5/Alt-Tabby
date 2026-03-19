@@ -233,7 +233,7 @@ _GUI_PreCacheTick() {
     ; Scan store and collect uncached icons under Critical (safe Map iteration)
     ; gGdip_IconCache is GUI-thread-only, safe to read here
     Critical "On"
-    static work := [] ; lint-ignore: static-in-timer
+    static work := [] ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
     work.Length := 0
     for hwnd, rec in gWS_Store {
         if (!rec.present || !rec.iconHicon)

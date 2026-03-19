@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location, lint_ignore_reason
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -2144,6 +2144,64 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_shader_framecount_location"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check: lint_ignore_reason
+# Every lint-ignore suppression must include a parenthetical reason.
+# Format: ; lint-ignore: tag-name (reason why this is suppressed)
+# This ensures suppressions are deliberate and reviewable.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$lirIssues = [System.Collections.ArrayList]::new()
+$rxLintIgnore = [regex]::new('lint-ignore:\s*([\w-]+)', 'Compiled')
+
+foreach ($file in $allFiles) {
+    if ($fileCacheText[$file.FullName].IndexOf('lint-ignore:') -lt 0) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $rawLine = $lines[$i]
+        if ($rawLine.IndexOf('lint-ignore:') -lt 0) { continue }
+
+        # Find each lint-ignore occurrence on this line
+        $matches = $rxLintIgnore.Matches($rawLine)
+        foreach ($m in $matches) {
+            $tag = $m.Groups[1].Value
+            # Check if followed by (reason) — look for ( after the tag within this lint-ignore segment
+            $afterMatch = $rawLine.Substring($m.Index + $m.Length)
+            # Trim whitespace and check for opening paren before next semicolon or end of line
+            $afterTrimmed = $afterMatch.TrimStart()
+            if ($afterTrimmed.Length -eq 0 -or $afterTrimmed[0] -ne '(') {
+                # No reason found — but also check for next lint-ignore on same line
+                # (multi-rule: "; lint-ignore: tag1 (reason) ; lint-ignore: tag2" — tag2 needs its own reason)
+                [void]$lirIssues.Add([PSCustomObject]@{
+                    File = $relPath
+                    Line = ($i + 1)
+                    Tag = $tag
+                })
+            }
+        }
+    }
+}
+
+if ($lirIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($lirIssues.Count) lint-ignore suppression(s) missing a reason.")
+    [void]$failOutput.AppendLine("  Every lint-ignore must explain why: ; lint-ignore: tag (reason)")
+    [void]$failOutput.AppendLine("  The reason ensures suppressions are deliberate and reviewable.")
+    $grouped = $lirIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): lint-ignore: $($issue.Tag) -- missing (reason)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_lint_ignore_reason"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2151,7 +2209,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison, map_iteration_mutation, profiler_name_consistency, numput_float_safety, shader_framecount_location, lint_ignore_reason)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

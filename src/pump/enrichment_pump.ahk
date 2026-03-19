@@ -70,7 +70,7 @@ _Pump_Init() {
 
     ; Register PostMessage wake handler
     global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _Pump_OnPipeWake)  ; lint-ignore: onmessage-collision
+    OnMessage(IPC_WM_PIPE_WAKE, _Pump_OnPipeWake)  ; lint-ignore: onmessage-collision (pump process handler; GUI has separate handler)
 
     ; Start HICON prune timer
     SetTimer(_Pump_PruneAllCaches, _Pump_IconPruneIntervalMs)
@@ -437,7 +437,7 @@ _Pump_PruneAllCaches() {
     if (_Pump_ProcNameCache.Count > 0) {
         deadPids := []
         for pid, _ in _Pump_ProcNameCache {
-            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy — pump process has no keyboard hooks
+            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy (pump process has no keyboard hooks)
                 deadPids.Push(pid)
         }
         for _, pid in deadPids
@@ -447,7 +447,7 @@ _Pump_PruneAllCaches() {
     if (_Pump_FailedPidCache.Count > 0) {
         deadPids := []
         for pid, _ in _Pump_FailedPidCache {
-            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy — pump process has no keyboard hooks
+            if (!ProcessExist(pid))  ; lint-ignore: critical-heavy (pump process has no keyboard hooks)
                 deadPids.Push(pid)
         }
         for _, pid in deadPids

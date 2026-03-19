@@ -1166,8 +1166,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (pData) {
         ; Core params + mouse (offset 0-44, 12 values)
         NumPut("float", timeSec, "float", Float(w), "float", Float(h), "float", timeDelta, ; lint-ignore: numput-float-safety (shader params from float math)
-               "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity, ; lint-ignore: numput-float-safety
-               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY, ; lint-ignore: numput-float-safety
+               "uint", gShader_FrameCount, "float", darken, "float", desaturate, "float", opacity, ; lint-ignore: numput-float-safety (see above)
+               "float", Float(mouseX), "float", Float(mouseY), "float", mouseVelX, "float", mouseVelY, ; lint-ignore: numput-float-safety (see above)
                pData, 0)
         ; Selection rect + colors (offset 48-92, 12 values)
         NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
@@ -1176,8 +1176,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
                pData, 48)
         ; Selection params + compute config + tuning (offset 96-136, 11 values)
         NumPut("float", borderWidth, "float", isHovered, "float", entranceT, "float", mouseSpeed, ; lint-ignore: numput-float-safety (shader params from float math)
-               "uint", entry.gridW, "uint", entry.gridH, "uint", entry.effectiveParticles, "float", entry.reactivity, ; lint-ignore: numput-float-safety
-               "float", entry.selGlow, "float", entry.selIntensity, "float", rowRadius, ; lint-ignore: numput-float-safety
+               "uint", entry.gridW, "uint", entry.gridH, "uint", entry.effectiveParticles, "float", entry.reactivity, ; lint-ignore: numput-float-safety (see above)
+               "float", entry.selGlow, "float", entry.selIntensity, "float", rowRadius, ; lint-ignore: numput-float-safety (see above)
                pData, 96)
     }
     ; Unmap (vtable 15) — void; "int" return type suppresses false HRESULT throw from RAX garbage
@@ -1448,11 +1448,11 @@ _Shader_InitGdiplus() {
 ; ========================= DIAGNOSTICS =========================
 
 _Shader_LogInit() {
-    global LOG_PATH_SHADER ; lint-ignore: phantom-global
+    global LOG_PATH_SHADER ; lint-ignore: phantom-global (consumed by LogInitSession/LogAppend)
     LogInitSession(LOG_PATH_SHADER, "Alt-Tabby Shader Pipeline Log")
 }
 
 _Shader_Log(msg) {
-    global LOG_PATH_SHADER ; lint-ignore: phantom-global
+    global LOG_PATH_SHADER ; lint-ignore: phantom-global (consumed by LogAppend)
     LogAppend(LOG_PATH_SHADER, msg)
 }

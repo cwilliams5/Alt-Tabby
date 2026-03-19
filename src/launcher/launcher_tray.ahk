@@ -17,7 +17,7 @@ global g_NeedsAdminReload := true  ; Flag for admin config reload (start true fo
 global g_ConfigEditorPID := 0
 global g_BlacklistEditorPID := 0
 
-TrayIconClick(wParam, lParam, msg, hwnd) { ; lint-ignore: error-boundary
+TrayIconClick(wParam, lParam, msg, hwnd) { ; lint-ignore: error-boundary (top-level tray click handler, is the boundary)
     ; 0x205 = WM_RBUTTONUP (right-click release)
     if (lParam = 0x205) {
         ; Dismiss splash screen if still showing — user wants to interact with tray,
@@ -498,7 +498,7 @@ ToggleAdminMode() {
                 ; Create lock file before elevation (will be deleted by elevated instance)
                 try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
                 FileAppend(A_TickCount, TEMP_ADMIN_TOGGLE_LOCK, "UTF-8")
-                g_AdminToggleInProgress := true  ; lint-ignore: guard-try-finally — async: polling timer resets on completion
+                g_AdminToggleInProgress := true  ; lint-ignore: guard-try-finally (async: polling timer resets on completion)
                 g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 
                 if (!Launcher_RunAsAdmin("--enable-admin-task"))

@@ -137,7 +137,7 @@ Theme_Init() {
     ; Register WM_CTLCOLOR handlers
     OnMessage(0x0133, _Theme_OnCtlColorEdit)     ; WM_CTLCOLOREDIT
     OnMessage(0x0134, _Theme_OnCtlColorListBox)   ; WM_CTLCOLORLISTBOX
-    OnMessage(0x0138, _Theme_OnCtlColorStatic)    ; WM_CTLCOLORSTATIC  ; lint-ignore: onmessage-collision
+    OnMessage(0x0138, _Theme_OnCtlColorStatic)    ; WM_CTLCOLORSTATIC  ; lint-ignore: onmessage-collision (theme handler; editor has separate swatch handler)
 
     ; Listen for system theme changes (Automatic mode)
     OnMessage(0x001A, _Theme_OnSettingChange)     ; WM_SETTINGCHANGE

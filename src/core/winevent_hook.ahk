@@ -425,7 +425,7 @@ _WEH_ProcessBatch() {
             patches[newFocus] := { lastActivatedTick: A_TickCount, isFocused: true }
             if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus)
                 patches[gWEH_LastFocusHwnd] := { isFocused: false }
-            WL_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
+            WL_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak (BatchUpdateFields has own Critical; re-entered below)
             Critical "On"  ; Re-enter: BatchUpdateFields' Critical "Off" clears thread-level state
 
             gWEH_LastFocusHwnd := newFocus
@@ -446,7 +446,7 @@ _WEH_ProcessBatch() {
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change
             ; (e.g., browser favicons) when the window gains focus
-            WL_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
+            WL_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak (enqueue has own Critical; outer re-enters below)
         } else {
             ; Window not in store yet - defer probe to OUTSIDE Critical section.
             ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)
@@ -541,7 +541,7 @@ _WEH_ProcessBatch() {
     ; PERF: Static parallel arrays avoid per-batch object allocation.
     ; .Length := 0 resets without dealloc; Push reuses existing capacity.
     Critical "On"
-    static snapHwnds := [], snapTicks := []  ; lint-ignore: static-in-timer
+    static snapHwnds := [], snapTicks := []  ; lint-ignore: static-in-timer (parallel arrays, Length := 0 per-tick)
     snapHwnds.Length := 0
     snapTicks.Length := 0
     for hwnd, tick in _WEH_PendingHwnds {
@@ -552,7 +552,7 @@ _WEH_ProcessBatch() {
 
     ; Collect hwnds ready to process (past debounce period)
     ; PERF: Static arrays reuse capacity across ticks (matching snapHwnds/snapTicks pattern)
-    static toProcess := [], destroyed := [], hidden := []  ; lint-ignore: static-in-timer
+    static toProcess := [], destroyed := [], hidden := []  ; lint-ignore: static-in-timer (reused collections, Length := 0 per-tick)
     toProcess.Length := 0
     destroyed.Length := 0
     hidden.Length := 0
@@ -576,8 +576,8 @@ _WEH_ProcessBatch() {
     ; RACE FIX: Snapshot Z + location flags before cleanup (needed for conditional logic below)
     ; Then remove processed items atomically
     Critical "On"
-    static zSnapshot := Map()  ; lint-ignore: static-in-timer
-    static locSnapshot := Map()  ; lint-ignore: static-in-timer
+    static zSnapshot := Map()  ; lint-ignore: static-in-timer (reused map, Clear() per-tick)
+    static locSnapshot := Map()  ; lint-ignore: static-in-timer (reused map, Clear() per-tick)
     zSnapshot.Clear()
     locSnapshot.Clear()
     for _, hwnd in toProcess {
@@ -614,7 +614,7 @@ _WEH_ProcessBatch() {
     ; Handle hidden windows — probe and remove if no longer eligible.
     ; Apps like Outlook HIDE windows instead of destroying them when closing
     ; sub-windows (emails, etc.). Without this, ghosts linger until ValidateExistence.
-    static hiddenRemoved := []  ; lint-ignore: static-in-timer
+    static hiddenRemoved := []  ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
     hiddenRemoved.Length := 0
     if (hidden.Length > 0) {
         ; Lightweight check: window was eligible when added to store. For HIDE events,
@@ -644,12 +644,12 @@ _WEH_ProcessBatch() {
     ; In-store windows: lightweight update (title + vis/min/cloak only — class/PID are immutable).
     ; New windows: full probe (WinGetTitle + WinGetClass + WinGetPID + eligibility check).
     batchChanged := false
-    static ineligibleHwnds := []  ; lint-ignore: static-in-timer
+    static ineligibleHwnds := []  ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
     ineligibleHwnds.Length := 0
     if (toProcess.Length > 0) {
-        static newRecords := []  ; lint-ignore: static-in-timer
-        static updatedHwnds := []  ; lint-ignore: static-in-timer
-        static batchPatches := Map()  ; lint-ignore: static-in-timer
+        static newRecords := []  ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
+        static updatedHwnds := []  ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
+        static batchPatches := Map()  ; lint-ignore: static-in-timer (reused map, Clear() per-tick)
         newRecords.Length := 0
         updatedHwnds.Length := 0
         batchPatches.Clear()

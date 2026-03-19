@@ -290,7 +290,7 @@ _CEN_BuildMainGUI() {
     gCEN["ThemeEntry"] := themeEntry
     Theme_OnChange(_CEN_OnThemeChange)
     ; Register swatch color handler AFTER theme (last registered runs first)
-    OnMessage(0x0138, _CEN_OnSwatchCtlColor)  ; lint-ignore: onmessage-collision
+    OnMessage(0x0138, _CEN_OnSwatchCtlColor)  ; lint-ignore: onmessage-collision (editor-specific WM_CTLCOLORSTATIC handler)
     ; Register WM_NOTIFY for slider custom draw
     OnMessage(0x004E, _CEN_OnWmNotify)
 
@@ -379,7 +379,7 @@ _CEN_BuildMainGUI() {
 
     ; Message handlers for scrolling
     gCEN["BoundWheelMsg"] := _CEN_OnMouseWheel
-    OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"])  ; lint-ignore: onmessage-collision
+    OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"])  ; lint-ignore: onmessage-collision (editor-specific scroll handler)
 
     gCEN["BoundScrollMsg"] := _CEN_OnVScroll
     OnMessage(CEN_WM_VSCROLL, gCEN["BoundScrollMsg"])
@@ -1684,7 +1684,7 @@ _CEN_SwitchToPage(name) {
 ; SCROLL ENGINE
 ; ============================================================
 
-_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
+_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param (OnMessage callback signature)
     global gCEN
     global CEN_SIDEBAR_W
 
@@ -1743,7 +1743,7 @@ _CEN_DrainScroll() {
     _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
-_CEN_OnVScroll(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_CEN_OnVScroll(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param (OnMessage callback signature)
     global gCEN
     global CEN_SCROLL_STEP
 

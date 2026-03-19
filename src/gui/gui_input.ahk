@@ -513,7 +513,7 @@ _GUI_DeferredClickActivate() {
     GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
 }
 
-GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param (OnMessage callback signature)
     global gGUI_BaseH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
     global gGUI_MouseTracking, gAnim_HidePending
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow
@@ -661,7 +661,7 @@ _GUI_HoverPollTick() {
     }
 }
 
-GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param
+GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param (lParam unused, wParam carries delta)
     global gGUI_OverlayVisible, cfg
 
     ; Don't process wheel if overlay isn't visible

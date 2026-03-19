@@ -840,7 +840,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     ; Centralized here so ALL callers (KomorebiSub events, ProcessFullState init,
     ; KomorebiLite polling, self-healing) automatically fire the callback.
     if (gWS_OnWorkspaceChanged)
-        gWS_OnWorkspaceChanged()  ; lint-ignore: critical-leak
+        gWS_OnWorkspaceChanged()  ; lint-ignore: critical-leak (callback may repaint; caller holds Critical for atomic flip)
 
     Profiler.Leave() ; @profile
     return anyFlipped
@@ -1107,8 +1107,6 @@ WL_EnqueueForZ(hwnd) {
     gWS_ZQueue.Push(hwnd)
     gWS_ZQueueDedup[hwnd] := true
     Critical "Off"
-    ; Wake Z-pump outside Critical — EnsureRunning has its own Critical
-    try ZPump_EnsureRunning()
 }
 
 ; Check if any windows need Z-order enrichment

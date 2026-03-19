@@ -189,7 +189,7 @@ _IP_PruneAttempts() {
     ; RACE FIX: Wrap in Critical — _IP_Tick writes to _IP_Attempts under Critical,
     ; and AHK v2 timers can interrupt each other during map iteration.
     Critical "On"
-    static toRemove := [] ; lint-ignore: static-in-timer
+    static toRemove := [] ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
     toRemove.Length := 0
 
     for hwnd, _ in _IP_Attempts {

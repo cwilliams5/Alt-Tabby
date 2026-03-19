@@ -90,7 +90,7 @@ _INT_Ctrl_Down(*) {
 
     ; Only toggle mode when GUI is active and visible
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        GUI_ToggleWorkspaceMode()  ; lint-ignore: critical-leak
+        GUI_ToggleWorkspaceMode()  ; lint-ignore: critical-leak (callee has own Critical; handler scope is short)
     }
 }
 
@@ -102,7 +102,7 @@ _INT_Backtick_Down(*) {
 
     ; Only toggle monitor mode when GUI is active and visible
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        GUI_ToggleMonitorMode()  ; lint-ignore: critical-leak
+        GUI_ToggleMonitorMode()  ; lint-ignore: critical-leak (callee has own Critical; handler scope is short)
     }
 }
 
@@ -365,7 +365,7 @@ _INT_F_Down(*) {
         return
 
     gAnim_FPSEnabled := !gAnim_FPSEnabled
-    GUI_Repaint()  ; lint-ignore: critical-heavy — hotkey handler, Critical required
+    GUI_Repaint()  ; lint-ignore: critical-heavy (hotkey handler, Critical required)
 }
 
 ; ========================= SHADER CYCLING =========================
@@ -375,7 +375,7 @@ _INT_CycleShaderLayer(layerIndex, *) {
     global gGUI_State, gGUI_OverlayVisible
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
-    FX_CycleShaderLayer(layerIndex) ; lint-ignore: critical-leak
+    FX_CycleShaderLayer(layerIndex) ; lint-ignore: critical-leak (callee returns; Critical "On" scope is handler-level)
 }
 
 _INT_CycleMouseEffect(*) {
@@ -383,7 +383,7 @@ _INT_CycleMouseEffect(*) {
     global gGUI_State, gGUI_OverlayVisible
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
-    FX_CycleMouseEffect() ; lint-ignore: critical-leak
+    FX_CycleMouseEffect() ; lint-ignore: critical-leak (callee returns; Critical "On" scope is handler-level)
 }
 
 _INT_CycleSelectionEffect(*) {
@@ -391,7 +391,7 @@ _INT_CycleSelectionEffect(*) {
     global gGUI_State, gGUI_OverlayVisible
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
-    FX_CycleSelectionEffect() ; lint-ignore: critical-leak
+    FX_CycleSelectionEffect() ; lint-ignore: critical-leak (callee returns; Critical "On" scope is handler-level)
 }
 
 _INT_CycleHoverEffect(*) {
@@ -399,7 +399,7 @@ _INT_CycleHoverEffect(*) {
     global gGUI_State, gGUI_OverlayVisible
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
-    FX_CycleHoverEffect() ; lint-ignore: critical-leak
+    FX_CycleHoverEffect() ; lint-ignore: critical-leak (callee returns; Critical "On" scope is handler-level)
 }
 
 ; ========================= BYPASS DETECTION =========================

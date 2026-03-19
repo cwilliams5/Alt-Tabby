@@ -110,7 +110,7 @@ _WizardApply(*) {
     global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath, TEMP_WIZARD_STATE
     if (g_WizardShuttingDown)
         return
-    g_WizardShuttingDown := true  ; lint-ignore: guard-try-finally — intentionally kept true; false only on UAC-cancel retry
+    g_WizardShuttingDown := true  ; lint-ignore: guard-try-finally (intentionally kept true; false only on UAC-cancel retry)
 
     ; Get checkbox states
     startMenu := g_WizardGui["StartMenu"].Value

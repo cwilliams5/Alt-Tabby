@@ -499,7 +499,7 @@ _Anim_DoActualHide() {
 
 ; ========================= SELECTION SLIDE =========================
 
-Anim_StartSelectionSlide(prevSel, newSel, count) { ; lint-ignore: dead-param
+Anim_StartSelectionSlide(prevSel, newSel, count) { ; lint-ignore: dead-param (count reserved for wrap-around animation)
     global gAnim_SelPrevIndex, gAnim_SelNewIndex
     _Anim_CancelTween("selSlide")
     gAnim_SelPrevIndex := prevSel
@@ -541,7 +541,7 @@ _Anim_UpdateFPSCounter(now) {
     }
 }
 
-Anim_DrawFPSOverlay(wPhys, hPhys, scale) { ; lint-ignore: dead-param
+Anim_DrawFPSOverlay(wPhys, hPhys, scale) { ; lint-ignore: dead-param (compositor API signature match)
     global gAnim_FPSDisplay, gAnim_FrameTimeDisplay, gD2D_RT, gD2D_Res, gAnim_TargetFPS
 
     ; Build display text

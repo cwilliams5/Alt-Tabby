@@ -157,7 +157,7 @@ _CL_InitializeDefaults() {
     }
 
     ; Track active shader layer count
-    cfg._ShaderLayerCount := arraySections.Get("Shader", 0)  ; lint-ignore: cfg-property
+    cfg._ShaderLayerCount := arraySections.Get("Shader", 0)  ; lint-ignore: cfg-property (internal metadata, not a registry-defined key)
 }
 
 ; ============================================================
@@ -1204,7 +1204,7 @@ global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
 global LOG_PATH_WEBVIEW    := A_Temp "\tabby_webview_debug.log"
 global LOG_PATH_UPDATE     := A_Temp "\tabby_update.log"
 global LOG_PATH_PUMP       := A_Temp "\tabby_pump.log"
-global LOG_PATH_SHADER     := A_Temp "\tabby_shader.log" ; lint-ignore: dead-global
+global LOG_PATH_SHADER     := A_Temp "\tabby_shader.log" ; lint-ignore: dead-global (consumed by d2d_shader.ahk via phantom-global)
 
 ; Stats file path -- set properly in ConfigLoader_Init() alongside gConfigIniPath
 global STATS_INI_PATH

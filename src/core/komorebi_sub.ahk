@@ -388,7 +388,7 @@ KomorebiSub_PruneStaleCache() {
 
     Critical "On"
     now := A_TickCount
-    static toDelete := [] ; lint-ignore: static-in-timer
+    static toDelete := [] ; lint-ignore: static-in-timer (reused collection, Length := 0 per-tick)
     toDelete.Length := 0
     for hwnd, cached in _KSub_WorkspaceCache {
         if ((now - cached.tick) > _KSub_CacheMaxAgeMs)
@@ -596,14 +596,14 @@ _KomorebiSub_IssueRead() {
     if (ok) {
         ; Completed synchronously (data was already in buffer).
         ; The IOCP completion callback will still fire — don't process here.
-        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally — set on success branch, not wrapping a block
+        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally (set on success branch, not wrapping a block)
         return
     }
 
     gle := DllCall("GetLastError", "uint")
     if (gle = IPC_ERROR_IO_PENDING) {
         ; Normal async case — I/O is pending, callback fires when data arrives
-        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally
+        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally (see above)
         return
     }
 
