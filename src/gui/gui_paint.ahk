@@ -586,9 +586,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         if (diagTiming) {
             tPO_RowsStart := QPC()
             tPO_IconsTotal := 0
+            iconCacheHits := 0
+            iconCacheMisses := 0
         }
-        iconCacheHits := 0
-        iconCacheMisses := 0
 
         start0 := Win_Wrap0(scrollTop, count)
         i := 0
@@ -727,7 +727,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; destruction.  Try the bitmap cache regardless so frozen display items
             ; keep their last-known icon.
             iconDrawn := D2D_DrawCachedIcon(curHwnd, curIcon, ix, iy, ISize, &iconWasCacheHit)
-            if (iconDrawn) {
+            if (iconDrawn && diagTiming) {
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else
