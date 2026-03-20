@@ -69,3 +69,4 @@ $content = $header + $content
 [System.IO.File]::WriteAllText($outFile, $content)
 $count = $sources.Count
 Write-Output "Generated AGENTS.MD ($count source files)"
+exit 0
