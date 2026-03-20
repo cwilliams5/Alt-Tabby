@@ -445,7 +445,12 @@ _Launcher_ApplyConfigChanges() {
 }
 
 _Launcher_OnConfigFileChanged(path) { ; lint-ignore: dead-param (FileWatch callback signature)
-    global cfg, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
+    global cfg, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS, g_AdminToggleInProgress
+    if (IsSet(g_AdminToggleInProgress) && g_AdminToggleInProgress) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("WATCH: config.ini change suppressed (admin toggle in progress)")
+        return
+    }
     if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
         if (cfg.DiagLauncherLog)
             Launcher_Log("WATCH: config.ini change debounced")
